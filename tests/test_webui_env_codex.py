@@ -5,6 +5,16 @@ from fastapi.testclient import TestClient
 import webui
 
 
+class HealthyLLM:
+    def complete(self, **_):
+        return "OK"
+
+
+class NotOkLLM:
+    def complete(self, **_):
+        return "NOT OK"
+
+
 def test_env_reports_codex_status(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     example_path = tmp_path / ".env.example"
@@ -73,3 +83,31 @@ def test_codex_login_stream_handles_missing_codex(monkeypatch):
     assert response.status_code == 200
     assert "找不到 codex CLI" in body
     assert '"return_code": 127' in body
+
+
+def test_llm_health_endpoint_reports_callable(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text("LLM_PROVIDER=codex_cli\nLLM_MODEL=gpt-5.5\nOPENAI_API_KEY=\n", encoding="utf-8")
+    monkeypatch.setattr(webui, "ENV_PATH", env_path)
+    monkeypatch.setattr(webui, "build_llm_client_from_env", lambda: HealthyLLM())
+
+    response = TestClient(webui.app).get("/api/llm/health")
+
+    assert response.status_code == 200
+    health = response.json()["health"]
+    assert health["ok"] is True
+    assert health["provider"] == "codex_cli"
+
+
+def test_llm_health_endpoint_rejects_not_ok_suffix(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text("LLM_PROVIDER=codex_cli\nLLM_MODEL=gpt-5.5\nOPENAI_API_KEY=\n", encoding="utf-8")
+    monkeypatch.setattr(webui, "ENV_PATH", env_path)
+    monkeypatch.setattr(webui, "build_llm_client_from_env", lambda: NotOkLLM())
+
+    response = TestClient(webui.app).get("/api/llm/health")
+
+    assert response.status_code == 200
+    health = response.json()["health"]
+    assert health["ok"] is False
+    assert health["status"] == "unexpected_output"

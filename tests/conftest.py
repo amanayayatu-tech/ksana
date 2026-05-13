@@ -17,6 +17,84 @@ from chairman.models import (
 )
 
 
+@pytest.fixture(autouse=True)
+def deterministic_llm_environment(monkeypatch: pytest.MonkeyPatch):
+    """Keep local .env LLM settings from leaking into tests."""
+
+    monkeypatch.setenv("LLM_PROVIDER", "local")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+
+
+class TriggerMarketClient:
+    """Deterministic market client with real rule-triggering HK/US histories."""
+
+    def get_history(self, ticker: str, period: str = "1mo"):
+        del period
+        closes = [100, 101, 102, 103, 104, 105, 106, 107, 108, 118]
+        rows = []
+        previous = None
+        for index, close in enumerate(closes, start=1):
+            volume = 100 if index < 10 else 500
+            change_pct = None if previous is None else round((close - previous) / previous * 100, 4)
+            rows.append(
+                {
+                    "ticker": ticker,
+                    "date": f"2026-05-{index:02d}",
+                    "open": close - 1,
+                    "high": close + 1,
+                    "low": close - 2,
+                    "close": close,
+                    "previous_close": previous,
+                    "change_pct": change_pct,
+                    "gap_pct": 0.5 if previous else None,
+                    "volume": volume,
+                    "source_url": f"https://finance.yahoo.com/quote/{ticker}",
+                    "evidence_unverified": False,
+                }
+            )
+            previous = close
+        return rows
+
+    def get_quote(self, ticker: str):
+        class Quote:
+            price = 118
+            source_url = f"https://finance.yahoo.com/quote/{ticker}"
+            evidence_unverified = False
+
+        return Quote()
+
+
+class QuietMarketClient(TriggerMarketClient):
+    """Deterministic market client that should not trigger research signals."""
+
+    def get_history(self, ticker: str, period: str = "1mo"):
+        del period
+        closes = [100, 100.2, 100.1, 100.3, 100.2, 100.4, 100.3, 100.5, 100.4, 100.6]
+        rows = []
+        previous = None
+        for index, close in enumerate(closes, start=1):
+            change_pct = None if previous is None else round((close - previous) / previous * 100, 4)
+            rows.append(
+                {
+                    "ticker": ticker,
+                    "date": f"2026-05-{index:02d}",
+                    "open": close,
+                    "high": close + 0.2,
+                    "low": close - 0.2,
+                    "close": close,
+                    "previous_close": previous,
+                    "change_pct": change_pct,
+                    "gap_pct": 0,
+                    "volume": 100,
+                    "source_url": f"https://finance.yahoo.com/quote/{ticker}",
+                    "evidence_unverified": False,
+                }
+            )
+            previous = close
+        return rows
+
+
 def upstream_ref(
     signal_id: str = "RS-20260513-001",
     *,

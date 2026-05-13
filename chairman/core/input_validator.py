@@ -18,6 +18,7 @@ from chairman.models import (
     WanmuRecommendation,
     format_validation_error,
 )
+from business_agents._common.perplexity_results import sync_signal_perplexity_status
 
 AGENT_CLASS_BY_ID = {
     AgentId.FENGLIU.value: FengliuRecommendation,
@@ -139,10 +140,19 @@ def collect_input_files(data_dir: str | Path, date: str) -> tuple[list[Path], li
     return signal_files, recommendation_files
 
 
+def collect_research_run_files(data_dir: str | Path, date: str) -> list[Path]:
+    """Return scan summaries for no-signal days."""
+
+    root = Path(data_dir)
+    compact_date = date.replace("-", "")
+    return sorted((root / "research_runs").glob(f"*{compact_date}*.y*ml"))
+
+
 def load_inputs(data_dir: str | Path, date: str) -> tuple[list[ResearchSignal], list[Recommendation], list[str]]:
     """Load and validate all inputs for a Chairman run."""
 
     signal_files, recommendation_files = collect_input_files(data_dir, date)
+    research_run_files = collect_research_run_files(data_dir, date)
     consumed_files: list[str] = []
     signals: list[ResearchSignal] = []
     recommendations: list[Recommendation] = []
@@ -151,7 +161,7 @@ def load_inputs(data_dir: str | Path, date: str) -> tuple[list[ResearchSignal], 
     for path in signal_files:
         result = validate_file(path, "research_signal")
         if result.valid:
-            signals.append(result.item)
+            signals.append(sync_signal_perplexity_status(data_dir, result.item))
             consumed_files.append(str(path))
         else:
             errors.extend([f"{path}: {message}" for message in result.errors])
@@ -167,5 +177,8 @@ def load_inputs(data_dir: str | Path, date: str) -> tuple[list[ResearchSignal], 
     if errors:
         raise InputValidationError(errors)
     if not signals and not recommendations:
+        if research_run_files:
+            consumed_files.extend(str(path) for path in research_run_files)
+            return signals, recommendations, consumed_files
         raise InputValidationError([f"no input YAML files found for date {date} under {data_dir}"])
     return signals, recommendations, consumed_files

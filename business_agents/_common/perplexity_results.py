@@ -18,6 +18,8 @@ class PerplexityContext:
     yaml_text: str
     filled_prompt_ids: list[str]
     all_prompt_ids: list[str]
+    skipped_prompt_ids: list[str]
+    pending_prompt_ids: list[str]
 
     @property
     def has_filled_results(self) -> bool:
@@ -30,12 +32,18 @@ def collect_perplexity_context(data_dir: str | Path, signal: ResearchSignal) -> 
     root = Path(data_dir)
     prompt_records = load_prompt_records(root, signal)
     if not prompt_records:
-        return PerplexityContext("无", [], [])
+        return PerplexityContext("无", [], [], [], [])
 
     filled_ids: list[str] = []
+    skipped_ids: list[str] = []
+    pending_ids: list[str] = []
     for record in prompt_records:
         if record.get("status") == "filled":
             filled_ids.append(str(record["prompt_id"]))
+        elif record.get("status") == "skipped":
+            skipped_ids.append(str(record["prompt_id"]))
+        else:
+            pending_ids.append(str(record["prompt_id"]))
 
     payload = {"perplexity_research": prompt_records}
     yaml_text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False).strip()
@@ -43,7 +51,65 @@ def collect_perplexity_context(data_dir: str | Path, signal: ResearchSignal) -> 
         yaml_text=yaml_text,
         filled_prompt_ids=filled_ids,
         all_prompt_ids=[str(record["prompt_id"]) for record in prompt_records],
+        skipped_prompt_ids=skipped_ids,
+        pending_prompt_ids=pending_ids,
     )
+
+
+def sync_signal_perplexity_status(data_dir: str | Path, signal: ResearchSignal) -> ResearchSignal:
+    """Return a signal copy with pending/filled/skipped prompt status synchronized."""
+
+    context = collect_perplexity_context(data_dir, signal)
+    if not context.all_prompt_ids:
+        return signal
+    current = dict(signal.perplexity_research or {})
+    filled_records = [
+        record
+        for record in load_prompt_records(Path(data_dir), signal)
+        if record.get("status") == "filled"
+    ]
+    summaries = [record.get("answer_text", "").strip() for record in filled_records if record.get("answer_text")]
+    current.update(
+        {
+            "prompts_requested": context.all_prompt_ids,
+            "prompts_filled_back": context.filled_prompt_ids,
+            "prompts_skipped_by_nepha": context.skipped_prompt_ids,
+            "prompts_pending": context.pending_prompt_ids,
+            "coverage_ratio": round(
+                len(context.filled_prompt_ids) / len(context.all_prompt_ids),
+                4,
+            )
+            if context.all_prompt_ids
+            else 0,
+            "results_summary": "\n\n".join(summaries)[:2000] if summaries else None,
+            "confidence_after_research": 60 if summaries else None,
+        }
+    )
+    payload = signal.model_dump(mode="json")
+    payload["perplexity_research"] = current
+    return ResearchSignal.model_validate(payload)
+
+
+def sync_signal_file_perplexity_status(data_dir: str | Path, prompt_id: str) -> list[Path]:
+    """Persist synchronized status for research_signal files connected to prompt_id."""
+
+    root = Path(data_dir)
+    changed: list[Path] = []
+    for path in sorted((root / "research_signals").glob("*.y*ml")):
+        data = read_yaml(path)
+        payload = data.get("research_signal", data) if isinstance(data, dict) else {}
+        if not isinstance(payload, dict):
+            continue
+        signal = ResearchSignal.model_validate(payload)
+        if prompt_id not in prompt_ids_for_signal(signal):
+            continue
+        synced = sync_signal_perplexity_status(root, signal)
+        path.write_text(
+            yaml.safe_dump({"research_signal": synced.model_dump(mode="json")}, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        changed.append(path)
+    return changed
 
 
 def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, Any]]:

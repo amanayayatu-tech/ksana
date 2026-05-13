@@ -18,6 +18,9 @@
           <th>日期</th>
           <th>brief-type</th>
           <th>status</th>
+          <th>失败步骤</th>
+          <th>产物</th>
+          <th>修复/fallback</th>
           <th>started_at</th>
         </tr>
       </thead>
@@ -25,6 +28,18 @@
     </table>
   </div>
 </section>
+
+<div id="artifactModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="artifactTitle" class="modal-title">产物预览</h2>
+      <button id="closeArtifact">关闭</button>
+    </div>
+    <div class="modal-body">
+      <article id="artifactContent" class="markdown"></article>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -43,12 +58,12 @@
     const data = await res.json();
     if (!data.ok) {
       setStatus("读取失败", "error");
-      body.innerHTML = `<tr><td colspan="5" class="muted">${escapeHtml(data.error)}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(data.error)}</td></tr>`;
       return;
     }
     setStatus(`最近 ${data.rows.length} 条`, "ok");
     if (!data.rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="muted">暂无运行记录</td></tr>';
+      body.innerHTML = '<tr><td colspan="8" class="muted">暂无运行记录</td></tr>';
       return;
     }
     body.innerHTML = data.rows.map((row) => `
@@ -57,9 +72,52 @@
         <td>${escapeHtml(row.date || "")}</td>
         <td>${escapeHtml(row.brief_type || "")}</td>
         <td><span class="pill ${row.status === "completed" ? "ok" : "warn"}">${escapeHtml(row.status || "")}</span></td>
+        <td>${escapeHtml(row.failed_step || "")}</td>
+        <td>${artifactLinks(row.artifacts || {})}</td>
+        <td>${row.schema_repair_or_fallback ? '<span class="pill warn">是</span>' : '<span class="pill ok">否</span>'}</td>
         <td>${escapeHtml(row.started_at || "")}</td>
       </tr>
     `).join("");
+    body.querySelectorAll("[data-artifact]").forEach((button) => {
+      button.addEventListener("click", () => openArtifact(button.dataset.artifact));
+    });
+  }
+
+  function artifactLinks(artifacts) {
+    const items = [];
+    if (artifacts.brief) items.push(artifactButton("Brief", artifacts.brief));
+    if (artifacts.audit) items.push(artifactButton("Red Team", artifacts.audit));
+    return items.join("<br>") || "";
+  }
+
+  function artifactButton(label, path) {
+    return `<button class="link-button" data-artifact="${escapeHtml(path)}">${escapeHtml(label)} · ${escapeHtml(basename(path))}</button>`;
+  }
+
+  function basename(path) {
+    const parts = String(path).split("/");
+    return parts[parts.length - 1] || path;
+  }
+
+  async function openArtifact(path) {
+    const modal = document.getElementById("artifactModal");
+    const title = document.getElementById("artifactTitle");
+    const content = document.getElementById("artifactContent");
+    title.textContent = path;
+    content.innerHTML = '<p class="muted">读取中</p>';
+    modal.classList.remove("hidden");
+    const res = await fetch(`/api/artifact?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (!res.ok || !data.exists) {
+      content.innerHTML = `<p class="muted">${escapeHtml(data.detail || "读取失败")}</p>`;
+      return;
+    }
+    title.textContent = data.path;
+    content.innerHTML = DOMPurify.sanitize(marked.parse(data.content || ""));
+  }
+
+  function closeArtifact() {
+    document.getElementById("artifactModal").classList.add("hidden");
   }
 
   function escapeHtml(value) {
@@ -71,6 +129,10 @@
   }
 
   document.getElementById("refreshHistory").addEventListener("click", loadHistory);
+  document.getElementById("closeArtifact").addEventListener("click", closeArtifact);
+  document.getElementById("artifactModal").addEventListener("click", (event) => {
+    if (event.target.id === "artifactModal") closeArtifact();
+  });
   loadHistory();
 </script>
 {% endblock %}

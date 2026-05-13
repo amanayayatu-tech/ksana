@@ -32,6 +32,9 @@ def audit_rules(
                 *_ar_009_long_without_catalysts(rec),
                 *_ar_010_long_without_thesis_kill_criteria(rec),
                 *_ar_011_fengliu_logic_kill_not_avoid(rec),
+                *_ar_012_trial_long_disabled_violation(rec),
+                *_ar_013_schema_validation_failure(rec),
+                *_ar_014_methodology_gaps(rec),
             ]
         )
     findings.extend(_ar_005_split_long_vs_avoid(chairman_brief or {}))
@@ -254,6 +257,69 @@ def _ar_011_fengliu_logic_kill_not_avoid(rec: Recommendation) -> list[RuleAuditF
             )
         ]
     return []
+
+
+def _ar_012_trial_long_disabled_violation(rec: Recommendation) -> list[RuleAuditFinding]:
+    policy = getattr(rec, "trial_run_policy", {}) or {}
+    original = str(policy.get("original_direction") or "").lower()
+    long_disabled = bool(policy.get("long_disabled", True))
+    if rec.direction in {Direction.LONG, Direction.SHORT} and long_disabled:
+        return [
+            _finding(
+                "AR-012",
+                "critical",
+                rec,
+                f"{rec.agent_id.value} 在试运行期仍输出 {rec.direction.value}，违反 long/short 禁用策略。",
+                {"direction": rec.direction.value, "trial_run_policy": policy},
+                ["TRIAL-001"],
+            )
+        ]
+    if original in {"long", "short"} and rec.direction == Direction.WATCH:
+        return [
+            _finding(
+                "AR-012",
+                "info",
+                rec,
+                f"{rec.agent_id.value} 原始方向为 {original}，已由试运行校验层降级为 watch。",
+                {"direction": rec.direction.value, "trial_run_policy": policy},
+                ["TRIAL-001"],
+            )
+        ]
+    return []
+
+
+def _ar_013_schema_validation_failure(rec: Recommendation) -> list[RuleAuditFinding]:
+    failure = getattr(rec, "validation_failure", None)
+    if not isinstance(failure, dict):
+        return []
+    if failure.get("category") == "schema_validation_failed":
+        return [
+            _finding(
+                "AR-013",
+                "high",
+                rec,
+                f"{rec.agent_id.value} 在 {rec.ticker} 的输出经过 schema 修复仍失败，已按格式失败 abstain。",
+                {"validation_failure": failure},
+                ["SCHEMA-REPAIR-001"],
+            )
+        ]
+    return []
+
+
+def _ar_014_methodology_gaps(rec: Recommendation) -> list[RuleAuditFinding]:
+    gaps = getattr(rec, "analysis_gaps", None) or getattr(rec, "methodology_gaps", None)
+    if not gaps:
+        return []
+    return [
+        _finding(
+            "AR-014",
+            "medium",
+            rec,
+            f"{rec.agent_id.value} 在 {rec.ticker} 明确存在证据或方法论缺口，不能升级为交易判断。",
+            {"gaps": gaps},
+            ["TRIAL-002"],
+        )
+    ]
 
 
 def extract_logic_kill_confidence(rec: Recommendation) -> float | None:

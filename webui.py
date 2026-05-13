@@ -18,6 +18,10 @@ import yaml
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
+from business_agents._common.llm_client import build_llm_client_from_env
+from business_agents._common.perplexity_results import sync_signal_file_perplexity_status
+from orchestrator.core.models import StepResult
+from orchestrator.persistence.run_log import RunLog
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -41,6 +45,13 @@ STOCK_CATEGORIES = (
 DEEP_RESEARCH_STATUSES = {"all", "pending", "filled", "skipped"}
 LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
+RERUN_STEP_NAMES = {
+    "冯柳 Agent": "trading_fengliu",
+    "万木 Agent": "trading_wanmu",
+    "李国飞 Agent": "trading_liguofei",
+    "Chairman": "chairman",
+    "Red Team": "red_team",
+}
 
 app = FastAPI(title="Agent Trading System Web UI")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
@@ -56,6 +67,7 @@ def index(request: Request) -> Any:
             "active_page": "index",
             "today": datetime.now().strftime("%Y-%m-%d"),
             "env_status": get_env_status(),
+            "trial_status": get_trial_status(),
         },
     )
 
@@ -162,6 +174,12 @@ def api_report(
     }
 
 
+@app.get("/api/artifact")
+def api_artifact(path: str = Query(...)) -> dict[str, Any]:
+    artifact_path = resolve_artifact_path(path)
+    return read_markdown_result(artifact_path)
+
+
 @app.get("/api/history")
 def api_history(tail: int = Query(10, ge=1, le=100)) -> dict[str, Any]:
     command = ["uv", "run", "orchestrator", "history", "--data-dir", "data", "--tail", str(tail)]
@@ -214,6 +232,16 @@ def api_save_stock_pool(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 @app.get("/api/env")
 def api_env() -> dict[str, Any]:
     return {"ok": True, "env": get_env_status()}
+
+
+@app.get("/api/llm/health")
+def api_llm_health() -> dict[str, Any]:
+    return {"ok": True, "health": check_llm_health()}
+
+
+@app.get("/api/trial-status")
+def api_trial_status() -> dict[str, Any]:
+    return {"ok": True, "trial_status": get_trial_status()}
 
 
 @app.post("/api/env")
@@ -279,7 +307,13 @@ def api_fill_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     skipped_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_skipped.yaml"
     if skipped_path.exists():
         skipped_path.unlink()
-    return {"ok": True, "message": "Perplexity 答案已保存", "prompt": shape_prompt_record(prompt["path"])}
+    synced = sync_signal_file_perplexity_status(DATA_DIR, prompt_id)
+    return {
+        "ok": True,
+        "message": "Perplexity 答案已保存",
+        "prompt": shape_prompt_record(prompt["path"]),
+        "synced_research_signals": [relative_path(path) for path in synced],
+    }
 
 
 @app.post("/api/deep-research/skip")
@@ -303,19 +337,35 @@ def api_skip_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     filled_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_filled.yaml"
     if filled_path.exists():
         filled_path.unlink()
-    return {"ok": True, "message": "Prompt 已标记跳过", "prompt": shape_prompt_record(prompt["path"])}
+    synced = sync_signal_file_perplexity_status(DATA_DIR, prompt_id)
+    return {
+        "ok": True,
+        "message": "Prompt 已标记跳过",
+        "prompt": shape_prompt_record(prompt["path"]),
+        "synced_research_signals": [relative_path(path) for path in synced],
+    }
 
 
 @app.get("/api/deep-research/rerun-stream")
 async def deep_research_rerun_stream(
     brief_type: str = Query("morning"),
     run_date: str = Query(..., alias="date"),
-    no_llm: bool = Query(True),
+    no_llm: bool = Query(False),
 ) -> StreamingResponse:
     validate_brief_type(brief_type)
     date = normalize_date(run_date)
     commands = build_deep_research_rerun_commands(brief_type, date, no_llm)
-    return stream_command_sequence_response(commands, {})
+    return stream_command_sequence_response(
+        commands,
+        {},
+        history={
+            "pipeline_type": "deep_research_rerun",
+            "trigger_source": "manual",
+            "date": date,
+            "brief_type": brief_type,
+            "no_llm": no_llm,
+        },
+    )
 
 
 @app.post("/api/cleanup")
@@ -340,9 +390,10 @@ def stream_command_response(
 def stream_command_sequence_response(
     commands: list[tuple[str, list[str]]],
     env_overrides: dict[str, str],
+    history: dict[str, Any] | None = None,
 ) -> StreamingResponse:
     return StreamingResponse(
-        stream_command_sequence(commands, env_overrides),
+        stream_command_sequence(commands, env_overrides, history=history),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -393,6 +444,7 @@ async def stream_command(command: list[str], env_overrides: dict[str, str]):
 async def stream_command_sequence(
     commands: list[tuple[str, list[str]]],
     env_overrides: dict[str, str],
+    history: dict[str, Any] | None = None,
 ):
     if run_lock.locked():
         yield sse("status", {"status": "busy", "message": "已有任务正在运行。"})
@@ -400,44 +452,205 @@ async def stream_command_sequence(
 
     async with run_lock:
         env = build_child_env(env_overrides)
-        for index, (label, command) in enumerate(commands, start=1):
-            display_command = format_display_command(command, env_overrides)
+        run_log: RunLog | None = None
+        run_id = ""
+        history_metadata: dict[str, Any] = {}
+        logs_dir: Path | None = None
+        active_process: Any | None = None
+        active_step_name = ""
+        active_stdout_lines: list[str] = []
+        run_finished = False
+        try:
+            if history:
+                run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+                history_metadata = {
+                    "brief_type": history["brief_type"],
+                    "date": history["date"],
+                    "source": "deep_research_rerun",
+                    "no_llm": history["no_llm"],
+                }
+                run_id = run_log.create_run(
+                    pipeline_type=history["pipeline_type"],
+                    trigger_source=history["trigger_source"],
+                    metadata=history_metadata,
+                )
+                logs_dir = DATA_DIR / "orchestrator" / "logs" / run_id
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                yield sse(
+                    "status",
+                    {
+                        "status": "running",
+                        "message": f"已写入运行历史：{run_id}",
+                        "run_id": run_id,
+                    },
+                )
+
+            for index, (label, command) in enumerate(commands, start=1):
+                display_command = format_display_command(command, env_overrides)
+                step_name = RERUN_STEP_NAMES.get(
+                    label,
+                    re.sub(r"[^A-Za-z0-9_]+", "_", label).strip("_").lower(),
+                )
+                active_step_name = step_name
+                active_stdout_lines = []
+                yield sse(
+                    "start",
+                    {
+                        "command": display_command,
+                        "status": "running",
+                        "step": label,
+                        "index": index,
+                        "total": len(commands),
+                    },
+                )
+                try:
+                    active_process = await asyncio.create_subprocess_exec(
+                        *command,
+                        cwd=PROJECT_ROOT,
+                        env=env,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                    )
+                except FileNotFoundError:
+                    if run_log:
+                        failed_metadata = dict(history_metadata)
+                        failed_metadata["failed_step"] = step_name
+                        run_log.finish_run(run_id, "failed", failed_metadata)
+                        run_finished = True
+                    active_step_name = ""
+                    yield sse("error", {"status": "failed", "message": "找不到 uv，请先安装 uv。"})
+                    yield sse(
+                        "done",
+                        {
+                            "status": "failed",
+                            "return_code": 127,
+                            "step": label,
+                            "run_id": run_id,
+                            "history_path": "/history" if run_id else "",
+                        },
+                    )
+                    return
+
+                assert active_process.stdout is not None
+                while True:
+                    line = await active_process.stdout.readline()
+                    if not line:
+                        break
+                    text = line.decode("utf-8", errors="replace").rstrip()
+                    active_stdout_lines.append(text)
+                    yield sse("log", {"line": text, "step": label})
+
+                return_code = await active_process.wait()
+                active_process = None
+                if run_log and logs_dir:
+                    stdout_path = logs_dir / f"{step_name}-1.out"
+                    stderr_path = logs_dir / f"{step_name}-1.err"
+                    stdout_path.write_text(
+                        "\n".join(active_stdout_lines) + ("\n" if active_stdout_lines else ""),
+                        encoding="utf-8",
+                    )
+                    stderr_path.write_text("", encoding="utf-8")
+                    step_status = "success" if return_code == 0 else "failed"
+                    run_log.record_step(
+                        run_id,
+                        StepResult(
+                            step_name=step_name,
+                            status=step_status,
+                            exit_code=return_code,
+                            attempts=1,
+                            stdout_path=stdout_path,
+                            stderr_path=stderr_path,
+                            output_files=output_files_for_rerun_step(
+                                step_name,
+                                history_metadata.get("date", ""),
+                                history_metadata.get("brief_type", ""),
+                            ),
+                        ),
+                    )
+                if return_code != 0:
+                    active_step_name = ""
+                    if run_log:
+                        failed_metadata = dict(history_metadata)
+                        failed_metadata["failed_step"] = step_name
+                        run_log.finish_run(run_id, "failed", failed_metadata)
+                        run_finished = True
+                    yield sse(
+                        "done",
+                        {
+                            "status": "failed",
+                            "return_code": return_code,
+                            "step": label,
+                            "run_id": run_id,
+                            "history_path": "/history" if run_id else "",
+                        },
+                    )
+                    return
+                active_step_name = ""
+                active_stdout_lines = []
+            if run_log:
+                run_log.finish_run(run_id, "completed", history_metadata)
+                run_finished = True
             yield sse(
-                "start",
+                "done",
                 {
-                    "command": display_command,
-                    "status": "running",
-                    "step": label,
-                    "index": index,
-                    "total": len(commands),
+                    "status": "completed",
+                    "return_code": 0,
+                    "run_id": run_id,
+                    "history_path": "/history" if run_id else "",
                 },
             )
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *command,
-                    cwd=PROJECT_ROOT,
-                    env=env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                )
-            except FileNotFoundError:
-                yield sse("error", {"status": "failed", "message": "找不到 uv，请先安装 uv。"})
-                yield sse("done", {"status": "failed", "return_code": 127, "step": label})
-                return
+        except (asyncio.CancelledError, GeneratorExit):
+            await stop_process(active_process)
+            if run_log and not run_finished:
+                cancelled_metadata = dict(history_metadata)
+                cancelled_metadata["cancelled"] = True
+                if active_step_name:
+                    cancelled_metadata["failed_step"] = active_step_name
+                    if logs_dir:
+                        record_cancelled_rerun_step(
+                            run_log,
+                            run_id,
+                            logs_dir,
+                            active_step_name,
+                            active_stdout_lines,
+                            history_metadata,
+                            active_process.returncode if active_process else None,
+                        )
+                run_log.finish_run(run_id, "cancelled", cancelled_metadata)
+            raise
+        finally:
+            await stop_process(active_process)
 
-            assert process.stdout is not None
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                text = line.decode("utf-8", errors="replace").rstrip()
-                yield sse("log", {"line": text, "step": label})
 
-            return_code = await process.wait()
-            if return_code != 0:
-                yield sse("done", {"status": "failed", "return_code": return_code, "step": label})
-                return
-        yield sse("done", {"status": "completed", "return_code": 0})
+def record_cancelled_rerun_step(
+    run_log: RunLog,
+    run_id: str,
+    logs_dir: Path,
+    step_name: str,
+    stdout_lines: list[str],
+    history_metadata: dict[str, Any],
+    exit_code: int | None,
+) -> None:
+    stdout_path = logs_dir / f"{step_name}-1.out"
+    stderr_path = logs_dir / f"{step_name}-1.err"
+    stdout_path.write_text("\n".join(stdout_lines) + ("\n" if stdout_lines else ""), encoding="utf-8")
+    stderr_path.write_text("cancelled\n", encoding="utf-8")
+    run_log.record_step(
+        run_id,
+        StepResult(
+            step_name=step_name,
+            status="cancelled",
+            exit_code=exit_code,
+            attempts=1,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            output_files=output_files_for_rerun_step(
+                step_name,
+                history_metadata.get("date", ""),
+                history_metadata.get("brief_type", ""),
+            ),
+        ),
+    )
 
 
 async def stream_codex_login():
@@ -558,6 +771,34 @@ def build_deep_research_rerun_commands(
     ]
 
 
+def output_files_for_rerun_step(step_name: str, date: str, brief_type: str) -> list[Path]:
+    if not date or not brief_type:
+        return []
+    compact = date.replace("-", "")
+    suffix = BRIEF_TYPES.get(brief_type)
+    if not suffix:
+        return []
+    if step_name == "chairman":
+        return [
+            path
+            for path in (
+                DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.md",
+                DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.json",
+            )
+            if path.exists()
+        ]
+    if step_name == "red_team":
+        return [
+            path
+            for path in (
+                DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.md",
+                DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.json",
+            )
+            if path.exists()
+        ]
+    return []
+
+
 def build_agent_command(agent: str, brief_type: str, date: str, no_llm: bool) -> list[str]:
     if agent in AGENT_COMMANDS:
         command = list(AGENT_COMMANDS[agent])
@@ -630,6 +871,22 @@ def read_markdown_result(path: Path | None) -> dict[str, Any]:
         "path": relative_path(path),
         "content": path.read_text(encoding="utf-8"),
     }
+
+
+def resolve_artifact_path(path_text: str) -> Path:
+    if not path_text.strip():
+        raise HTTPException(status_code=400, detail="产物路径不能为空。")
+    if Path(path_text).is_absolute():
+        raise HTTPException(status_code=400, detail="只能读取项目内产物。")
+    candidate = (PROJECT_ROOT / path_text).resolve()
+    data_root = DATA_DIR.resolve()
+    if not candidate.is_relative_to(data_root):
+        raise HTTPException(status_code=400, detail="只能读取 data 目录下的产物。")
+    if candidate.suffix.lower() != ".md":
+        raise HTTPException(status_code=400, detail="当前只支持查看 Markdown 产物。")
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail="产物文件不存在。")
+    return candidate
 
 
 def load_deep_research_prompts(
@@ -770,6 +1027,13 @@ def read_yaml_file(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def read_yaml_file_safely(path: Path) -> Any:
+    try:
+        return read_yaml_file(path)
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
 def cleanup_date_artifacts(date: str) -> list[str]:
     compact = date.replace("-", "")
     removed: list[str] = []
@@ -782,7 +1046,14 @@ def cleanup_date_artifacts(date: str) -> list[str]:
     for path in dated_dirs:
         remove_path(path, removed)
 
-    for dirname in ("research_signals", "pull_requests", "perplexity_results", "agent_logs", "errors"):
+    for dirname in (
+        "research_signals",
+        "research_runs",
+        "pull_requests",
+        "perplexity_results",
+        "agent_logs",
+        "errors",
+    ):
         remove_matching_children(DATA_DIR / dirname, date, compact, removed)
 
     remove_matching_children(DATA_DIR / "orchestrator" / "logs", date, compact, removed)
@@ -882,6 +1153,41 @@ def get_env_status() -> dict[str, Any]:
         "openai_api_key_masked": mask_secret(api_key),
         "openai_api_key_set": bool(api_key),
         "codex": get_codex_status(),
+    }
+
+
+def check_llm_health() -> dict[str, Any]:
+    values = read_env_values(ENV_PATH)
+    provider = values.get("LLM_PROVIDER", "local")
+    model = values.get("LLM_MODEL", "")
+    started = datetime.now()
+    try:
+        client = build_llm_client_from_env()
+        text = client.complete(
+            system_prompt="You are a health check endpoint. Return exactly OK.",
+            user_prompt="Return exactly OK.",
+            max_tokens=20,
+            timeout_seconds=60,
+            temperature=0,
+        )
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "ok": False,
+            "provider": provider,
+            "model": model,
+            "latency_seconds": round((datetime.now() - started).total_seconds(), 2),
+            "detail": str(exc)[:500],
+        }
+    normalized = text.strip().upper()
+    ok = normalized == "OK"
+    return {
+        "status": "ok" if ok else "unexpected_output",
+        "ok": ok,
+        "provider": provider,
+        "model": model,
+        "latency_seconds": round((datetime.now() - started).total_seconds(), 2),
+        "detail": text[:500],
     }
 
 
@@ -988,13 +1294,116 @@ def shape_history_row(row: dict[str, Any]) -> dict[str, Any]:
     except json.JSONDecodeError:
         metadata = {}
     started_at = row.get("started_at") or ""
+    date = metadata.get("date") or started_at[:10]
+    brief_type = metadata.get("brief_type") or metadata.get("step") or ""
     return {
         "run_id": row.get("run_id", ""),
-        "date": metadata.get("date") or started_at[:10],
-        "brief_type": metadata.get("brief_type") or metadata.get("step") or "",
+        "date": date,
+        "brief_type": brief_type,
         "status": row.get("status", ""),
+        "failed_step": metadata.get("failed_step", ""),
+        "artifacts": find_run_artifacts(date, brief_type),
+        "schema_repair_or_fallback": run_has_schema_repair_or_fallback(date, metadata),
         "started_at": started_at,
         "ended_at": row.get("ended_at") or "",
+    }
+
+
+def run_has_schema_repair_or_fallback(date: str, metadata: dict[str, Any]) -> bool:
+    if metadata.get("schema_repair") or metadata.get("failed_step"):
+        return True
+    compact = compact_date(date)
+    if not compact:
+        return False
+
+    rec_root = DATA_DIR / "recommendations" / compact
+    if rec_root.exists():
+        for path in sorted([*rec_root.rglob("*.yaml"), *rec_root.rglob("*.yml")]):
+            if recommendation_has_repair_or_fallback(read_yaml_file_safely(path)):
+                return True
+
+    log_root = DATA_DIR / "agent_logs" / compact
+    if log_root.exists():
+        for path in sorted(log_root.rglob("*.json")):
+            if json_file_has_repair_marker(path):
+                return True
+    return False
+
+
+def compact_date(date: str) -> str:
+    compact = re.sub(r"\D", "", date or "")
+    return compact if len(compact) == 8 else ""
+
+
+def recommendation_has_repair_or_fallback(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    payload = data.get("recommendation", data)
+    if not isinstance(payload, dict):
+        return False
+    if truthy_schema_repair(payload.get("schema_repair")) or payload.get("validation_failure"):
+        return True
+    policy = payload.get("trial_run_policy")
+    return isinstance(policy, dict) and bool(policy.get("fallback_reason"))
+
+
+def truthy_schema_repair(value: Any) -> bool:
+    if not value:
+        return False
+    if not isinstance(value, dict):
+        return True
+    return bool(value.get("attempts") or value.get("errors"))
+
+
+def json_file_has_repair_marker(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return contains_repair_marker(payload)
+
+
+def contains_repair_marker(value: Any) -> bool:
+    if isinstance(value, dict):
+        if truthy_schema_repair(value.get("schema_repair")) or value.get("validation_failure"):
+            return True
+        if value.get("fallback_reason"):
+            return True
+        return any(contains_repair_marker(item) for item in value.values())
+    if isinstance(value, list):
+        return any(contains_repair_marker(item) for item in value)
+    return False
+
+
+def find_run_artifacts(date: str, brief_type: str) -> dict[str, str]:
+    if not date or brief_type not in BRIEF_TYPES:
+        return {}
+    compact = date.replace("-", "")
+    suffix = BRIEF_TYPES[brief_type]
+    brief = find_report_file(DATA_DIR / "briefs" / compact, f"BRIEF-{compact}-{suffix}")
+    audit = find_report_file(DATA_DIR / "red_team_audits" / compact, f"AUDIT-{compact}-{suffix}")
+    artifacts: dict[str, str] = {}
+    if brief:
+        artifacts["brief"] = relative_path(brief)
+    if audit:
+        artifacts["audit"] = relative_path(audit)
+    return artifacts
+
+
+def get_trial_status() -> dict[str, Any]:
+    prompts = load_deep_research_prompts(status_filter="all")
+    pending = [prompt for prompt in prompts if prompt["status"] == "pending"]
+    filled = [prompt for prompt in prompts if prompt["status"] == "filled"]
+    skipped = [prompt for prompt in prompts if prompt["status"] == "skipped"]
+    return {
+        "mode": "试运行模式",
+        "long_disabled": True,
+        "allowed_directions": "watch / avoid / abstain",
+        "data_scope": "公开价量/成交额初筛 + 手动 Perplexity 回填",
+        "total_perplexity": len(prompts),
+        "pending_perplexity": len(pending),
+        "filled_perplexity": len(filled),
+        "skipped_perplexity": len(skipped),
     }
 
 

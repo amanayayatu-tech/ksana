@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,21 @@ def render_command(command: list[str], context: dict[str, str]) -> list[str]:
     """Render placeholders in a command list."""
 
     return [part.format(**context) for part in command]
+
+
+def build_step_env() -> dict[str, str]:
+    """Build a stable subprocess environment independent from Web UI injection."""
+
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        str(project_root)
+        if not existing_pythonpath
+        else f"{project_root}{os.pathsep}{existing_pythonpath}"
+    )
+    return env
 
 
 def run_step(
@@ -36,6 +52,8 @@ def run_step(
         try:
             completed = subprocess.run(
                 rendered_command,
+                cwd=Path(__file__).resolve().parents[2],
+                env=build_step_env(),
                 capture_output=True,
                 text=True,
                 timeout=step.timeout_seconds,

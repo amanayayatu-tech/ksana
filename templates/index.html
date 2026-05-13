@@ -12,6 +12,14 @@
       </div>
     </div>
     <div class="panel-body">
+      <div class="status-grid">
+        <span class="pill ok">{{ trial_status.mode }}</span>
+        <span class="pill warn">long 已禁用</span>
+        <span class="pill">允许：{{ trial_status.allowed_directions }}</span>
+        <span class="pill">数据源：{{ trial_status.data_scope }}</span>
+        <span id="pendingPerplexityPill" class="pill">Perplexity 待回填：{{ trial_status.pending_perplexity }}</span>
+        <span id="filledPerplexityPill" class="pill ok">Perplexity 已回填：{{ trial_status.filled_perplexity }}</span>
+      </div>
       <div class="row">
         <label>
           日期
@@ -65,7 +73,7 @@
       <span id="agentStatus" class="pill">待命</span>
     </div>
     <div class="panel-body">
-      <div class="row">
+      <div class="agent-control-grid">
         <label>
           Agent
           <select id="agentName">
@@ -91,8 +99,8 @@
         <label>
           LLM
           <select id="agentNoLlm">
-            <option value="true">--no-llm</option>
             <option value="false">启用 LLM</option>
+            <option value="true">--no-llm</option>
           </select>
         </label>
         <button id="runAgent">运行 Agent</button>
@@ -214,7 +222,7 @@
   });
 
   document.getElementById("cleanupToday").addEventListener("click", async () => {
-    const date = document.getElementById("runDate").value;
+    const date = document.getElementById("agentDate").value;
     if (!confirm(`确认清除 ${date} 的运行结果？股池不会删除，其他日期不会清除。`)) return;
     const res = await fetch(`/api/cleanup?date=${encodeURIComponent(date)}`, { method: "POST" });
     const data = await res.json();
@@ -222,6 +230,16 @@
     if (data.removed.length) appendLog(`已删除：${data.removed.join(", ")}`);
   });
 
+  async function loadTrialStatus() {
+    const res = await fetch("/api/trial-status");
+    const data = await res.json();
+    if (!data.ok) return;
+    const status = data.trial_status || {};
+    document.getElementById("pendingPerplexityPill").textContent = `Perplexity 待回填：${status.pending_perplexity ?? 0}`;
+    document.getElementById("filledPerplexityPill").textContent = `Perplexity 已回填：${status.filled_perplexity ?? 0}`;
+  }
+
+  loadTrialStatus();
   loadReport();
 </script>
 {% endblock %}

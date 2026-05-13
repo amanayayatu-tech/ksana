@@ -92,6 +92,13 @@
     .grid.two { grid-template-columns: 1fr 1fr; }
     .grid.sidebar { grid-template-columns: 340px 1fr; align-items: start; }
 
+    .status-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
     .panel {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -138,6 +145,39 @@
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .agent-control-grid {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.25fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(130px, 0.8fr) auto auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .agent-control-grid label,
+    .control-grid label {
+      min-width: 0;
+    }
+
+    .agent-control-grid select,
+    .agent-control-grid input,
+    .control-grid select,
+    .control-grid input {
+      width: 100%;
+    }
+
+    .help-text {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
     }
 
     label {
@@ -193,6 +233,14 @@
 
     button:hover { border-color: var(--accent-2); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .link-button {
+      height: 30px;
+      padding: 0 10px;
+      color: #dff6ff;
+      background: #102235;
+      font-size: 12px;
+    }
 
     .primary {
       border-color: rgba(94, 234, 212, 0.45);
@@ -322,6 +370,51 @@
     .spacer { flex: 1; }
     .mt { margin-top: 18px; }
     .hidden { display: none !important; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 36px;
+      background: rgba(3, 7, 12, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    .modal {
+      width: min(980px, 100%);
+      max-height: 86vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 720;
+      overflow-wrap: anywhere;
+    }
+
+    .modal-body {
+      overflow: auto;
+      padding: 16px;
+    }
   </style>
   {% block head %}{% endblock %}
 </head>

@@ -78,7 +78,8 @@
       <span id="rerunStatus" class="pill">待命</span>
     </div>
     <div class="panel-body">
-      <div class="row">
+      <p id="rerunHint" class="help-text">完成后会写入“运行历史”，可在那里查看本次记录，并直接打开 Brief / Red Team 产物。</p>
+      <div class="control-grid mt">
         <label>
           日期
           <input id="rerunDate" type="date" value="{{ today }}">
@@ -93,8 +94,8 @@
         <label>
           LLM
           <select id="rerunNoLlm">
-            <option value="true">--no-llm</option>
             <option value="false">启用 LLM</option>
+            <option value="true">--no-llm</option>
           </select>
         </label>
         <button id="rerunAfterFill" class="primary">重跑交易 Agent + Chairman + Red Team</button>
@@ -239,6 +240,9 @@
     source.addEventListener("status", (event) => {
       const data = JSON.parse(event.data);
       setPill(rerunStatus, data.message || data.status, "warn");
+      if (data.run_id) {
+        document.getElementById("rerunHint").innerHTML = `已创建运行历史 <code>${escapeHtml(data.run_id)}</code>，完成后到 <a href="/history">运行历史</a> 查看。`;
+      }
     });
     source.addEventListener("error", (event) => {
       if (event.data) appendLog(JSON.parse(event.data).message || "运行失败");
@@ -249,6 +253,11 @@
       const data = JSON.parse(event.data);
       const ok = data.return_code === 0 && data.status !== "failed";
       setPill(rerunStatus, data.status, ok ? "ok" : "error");
+      if (data.run_id) {
+        const label = ok ? "已完成" : "已失败";
+        appendLog(`${label}，运行历史：${data.run_id}`);
+        document.getElementById("rerunHint").innerHTML = `${label}，本次记录已写入 <a href="/history">运行历史</a>：<code>${escapeHtml(data.run_id)}</code>`;
+      }
       source.close();
     });
   }

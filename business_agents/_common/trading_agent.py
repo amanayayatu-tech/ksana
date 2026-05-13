@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,9 +16,14 @@ from business_agents._common.market_data.financial_data import compact_financial
 from business_agents._common.methodology_loader import MethodologyLoader
 from business_agents._common.output_validator import (
     OutputValidationError,
+    parse_json_payload,
     validate_trading_recommendation_output,
 )
-from business_agents._common.perplexity_results import PerplexityContext, collect_perplexity_context
+from business_agents._common.perplexity_results import (
+    PerplexityContext,
+    collect_perplexity_context,
+    sync_signal_perplexity_status,
+)
 from business_agents._common.stock_pool import StockPool
 
 
@@ -70,14 +74,21 @@ class TradingAgent(BaseBusinessAgent):
                 else:
                     try:
                         client = self.llm_client or build_llm_client_from_env()
-                        text = client.complete(
-                            system_prompt=system_prompt,
-                            user_prompt=user_prompt,
-                            max_tokens=4000,
-                            timeout_seconds=60,
-                            temperature=0.2,
+                        payload = self.complete_payload_with_schema_repair(
+                            client,
+                            system_prompt,
+                            user_prompt,
+                            stock_pool,
                         )
-                        payload = json.loads(text)
+                        llm_used = True
+                    except OutputValidationError as exc:
+                        payload = self.build_abstain_recommendation(
+                            signal,
+                            target.ticker,
+                            index,
+                            str(exc),
+                            failure_category="schema_validation_failed",
+                        )
                         llm_used = True
                     except Exception:
                         payload = self.build_debug_recommendation(
@@ -87,6 +98,7 @@ class TradingAgent(BaseBusinessAgent):
                             perplexity_context,
                         )
 
+                payload = self.enforce_trial_run_policy(payload)
                 try:
                     rec = validate_trading_recommendation_output(
                         payload,
@@ -94,7 +106,13 @@ class TradingAgent(BaseBusinessAgent):
                         stock_pool=stock_pool,
                     )
                 except OutputValidationError as exc:
-                    payload = self.build_abstain_recommendation(signal, target.ticker, index, str(exc))
+                    payload = self.build_abstain_recommendation(
+                        signal,
+                        target.ticker,
+                        index,
+                        str(exc),
+                        failure_category="schema_validation_failed",
+                    )
                     rec = validate_trading_recommendation_output(
                         payload,
                         agent_id=self.agent_id,
@@ -119,7 +137,8 @@ class TradingAgent(BaseBusinessAgent):
         for path in sorted((self.data_dir / "research_signals").glob("RS-*.yaml")):
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             payload = data.get("research_signal", data)
-            signals.append(ResearchSignal.model_validate(payload))
+            signal = ResearchSignal.model_validate(payload)
+            signals.append(sync_signal_perplexity_status(self.data_dir, signal))
         return signals
 
     def render_user_prompt(
@@ -149,10 +168,12 @@ class TradingAgent(BaseBusinessAgent):
         today = datetime.now().strftime("%Y%m%d")
         context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
         used_perplexity = context.has_filled_results
+        features = extract_signal_features(signal)
+        confidence = 58 if used_perplexity else min(70, 42 + len(features["trigger_rules"]) * 5)
         verdict_reason = (
-            "已读取 Nepha 回填的 Perplexity 深度研究；debug/no-LLM 模式保持 watch，等待人工或 LLM 做方向升级。"
+            "已读取 Nepha 回填的 Perplexity 深度研究；试运行期禁用 long，保持 watch 等待人工判断。"
             if used_perplexity
-            else "阶段 3.7 debug run，等待更完整证据。"
+            else "只具备公开价量初筛证据，缺少 Perplexity 事件原因回填，试运行期保持 watch。"
         )
         base = {
             "recommendation_id": f"{self.recommendation_prefix}-{today}-{index:03d}",
@@ -160,16 +181,17 @@ class TradingAgent(BaseBusinessAgent):
             "ticker": ticker,
             "market": "HK" if ticker.endswith(".HK") else "US",
             "direction": "watch",
-            "confidence": 60,
+            "confidence": confidence,
             "entry_zone": None,
             "target_price": None,
             "stop_loss": None,
             "position_size_pct": 0,
             "thesis": (
                 f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，已读取 Perplexity 回填，"
-                "debug/no-LLM 模式先 watch。"
+                "但第一阶段 long 禁用，只能保守 watch。"
                 if used_perplexity
-                else f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，但当前证据未充分回填，先 watch。"
+                else f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，"
+                "当前只有公开价量初筛证据，缺少事件原因解释，先 watch。"
             ),
             "deployment_compliance": _deployment_compliance(),
             "authority_resolution": _authority_resolution(),
@@ -192,8 +214,17 @@ class TradingAgent(BaseBusinessAgent):
             "data_points": build_data_points(signal, context),
             "catalysts": ["4.1 research signal"],
             "thesis_kill_criteria": ["Nepha 手动研究回填后若证据不足则维持 watch 或 abstain。"],
+            "trial_run_policy": {
+                "trial_run_mode": True,
+                "long_disabled": True,
+                "allowed_directions": ["watch", "avoid", "abstain"],
+                "original_direction": "watch",
+                "final_direction": "watch",
+                "downgrade_reason": None,
+            },
+            "analysis_gaps": build_analysis_gaps(signal, context),
         }
-        return self.add_method_specific_fields(base)
+        return self.add_method_specific_fields(base, signal, context)
 
     def build_abstain_recommendation(
         self,
@@ -201,16 +232,108 @@ class TradingAgent(BaseBusinessAgent):
         ticker: str,
         index: int,
         reason: str,
+        failure_category: str = "schema_validation_failed",
     ) -> dict[str, Any]:
         payload = self.build_debug_recommendation(signal, ticker, index)
         payload["direction"] = "abstain"
         payload["confidence"] = 0
         payload["abstain_reason"] = "methodology_specific_other"
         payload["deployment_compliance"]["abstain_reason"] = "methodology_specific_other"
-        payload["thesis"] = f"输出验证失败，强制 abstain：{reason[:120]}"
+        payload["thesis"] = f"格式校验失败，强制 abstain：{reason[:120]}"
+        payload["validation_failure"] = {
+            "category": failure_category,
+            "reason": reason[:1000],
+        }
+        payload["trial_run_policy"]["fallback_reason"] = failure_category
         return payload
 
-    def add_method_specific_fields(self, base: dict[str, Any]) -> dict[str, Any]:
+    def complete_payload_with_schema_repair(
+        self,
+        client: LLMClient,
+        system_prompt: str,
+        user_prompt: str,
+        stock_pool: StockPool,
+    ) -> dict[str, Any]:
+        """Ask the model for JSON and retry with validation errors before fallback."""
+
+        errors: list[str] = []
+        prompt = user_prompt
+        last_text = ""
+        for attempt in range(3):
+            text = client.complete(
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                max_tokens=4000,
+                timeout_seconds=60,
+                temperature=0.2,
+            )
+            last_text = text
+            try:
+                payload = self.enforce_trial_run_policy(parse_json_payload(text))
+                validate_trading_recommendation_output(
+                    payload,
+                    agent_id=self.agent_id,
+                    stock_pool=stock_pool,
+                )
+                if attempt or errors:
+                    payload["schema_repair"] = {"attempts": attempt, "errors": errors}
+                return payload
+            except OutputValidationError as exc:
+                errors.append(str(exc))
+                prompt = build_repair_prompt(user_prompt, last_text, errors)
+        raise OutputValidationError(
+            "schema_validation_failed after repair attempts: " + " | ".join(errors)
+        )
+
+    def enforce_trial_run_policy(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """First phase forbids long/short outputs even if the model suggests them."""
+
+        direction = str(payload.get("direction") or "").lower()
+        policy = dict(payload.get("trial_run_policy") or {})
+        original_direction = (
+            direction
+            if direction in {"long", "short"}
+            else policy.get("original_direction") or direction or None
+        )
+        policy.update(
+            {
+                "trial_run_mode": True,
+                "long_disabled": True,
+                "allowed_directions": ["watch", "avoid", "abstain"],
+                "original_direction": original_direction,
+            }
+        )
+        if direction in {"long", "short"}:
+            payload["direction"] = "watch"
+            payload["position_size_pct"] = 0
+            payload["confidence"] = min(parse_confidence(payload.get("confidence")), 60)
+            policy["final_direction"] = "watch"
+            policy["downgrade_reason"] = f"first_phase_{direction}_disabled"
+            payload["thesis"] = (
+                f"{payload.get('thesis', '')} 试运行期禁止 {direction}，校验层已降级为 watch。"
+            ).strip()
+            if payload.get("action") in {"buy", "add"}:
+                payload["action"] = "watch"
+        elif direction not in {"watch", "avoid", "abstain"}:
+            payload["direction"] = "abstain"
+            payload["confidence"] = 0
+            payload.setdefault("abstain_reason", "invalid_direction")
+            payload.setdefault("deployment_compliance", _deployment_compliance())
+            payload["deployment_compliance"]["abstain_reason"] = "invalid_direction"
+            policy["final_direction"] = "abstain"
+            policy["downgrade_reason"] = "invalid_direction"
+        else:
+            policy["final_direction"] = direction
+            policy.setdefault("downgrade_reason", None)
+        payload["trial_run_policy"] = policy
+        return payload
+
+    def add_method_specific_fields(
+        self,
+        base: dict[str, Any],
+        signal: ResearchSignal,
+        context: PerplexityContext,
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     def write_recommendation(self, payload: dict[str, Any]) -> Path:
@@ -262,6 +385,9 @@ def build_data_points(signal: ResearchSignal, context: PerplexityContext) -> lis
             "source_url": f"file://data/research_signals/{signal.research_signal_id}.yaml",
         }
     ]
+    for item in (signal.data_points or [])[:5]:
+        if isinstance(item, dict):
+            data_points.append(item)
     for prompt_id in context.filled_prompt_ids:
         data_points.append(
             {
@@ -272,3 +398,62 @@ def build_data_points(signal: ResearchSignal, context: PerplexityContext) -> lis
             }
         )
     return data_points
+
+
+def extract_signal_features(signal: ResearchSignal) -> dict[str, Any]:
+    triggers = signal.discontinuity_assessment.get("triggered_rules", []) or []
+    trigger_rules = [item.get("rule") for item in triggers if isinstance(item, dict) and item.get("rule")]
+    latest_change = None
+    volume_ratio = None
+    for item in signal.data_points or []:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        if isinstance(value, dict):
+            latest_change = value.get("change_pct", latest_change)
+            volume_ratio = value.get("volume_ratio", volume_ratio)
+    return {
+        "trigger_rules": trigger_rules,
+        "trigger_count": len(trigger_rules),
+        "latest_change_pct": latest_change,
+        "volume_ratio": volume_ratio,
+        "perplexity_pending": signal.perplexity_research.get("prompts_pending", []) or [],
+        "perplexity_filled": signal.perplexity_research.get("prompts_filled_back", []) or [],
+    }
+
+
+def build_analysis_gaps(signal: ResearchSignal, context: PerplexityContext) -> list[str]:
+    gaps: list[str] = []
+    if not context.has_filled_results:
+        gaps.append("缺 Perplexity 事件原因回填")
+    if not signal.data_points:
+        gaps.append("缺公开价量 data_points")
+    if signal.discontinuity_assessment.get("evidence_unverified"):
+        gaps.append("4.1 证据仍标记为 evidence_unverified")
+    return gaps
+
+
+def build_repair_prompt(original_prompt: str, last_text: str, errors: list[str]) -> str:
+    return f"""{original_prompt}
+
+# JSON 修复任务
+
+上一次输出未通过 schema 校验。请只返回修复后的严格 JSON，不要解释。
+
+## 校验错误
+{yaml.safe_dump(errors, allow_unicode=True, sort_keys=False)}
+
+## 上一次输出
+{last_text}
+"""
+
+
+def parse_confidence(value: Any) -> int:
+    """Parse confidence for trial-policy downgrades without hiding schema errors."""
+
+    if value is None or value == "":
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise OutputValidationError(f"confidence must be integer-like before trial downgrade: {value!r}") from exc

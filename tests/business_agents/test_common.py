@@ -13,7 +13,7 @@ from business_agents._common.output_validator import (
 )
 from business_agents._common.stock_pool import StockPool
 from business_agents.research_agent.agent import ResearchAgent
-from tests.conftest import make_fengliu, write_stock_pool
+from tests.conftest import QuietMarketClient, TriggerMarketClient, make_fengliu, write_stock_pool
 
 
 def test_methodology_loader():
@@ -33,9 +33,22 @@ def test_user_prompt_renders_with_market_data(tmp_path):
 def test_valid_llm_output_passes_validation(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
-    payload = ResearchAgent(data_dir=data_dir).build_debug_payload(StockPool.load(data_dir))
+    payload = ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).build_debug_payload(
+        StockPool.load(data_dir)
+    )
     result = validate_research_agent_output(payload, StockPool.load(data_dir))
-    assert result.research_signals
+    assert len(result.research_signals) == 2
+
+
+def test_no_trigger_scan_does_not_emit_fake_signal(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+    payload = ResearchAgent(data_dir=data_dir, market_client=QuietMarketClient()).build_debug_payload(
+        StockPool.load(data_dir)
+    )
+    result = validate_research_agent_output(payload, StockPool.load(data_dir))
+    assert result.research_signals == []
+    assert payload["run_summary"]["signals_generated"] == 0
 
 
 def test_invalid_json_triggers_retry():
@@ -56,7 +69,7 @@ def test_missing_field_triggers_retry(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    valid = ResearchAgent(data_dir=data_dir).build_debug_payload(stock_pool)
+    valid = ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).build_debug_payload(stock_pool)
     outputs = iter([{"research_signals": []}, valid])
     validator = OutputValidator(max_retries=2)
 
@@ -90,7 +103,7 @@ def test_only_stock_pool_tickers_allowed(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    payload = ResearchAgent(data_dir=data_dir).build_debug_payload(stock_pool)
+    payload = ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).build_debug_payload(stock_pool)
     payload["research_signals"][0]["candidate_targets"][0]["ticker"] = "OUTSIDE"
 
     with pytest.raises(OutputValidationError):
@@ -101,7 +114,7 @@ def test_a_share_ticker_blocked(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    payload = ResearchAgent(data_dir=data_dir).build_debug_payload(stock_pool)
+    payload = ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).build_debug_payload(stock_pool)
     payload["research_signals"][0]["candidate_targets"][0]["ticker"] = "600519.SH"
     payload["research_signals"][0]["candidate_targets"][0]["market"] = "A"
 
@@ -134,7 +147,7 @@ def test_research_agent_routing_recommendation_required(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    payload = ResearchAgent(data_dir=data_dir).build_debug_payload(stock_pool)
+    payload = ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).build_debug_payload(stock_pool)
     payload["research_signals"][0]["routing_recommendation"] = {}
 
     with pytest.raises(OutputValidationError):

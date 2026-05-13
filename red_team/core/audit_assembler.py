@@ -15,7 +15,15 @@ from red_team.core.rule_auditor import audit_rules, findings_by_recommendation
 from red_team.llm.methodology_challenger import generate_challenges
 from red_team.models import ChairmanAlignment, RedTeamAudit, RuleAuditFinding
 
-DECISIONS_APPLIED = ["DEC-002", "DEC-004", "DEC-008", "DEC-011", "DEC-014"]
+DECISIONS_APPLIED = [
+    "DEC-002",
+    "DEC-004",
+    "DEC-008",
+    "DEC-011",
+    "DEC-014",
+    "TRIAL-001",
+    "SCHEMA-REPAIR-001",
+]
 
 
 def assemble_audit(
