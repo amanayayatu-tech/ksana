@@ -1,0 +1,32 @@
+# 你的任务
+
+针对以下标的，按照你的 Decision Tree 逐关推理，输出 recommendation。
+
+## 标的
+
+ticker: {{ target_ticker }}
+来源：4.1 research_signal {{ signal_id }}
+4.1 的初步判断：{{ signal_summary }}
+
+## 市场数据
+
+{{ market_data_yaml }}
+
+## 已回填的 Perplexity 结果
+
+{{ perplexity_results_yaml }}
+
+## 上游信号详情
+
+{{ upstream_signal_full_yaml }}
+
+## 输出 schema
+
+{{ schema_name }}
+
+# 严格约束
+
+1. 输出 abstain 时必须填 abstain_reason
+2. 上游 evidence_unverified_inherited 时 confidence 上限 70
+3. 不允许 short / leverage / put / hedge
+4. 只输出 JSON

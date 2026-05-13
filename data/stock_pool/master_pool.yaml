@@ -1,0 +1,19 @@
+stock_pool:
+  version: 1
+  last_updated_by_nepha: "2026-05-13"
+  hk_stocks:
+    - ticker: "0700.HK"
+      name: "Tencent Holdings"
+      tags: ["internet", "platform"]
+  us_stocks:
+    - ticker: "BABA"
+      name: "Alibaba ADR"
+      tags: ["internet", "platform"]
+  a_stocks_reference_only:
+    - ticker: "600519.SH"
+      name: "Kweichow Moutai"
+      tags: ["reference_only"]
+  watchlist:
+    - ticker: "3690.HK"
+      name: "Meituan"
+      reason_to_watch: "Awaiting stronger evidence before trading output."

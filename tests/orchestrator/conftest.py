@@ -4,10 +4,11 @@ import sys
 
 import yaml
 
-from tests.conftest import make_fengliu, make_liguofei, make_signal, make_wanmu
+from tests.conftest import make_fengliu, make_liguofei, make_signal, make_wanmu, write_stock_pool
 
 
 def write_pipeline_inputs(data_dir):
+    write_stock_pool(data_dir)
     signal = make_signal()
     recs = [make_fengliu("long"), make_wanmu("watch"), make_liguofei("watch")]
     signal_dir = data_dir / "research_signals"

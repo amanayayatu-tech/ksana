@@ -4,5 +4,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
-data/
+data/*
+!data/stock_pool/
+!data/stock_pool/master_pool.yaml
 *.pyc

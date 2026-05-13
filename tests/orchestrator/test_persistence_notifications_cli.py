@@ -9,6 +9,7 @@ from orchestrator.core.pipeline import run_step_by_name
 from orchestrator.notifications.local_notifier import LocalNotifier
 from orchestrator.notifications.notifier import NotificationMessage
 from orchestrator.persistence.run_log import RunLog
+from tests.conftest import write_stock_pool
 
 
 def test_run_log_creation(tmp_path):
@@ -22,11 +23,14 @@ def test_run_log_creation(tmp_path):
 
 
 def test_rerun_from_step(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+
     result = run_step_by_name(
         step_name="research_scan",
         brief_type="morning",
         date="2026-05-13",
-        data_dir=tmp_path / "data",
+        data_dir=data_dir,
     )
 
     assert result.status == "success"

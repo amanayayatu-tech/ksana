@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+import yaml
 
 from chairman.models import (
     DeploymentCompliance,
@@ -159,6 +160,33 @@ def make_signal(signal_id: str = "RS-20260513-001", *, stage: str = "trade_ready
             {"ticker": "MOCK", "market": "US", "company_name": "Mock Inc", "relevance_score": 90}
         ],
         perplexity_research={"prompts_pending": ["P-001"]},
+    )
+
+
+def write_stock_pool(data_dir):
+    stock_dir = data_dir / "stock_pool"
+    stock_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "stock_pool": {
+            "version": 1,
+            "last_updated_by_nepha": "2026-05-13",
+            "hk_stocks": [
+                {"ticker": "0700.HK", "name": "腾讯控股", "tags": ["互联网"]},
+            ],
+            "us_stocks": [
+                {"ticker": "BABA", "name": "Alibaba ADR", "tags": ["互联网"]},
+            ],
+            "a_stocks_reference_only": [
+                {"ticker": "600519.SH", "name": "贵州茅台", "tags": ["案例"]},
+            ],
+            "watchlist": [
+                {"ticker": "3690.HK", "name": "美团", "reason_to_watch": "等待财报"},
+            ],
+        }
+    }
+    (stock_dir / "master_pool.yaml").write_text(
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
     )
 
 

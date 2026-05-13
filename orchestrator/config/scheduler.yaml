@@ -2,14 +2,18 @@ pipelines:
   full_pipeline:
     steps:
       - research_scan
-      - trading_agents_parallel
+      - trading_fengliu
+      - trading_wanmu
+      - trading_liguofei
       - perplexity_wait
       - chairman
       - red_team
       - notify
   ad_hoc_pipeline:
     steps:
-      - trading_agents_parallel
+      - trading_fengliu
+      - trading_wanmu
+      - trading_liguofei
       - chairman
       - red_team
       - notify

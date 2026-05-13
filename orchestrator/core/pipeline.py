@@ -19,12 +19,11 @@ def build_full_pipeline_steps(
     date: str,
     brief_type: str,
     data_dir: str | Path,
-    include_noop_agent_steps: bool = True,
+    include_noop_agent_steps: bool = False,
 ) -> list[PipelineStep]:
     """Build the default full pipeline.
 
-    Research and trading agent Python implementations are stage 3.7; default
-    commands are no-op placeholders until their real CLIs exist.
+    Stage 3.7 business-agent CLIs are the default subprocess interface.
     """
 
     compact = date.replace("-", "")
@@ -34,27 +33,35 @@ def build_full_pipeline_steps(
     return [
         PipelineStep(
             name="research_scan",
-            command=python_noop if include_noop_agent_steps else ["research-agent", "run", "--type", "scan"],
+            command=python_noop
+            if include_noop_agent_steps
+            else ["research-agent", "run", "--type", "scan", "--data-dir", "{data_dir}"],
             timeout_seconds=600,
             skip_on_failure=False,
         ),
         PipelineStep(
             name="trading_fengliu",
-            command=python_noop if include_noop_agent_steps else ["trading-agent", "run", "--methodology", "fengliu"],
+            command=python_noop
+            if include_noop_agent_steps
+            else ["trading-fengliu", "run", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
         ),
         PipelineStep(
             name="trading_wanmu",
-            command=python_noop if include_noop_agent_steps else ["trading-agent", "run", "--methodology", "wanmu"],
+            command=python_noop
+            if include_noop_agent_steps
+            else ["trading-wanmu", "run", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
         ),
         PipelineStep(
             name="trading_liguofei",
-            command=python_noop if include_noop_agent_steps else ["trading-agent", "run", "--methodology", "liguofei"],
+            command=python_noop
+            if include_noop_agent_steps
+            else ["trading-liguofei", "run", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
