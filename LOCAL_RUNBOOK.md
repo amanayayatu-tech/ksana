@@ -1,10 +1,10 @@
 # Agent Trading System 本地运行说明书
 
-这份说明书按“完全不懂代码也能照着跑”的标准写。你只需要复制命令、粘贴到终端、回车。
+这份说明书按“完全不懂代码也能照着跑”的标准写。最新版已经带本地 Web UI：你可以像使用普通网页一样点按钮运行系统，也可以继续使用命令行。
 
 ## 0. 这个项目到底是什么
 
-这是一个本地运行的多 Agent 投资决策系统，不是网页，也不是 App。
+这是一个本地运行的多 Agent 投资决策系统。它的核心仍然是本地命令行流水线，最新版额外提供了一个本地网页控制台，地址是 `http://127.0.0.1:7777`。
 
 它的工作方式是：
 
@@ -16,7 +16,15 @@
 6. `red-team` 对 Chairman 的结论做风险审计。
 7. `orchestrator` 是总开关，一次性把上面所有步骤跑完。
 
-你日常最常用的命令只有一个：
+你日常最常用的启动命令是：
+
+```bash
+uv run python webui.py
+```
+
+打开网页后，点击「运行早间报告」或「运行晚间报告」即可。
+
+如果你仍然想用命令行，一键跑完整 Morning Brief 的命令是：
 
 ```bash
 LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --date $(date +%F)
@@ -55,7 +63,7 @@ cd ~/agent-trading-system
 进入项目目录后，运行：
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra webui
 ```
 
 你可以把它理解为“安装这个项目需要的零件”。
@@ -71,10 +79,61 @@ brew install uv
 然后再运行：
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra webui
 ```
 
-## 3. 最推荐的第一次试跑方式
+## 3. 最推荐的日常使用方式：打开 Web UI
+
+安装完成后，在项目目录里运行：
+
+```bash
+uv run python webui.py
+```
+
+看到类似下面这一行，说明网页服务已经启动：
+
+```text
+Uvicorn running on http://127.0.0.1:7777
+```
+
+然后用浏览器打开：
+
+```text
+http://127.0.0.1:7777
+```
+
+Web UI 顶部有四个页面：
+
+- 「主页」：选择日期，一键运行早间报告或晚间报告，实时查看日志，运行完成后直接阅读 Brief 和 Red Team Audit。
+- 「运行历史」：查看最近 10 条运行记录，包括 run_id、日期、brief-type 和 status。
+- 「股池管理」：读取并编辑 `data/stock_pool/master_pool.yaml`，支持港股、美股、A 股参考、观察池四类股票。
+- 「环境配置」：切换 `LLM_PROVIDER=local|openai`，设置 `LLM_MODEL` 和 `OPENAI_API_KEY`。API Key 只写入本地 `.env`，页面只显示脱敏状态。
+
+### 3.1 第一次用 Web UI 跑 Morning Brief
+
+1. 打开 `http://127.0.0.1:7777`。
+2. 日期默认是今天，也可以手动选择。
+3. 点击「运行早间报告」。
+4. 页面下方会实时滚动显示命令行日志。
+5. 看到 `status=completed` 后，右侧报告阅读器会展示 Morning Brief 和 Red Team Audit。
+
+### 3.2 第一次用 Web UI 跑 Evening Brief
+
+1. 打开 `http://127.0.0.1:7777`。
+2. 点击「运行晚间报告」。
+3. 看到 `status=completed` 后，报告阅读器会展示 Evening Brief 和对应 Red Team Audit。
+
+### 3.3 停止 Web UI
+
+回到启动 Web UI 的终端窗口，按：
+
+```text
+Control + C
+```
+
+即可停止本地网页服务。
+
+## 4. 如果你想用命令行试跑
 
 第一次不要接 OpenAI API，不要联网推理，先用本地保守模式跑通。
 
@@ -100,7 +159,7 @@ uv run orchestrator history --data-dir data --tail 5
 
 把输出发给 Codex，让它继续排查。
 
-## 4. 跑完以后去哪里看结果
+## 5. 跑完以后去哪里看结果
 
 结果都在 `data/` 文件夹里。
 
@@ -130,9 +189,11 @@ open data/briefs/$(date +%Y%m%d)/BRIEF-$(date +%Y%m%d)-AM.md
 open data/red_team_audits/$(date +%Y%m%d)/AUDIT-$(date +%Y%m%d)-AM.md
 ```
 
-## 5. 各个输出文件分别是什么意思
+Web UI 也会自动读取这些 Markdown 文件，并在「报告阅读器」里渲染成网页内容。
 
-### 5.1 Morning Brief
+## 6. 各个输出文件分别是什么意思
+
+### 6.1 Morning Brief
 
 位置：
 
@@ -150,7 +211,7 @@ data/briefs/YYYYMMDD/BRIEF-YYYYMMDD-AM.md
 - Chairman 如何汇总
 - 哪些地方需要你人工判断
 
-### 5.2 Red Team Audit
+### 6.2 Red Team Audit
 
 位置：
 
@@ -167,7 +228,7 @@ data/red_team_audits/YYYYMMDD/AUDIT-YYYYMMDD-AM.md
 - 是否有证据未验证
 - 是否需要你暂停、复核、补研究
 
-### 5.3 三个交易 Agent 的建议
+### 6.3 三个交易 Agent 的建议
 
 位置：
 
@@ -183,7 +244,7 @@ data/recommendations/YYYYMMDD/liguofei/
 - 万木方法论
 - 李国飞方法论
 
-### 5.4 研究信号
+### 6.4 研究信号
 
 位置：
 
@@ -193,7 +254,7 @@ data/research_signals/
 
 这是 4.1 研究上游生成的输入。
 
-### 5.5 需要手动补充 Perplexity 研究的问题
+### 6.5 需要手动补充 Perplexity 研究的问题
 
 位置：
 
@@ -205,9 +266,24 @@ data/pull_requests/
 
 如果它觉得需要更深入研究，会把问题写到这里，让你自己决定要不要拿去 Perplexity 里查。
 
-## 6. 日常怎么使用
+## 7. 日常怎么使用
 
-### 6.1 每天早上跑 Morning Brief
+### 7.1 推荐：每天从 Web UI 运行
+
+```bash
+cd ~/agent-trading-system
+uv run python webui.py
+```
+
+然后打开 `http://127.0.0.1:7777`：
+
+- 早上点「运行早间报告」
+- 晚上点「运行晚间报告」
+- 跑完后直接在页面阅读 Brief 和 Red Team Audit
+- 需要修改股池时，进入「股池管理」
+- 需要切换 local/openai 时，进入「环境配置」
+
+### 7.2 命令行：每天早上跑 Morning Brief
 
 ```bash
 cd ~/agent-trading-system
@@ -216,7 +292,7 @@ open data/briefs/$(date +%Y%m%d)/BRIEF-$(date +%Y%m%d)-AM.md
 open data/red_team_audits/$(date +%Y%m%d)/AUDIT-$(date +%Y%m%d)-AM.md
 ```
 
-### 6.2 跑 Evening Brief
+### 7.3 命令行：跑 Evening Brief
 
 ```bash
 cd ~/agent-trading-system
@@ -225,7 +301,7 @@ open data/briefs/$(date +%Y%m%d)/BRIEF-$(date +%Y%m%d)-PM.md
 open data/red_team_audits/$(date +%Y%m%d)/AUDIT-$(date +%Y%m%d)-PM.md
 ```
 
-### 6.3 只想看最近运行记录
+### 7.4 命令行：只想看最近运行记录
 
 ```bash
 cd ~/agent-trading-system
@@ -238,7 +314,7 @@ uv run orchestrator history --data-dir data --tail 5
 "status": "completed"
 ```
 
-## 7. 股池在哪里改
+## 8. 股池在哪里改
 
 股池文件是：
 
@@ -255,7 +331,9 @@ data/stock_pool/master_pool.yaml
 - `a_stocks_reference_only`：A 股只做案例参考，不会输出交易建议
 - `watchlist`：观察池，只能 watch 或 abstain，不会 long/short
 
-修改股池时，照着原格式加就行，比如港股：
+最推荐的方式是在 Web UI 的「股池管理」页面修改并保存。
+
+如果你想直接改 YAML，照着原格式加就行，比如港股：
 
 ```yaml
 hk_stocks:
@@ -275,9 +353,20 @@ us_stocks:
 
 不要随便改缩进。YAML 文件最怕缩进错。
 
-## 8. 如果你想让它用 OpenAI / GPT-5.5
+## 9. 如果你想让它用 OpenAI / GPT-5.5
 
 第一次建议先别开。等本地保守模式跑通后再开。
+
+最简单的方式是在 Web UI 的「环境配置」页面：
+
+1. 把 LLM Provider 选成 `openai`。
+2. 填写 `LLM_MODEL`，例如 `gpt-5.5`。
+3. 填写 `OPENAI_API_KEY`。
+4. 点击「保存 .env」。
+
+保存后，API Key 只会写入本机 `.env` 文件，前端不会存储，页面也只显示脱敏后的 Key 状态。
+
+如果你想手动配置，也可以继续按下面方式操作。
 
 复制配置文件：
 
@@ -305,11 +394,11 @@ uv run orchestrator run --type full --brief-type morning --date $(date +%F)
 - 当前编排里 Chairman 和 Red Team 默认用确定性模板，避免最后总结阶段乱发挥。
 - 业务 Agent 会优先尝试 LLM；如果失败，会自动降级，不应该把整个系统跑崩。
 
-## 9. 如果你只想单独跑某一个 Agent
+## 10. 如果你只想单独跑某一个 Agent
 
-一般不需要这么做，除非排查问题。
+一般不需要这么做，除非排查问题。Web UI 的「单 Agent」区域已经支持单独触发 research-agent、冯柳、万木、李国飞、Chairman、Red Team，并且可以选择 `--no-llm`。
 
-### 9.1 只跑研究 Agent
+### 10.1 只跑研究 Agent
 
 ```bash
 uv run research-agent run --type scan --no-llm
@@ -322,7 +411,7 @@ data/research_signals/
 data/pull_requests/
 ```
 
-### 9.2 只跑冯柳 Agent
+### 10.2 只跑冯柳 Agent
 
 必须先有 research signal。
 
@@ -336,7 +425,7 @@ uv run trading-fengliu run --no-llm
 data/recommendations/YYYYMMDD/fengliu/
 ```
 
-### 9.3 只跑万木 Agent
+### 10.3 只跑万木 Agent
 
 ```bash
 uv run trading-wanmu run --no-llm
@@ -348,7 +437,7 @@ uv run trading-wanmu run --no-llm
 data/recommendations/YYYYMMDD/wanmu/
 ```
 
-### 9.4 只跑李国飞 Agent
+### 10.4 只跑李国飞 Agent
 
 ```bash
 uv run trading-liguofei run --no-llm
@@ -360,7 +449,7 @@ uv run trading-liguofei run --no-llm
 data/recommendations/YYYYMMDD/liguofei/
 ```
 
-### 9.5 只跑 Chairman
+### 10.5 只跑 Chairman
 
 必须先有 research signal 和三份 recommendation。
 
@@ -368,7 +457,7 @@ data/recommendations/YYYYMMDD/liguofei/
 uv run chairman generate-brief --type morning --date $(date +%F) --no-llm
 ```
 
-### 9.6 只跑 Red Team
+### 10.6 只跑 Red Team
 
 必须先有 Chairman brief。
 
@@ -376,7 +465,7 @@ uv run chairman generate-brief --type morning --date $(date +%F) --no-llm
 uv run red-team audit --type morning --date $(date +%F) --no-llm
 ```
 
-## 10. 最常见问题
+## 11. 最常见问题
 
 ### 问题 1：我看到 `status=completed`，还要做什么？
 
@@ -400,10 +489,36 @@ brew install uv
 然后重新运行：
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra webui
 ```
 
-### 问题 3：提示找不到 stock pool
+### 问题 3：Web UI 打不开 `http://127.0.0.1:7777`
+
+先确认终端里是不是还在运行：
+
+```bash
+uv run python webui.py
+```
+
+如果提示端口被占用，可以先找出占用进程：
+
+```bash
+lsof -ti tcp:7777
+```
+
+再把输出发给 Codex，让它帮你判断是否可以停止旧进程。
+
+### 问题 4：页面运行报告后一直没有完成
+
+先看页面下方实时日志。如果日志里出现错误，把整段日志发给 Codex。
+
+也可以在终端里查看最近运行记录：
+
+```bash
+uv run orchestrator history --data-dir data --tail 10
+```
+
+### 问题 5：提示找不到 stock pool
 
 检查这个文件是否存在：
 
@@ -417,7 +532,7 @@ ls data/stock_pool/master_pool.yaml
 git pull
 ```
 
-### 问题 4：为什么我填了过去日期，但是没生成对应日期报告？
+### 问题 6：为什么我填了过去日期，但是没生成对应日期报告？
 
 不要随便填过去日期。
 
@@ -429,15 +544,17 @@ git pull
 
 也就是今天。
 
-### 问题 5：我想重新跑一遍，旧结果会不会坏？
+### 问题 7：我想重新跑一遍，旧结果会不会坏？
 
 不会影响源码。
 
 但同一天重复跑，会覆盖或追加部分同名运行产物。日常使用没关系。
 
-### 问题 6：我想清空运行结果，从头再来
+### 问题 8：我想清空运行结果，从头再来
 
-只清运行结果，不清股池：
+Web UI 主页里有「清除所选日期运行结果」按钮。它只会清理当前选择日期的运行产物，不会删除股池，也不会删除其他日期。
+
+如果你确定要用命令行清空全部运行结果，可以运行下面命令。注意：这会删除所有历史运行结果，不只是今天。
 
 ```bash
 rm -rf data/agent_logs data/research_signals data/recommendations data/pull_requests data/briefs data/red_team_audits data/orchestrator data/notifications data/errors
@@ -449,7 +566,7 @@ rm -rf data/agent_logs data/research_signals data/recommendations data/pull_requ
 data/stock_pool/master_pool.yaml
 ```
 
-## 11. 怎么确认项目本身没坏
+## 12. 怎么确认项目本身没坏
 
 运行测试：
 
@@ -466,7 +583,7 @@ uv run python -m pytest -q
 运行格式检查：
 
 ```bash
-uv run ruff check chairman red_team orchestrator business_agents tests
+uv run ruff check chairman red_team orchestrator business_agents tests webui.py
 ```
 
 看到：
@@ -477,9 +594,15 @@ All checks passed!
 
 就是正常。
 
-## 12. 你现在这台机器的已验证结果
+Web UI 也可以单独做一次快速语法检查：
 
-我已经在这台机器上跑过一次完整流水线。
+```bash
+uv run python -m py_compile webui.py
+```
+
+## 13. 你现在这台机器的已验证结果
+
+我已经在这台机器上验证过完整流水线和 Web UI。
 
 命令：
 
@@ -490,7 +613,7 @@ LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --da
 结果：
 
 ```text
-run_id=RUN-20260513-46d55a9c status=completed
+run_id=RUN-20260513-60b5a1c1 status=completed
 ```
 
 说明：
@@ -500,20 +623,35 @@ run_id=RUN-20260513-46d55a9c status=completed
 - Chairman 成功生成 Morning Brief
 - Red Team 成功生成 Audit
 - Orchestrator 记录为 completed
+- `uv run python webui.py` 可启动本地网页服务
+- 浏览器打开 `http://127.0.0.1:7777` 可看到主页、运行历史、股池管理、环境配置
 
-## 13. 一句话版
+已验证检查：
 
-以后你只要想本地跑这个系统，就打开终端，复制这三行：
+```text
+uv run ruff check webui.py
+uv run python -m pytest -q
+76 passed
+```
+
+## 14. 一句话版
+
+以后你只要想本地用网页跑这个系统，就打开终端，复制这三行：
 
 ```bash
 cd ~/agent-trading-system
-uv sync --extra dev
-LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --date $(date +%F)
+uv sync --extra dev --extra webui
+uv run python webui.py
 ```
 
-然后打开报告：
+然后打开：
+
+```text
+http://127.0.0.1:7777
+```
+
+想继续用命令行的话，复制：
 
 ```bash
-open data/briefs/$(date +%Y%m%d)/BRIEF-$(date +%Y%m%d)-AM.md
-open data/red_team_audits/$(date +%Y%m%d)/AUDIT-$(date +%Y%m%d)-AM.md
+LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --date $(date +%F)
 ```
