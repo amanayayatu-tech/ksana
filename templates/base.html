@@ -167,6 +167,12 @@
       line-height: 1.5;
     }
 
+    .textarea-large {
+      min-height: 280px;
+      width: 100%;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
     input:focus,
     select:focus,
     textarea:focus {
@@ -292,6 +298,7 @@
     }
 
     tr:last-child td { border-bottom: 0; }
+    tr.active-row td { background: rgba(96, 165, 250, 0.1); }
     td input { width: 100%; }
 
     .tabs {
@@ -322,11 +329,12 @@
   <header class="topbar">
     <a class="brand" href="/">Agent Trading System</a>
     <nav class="nav">
-      <a class="{% if active_page == 'index' %}active{% endif %}" href="/">主页</a>
-      <a class="{% if active_page == 'history' %}active{% endif %}" href="/history">运行历史</a>
-      <a class="{% if active_page == 'stock_pool' %}active{% endif %}" href="/stock-pool">股池管理</a>
-      <a class="{% if active_page == 'env' %}active{% endif %}" href="/env">环境配置</a>
-    </nav>
+	      <a class="{% if active_page == 'index' %}active{% endif %}" href="/">主页</a>
+	      <a class="{% if active_page == 'history' %}active{% endif %}" href="/history">运行历史</a>
+	      <a class="{% if active_page == 'stock_pool' %}active{% endif %}" href="/stock-pool">股池管理</a>
+	      <a class="{% if active_page == 'deep_research' %}active{% endif %}" href="/deep-research">深度研究</a>
+	      <a class="{% if active_page == 'env' %}active{% endif %}" href="/env">环境配置</a>
+	    </nav>
   </header>
   <main class="shell">
     {% block content %}{% endblock %}

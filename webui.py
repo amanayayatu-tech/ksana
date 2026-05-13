@@ -38,6 +38,7 @@ STOCK_CATEGORIES = (
     "a_stocks_reference_only",
     "watchlist",
 )
+DEEP_RESEARCH_STATUSES = {"all", "pending", "filled", "skipped"}
 
 app = FastAPI(title="Agent Trading System Web UI")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
@@ -83,6 +84,18 @@ def env_page(request: Request) -> Any:
         {
             "active_page": "env",
             "env_status": get_env_status(),
+        },
+    )
+
+
+@app.get("/deep-research")
+def deep_research_page(request: Request) -> Any:
+    return templates.TemplateResponse(
+        request,
+        "deep_research.html",
+        {
+            "active_page": "deep_research",
+            "today": datetime.now().strftime("%Y-%m-%d"),
         },
     )
 
@@ -213,6 +226,82 @@ def api_save_env(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     return {"ok": True, "message": ".env 已保存", "env": get_env_status()}
 
 
+@app.get("/api/deep-research/prompts")
+def api_deep_research_prompts(
+    run_date: str | None = Query(None, alias="date"),
+    status: str = Query("all"),
+) -> dict[str, Any]:
+    date = normalize_date(run_date) if run_date else None
+    if status not in DEEP_RESEARCH_STATUSES:
+        raise HTTPException(status_code=400, detail="状态只能是 all、pending、filled 或 skipped。")
+    prompts = load_deep_research_prompts(date_filter=date, status_filter=status)
+    return {"ok": True, "prompts": prompts}
+
+
+@app.post("/api/deep-research/fill")
+def api_fill_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    prompt_id = safe_prompt_id(str(payload.get("prompt_id") or ""))
+    prompt = find_pull_request(prompt_id)
+    answer_text = str(payload.get("answer_text") or "").strip()
+    if not answer_text:
+        raise HTTPException(status_code=400, detail="Perplexity 答案不能为空。")
+
+    result = {
+        "prompt_id": prompt_id,
+        "related_signal_id": prompt.get("related_signal_id", ""),
+        "priority": prompt.get("priority", ""),
+        "status": "filled",
+        "source": "perplexity",
+        "filled_at": datetime.now().isoformat(timespec="seconds"),
+        "prompt_text": prompt.get("prompt_text", ""),
+        "answer_text": answer_text,
+    }
+    result_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_filled.yaml"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(yaml.safe_dump(result, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    skipped_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_skipped.yaml"
+    if skipped_path.exists():
+        skipped_path.unlink()
+    return {"ok": True, "message": "Perplexity 答案已保存", "prompt": shape_prompt_record(prompt["path"])}
+
+
+@app.post("/api/deep-research/skip")
+def api_skip_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    prompt_id = safe_prompt_id(str(payload.get("prompt_id") or ""))
+    prompt = find_pull_request(prompt_id)
+    reason = str(payload.get("reason") or "").strip()
+    result = {
+        "prompt_id": prompt_id,
+        "related_signal_id": prompt.get("related_signal_id", ""),
+        "priority": prompt.get("priority", ""),
+        "status": "skipped",
+        "skipped_at": datetime.now().isoformat(timespec="seconds"),
+        "prompt_text": prompt.get("prompt_text", ""),
+        "reason": reason or "Nepha 在 Web UI 中标记跳过。",
+    }
+    result_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_skipped.yaml"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(yaml.safe_dump(result, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    filled_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_filled.yaml"
+    if filled_path.exists():
+        filled_path.unlink()
+    return {"ok": True, "message": "Prompt 已标记跳过", "prompt": shape_prompt_record(prompt["path"])}
+
+
+@app.get("/api/deep-research/rerun-stream")
+async def deep_research_rerun_stream(
+    brief_type: str = Query("morning"),
+    run_date: str = Query(..., alias="date"),
+    no_llm: bool = Query(True),
+) -> StreamingResponse:
+    validate_brief_type(brief_type)
+    date = normalize_date(run_date)
+    commands = build_deep_research_rerun_commands(brief_type, date, no_llm)
+    return stream_command_sequence_response(commands, {})
+
+
 @app.post("/api/cleanup")
 def api_cleanup(run_date: str | None = Query(None, alias="date")) -> dict[str, Any]:
     date = normalize_date(run_date or datetime.now().strftime("%Y-%m-%d"))
@@ -227,6 +316,17 @@ def stream_command_response(
 ) -> StreamingResponse:
     return StreamingResponse(
         stream_command(command, env_overrides),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def stream_command_sequence_response(
+    commands: list[tuple[str, list[str]]],
+    env_overrides: dict[str, str],
+) -> StreamingResponse:
+    return StreamingResponse(
+        stream_command_sequence(commands, env_overrides),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -274,8 +374,107 @@ async def stream_command(command: list[str], env_overrides: dict[str, str]):
         yield sse("done", {"status": final_status, "return_code": return_code})
 
 
+async def stream_command_sequence(
+    commands: list[tuple[str, list[str]]],
+    env_overrides: dict[str, str],
+):
+    if run_lock.locked():
+        yield sse("status", {"status": "busy", "message": "已有任务正在运行。"})
+        return
+
+    async with run_lock:
+        env = build_child_env(env_overrides)
+        for index, (label, command) in enumerate(commands, start=1):
+            display_command = format_display_command(command, env_overrides)
+            yield sse(
+                "start",
+                {
+                    "command": display_command,
+                    "status": "running",
+                    "step": label,
+                    "index": index,
+                    "total": len(commands),
+                },
+            )
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+            except FileNotFoundError:
+                yield sse("error", {"status": "failed", "message": "找不到 uv，请先安装 uv。"})
+                yield sse("done", {"status": "failed", "return_code": 127, "step": label})
+                return
+
+            assert process.stdout is not None
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").rstrip()
+                yield sse("log", {"line": text, "step": label})
+
+            return_code = await process.wait()
+            if return_code != 0:
+                yield sse("done", {"status": "failed", "return_code": return_code, "step": label})
+                return
+        yield sse("done", {"status": "completed", "return_code": 0})
+
+
 def sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def build_deep_research_rerun_commands(
+    brief_type: str,
+    date: str,
+    no_llm: bool,
+) -> list[tuple[str, list[str]]]:
+    trading_commands = [
+        ("冯柳 Agent", ["uv", "run", "trading-fengliu", "run", "--data-dir", "data"]),
+        ("万木 Agent", ["uv", "run", "trading-wanmu", "run", "--data-dir", "data"]),
+        ("李国飞 Agent", ["uv", "run", "trading-liguofei", "run", "--data-dir", "data"]),
+    ]
+    if no_llm:
+        for _, command in trading_commands:
+            command.append("--no-llm")
+
+    chairman_command = [
+        "uv",
+        "run",
+        "chairman",
+        "generate-brief",
+        "--type",
+        brief_type,
+        "--date",
+        date,
+        "--data-dir",
+        "data",
+    ]
+    red_team_command = [
+        "uv",
+        "run",
+        "red-team",
+        "audit",
+        "--type",
+        brief_type,
+        "--date",
+        date,
+        "--data-dir",
+        "data",
+    ]
+    if no_llm:
+        chairman_command.append("--no-llm")
+        red_team_command.append("--no-llm")
+
+    return [
+        *trading_commands,
+        ("Chairman", chairman_command),
+        ("Red Team", red_team_command),
+    ]
 
 
 def build_agent_command(agent: str, brief_type: str, date: str, no_llm: bool) -> list[str]:
@@ -352,6 +551,144 @@ def read_markdown_result(path: Path | None) -> dict[str, Any]:
     }
 
 
+def load_deep_research_prompts(
+    date_filter: str | None = None,
+    status_filter: str = "all",
+) -> list[dict[str, Any]]:
+    prompt_dir = DATA_DIR / "pull_requests"
+    if not prompt_dir.exists():
+        return []
+    prompts = [shape_prompt_record(path) for path in sorted(prompt_dir.glob("*.y*ml"))]
+    if date_filter:
+        prompts = [prompt for prompt in prompts if prompt_matches_date(prompt, date_filter)]
+    if status_filter != "all":
+        prompts = [prompt for prompt in prompts if prompt["status"] == status_filter]
+    return prompts
+
+
+def shape_prompt_record(path: Path) -> dict[str, Any]:
+    data = read_yaml_file(path)
+    prompt = data.get("prompt", data) if isinstance(data, dict) else {}
+    prompt_id = str(prompt.get("prompt_id") or path.stem)
+    related_signal_id = str(prompt.get("related_signal_id") or "")
+    priority = str(prompt.get("priority") or "")
+    prompt_text = str(prompt.get("prompt_text") or "")
+    status_payload = deep_research_status(prompt_id)
+    record = {
+        "prompt_id": prompt_id,
+        "related_signal_id": related_signal_id,
+        "priority": priority,
+        "prompt_text": prompt_text,
+        "prompt_markdown": build_prompt_markdown(prompt_id, related_signal_id, priority, prompt_text),
+        "path_display": relative_path(path),
+    }
+    record.update(status_payload)
+    return record
+
+
+def build_prompt_markdown(
+    prompt_id: str,
+    related_signal_id: str,
+    priority: str,
+    prompt_text: str,
+) -> str:
+    lines = [
+        "# Perplexity 深度研究 Prompt",
+        "",
+        f"- prompt_id: {prompt_id}",
+        f"- related_signal_id: {related_signal_id or 'unknown'}",
+        f"- priority: {priority or 'unknown'}",
+        "",
+        "## 研究问题",
+        "",
+        prompt_text,
+    ]
+    return "\n".join(lines).strip() + "\n"
+
+
+def prompt_matches_date(prompt: dict[str, Any], date: str) -> bool:
+    compact = date.replace("-", "")
+    haystack = " ".join(
+        str(prompt.get(key) or "")
+        for key in ("prompt_id", "related_signal_id", "path_display", "prompt_text")
+    )
+    return compact in haystack or date in haystack
+
+
+def deep_research_status(prompt_id: str) -> dict[str, Any]:
+    results_dir = DATA_DIR / "perplexity_results"
+    filled_path = results_dir / f"{prompt_id}_filled.yaml"
+    skipped_path = results_dir / f"{prompt_id}_skipped.yaml"
+    if filled_path.exists():
+        data = read_yaml_file(filled_path)
+        return {
+            "status": "filled",
+            "status_label": "已回填",
+            "result_path": relative_path(filled_path),
+            "answer_text": extract_answer_text(data),
+            "updated_at": str(data.get("filled_at") or data.get("created_at") or ""),
+            "skip_reason": "",
+        }
+    if skipped_path.exists():
+        data = read_yaml_file(skipped_path)
+        return {
+            "status": "skipped",
+            "status_label": "已跳过",
+            "result_path": relative_path(skipped_path),
+            "answer_text": "",
+            "updated_at": str(data.get("skipped_at") or data.get("created_at") or ""),
+            "skip_reason": str(data.get("reason") or data.get("skip_reason") or ""),
+        }
+    return {
+        "status": "pending",
+        "status_label": "待回填",
+        "result_path": "",
+        "answer_text": "",
+        "updated_at": "",
+        "skip_reason": "",
+    }
+
+
+def find_pull_request(prompt_id: str) -> dict[str, Any]:
+    prompt_dir = DATA_DIR / "pull_requests"
+    for path in sorted(prompt_dir.glob("*.y*ml")) if prompt_dir.exists() else []:
+        data = read_yaml_file(path)
+        prompt = data.get("prompt", data) if isinstance(data, dict) else {}
+        current_id = str(prompt.get("prompt_id") or path.stem)
+        if current_id == prompt_id:
+            return {
+                "path": path,
+                "prompt_id": current_id,
+                "related_signal_id": str(prompt.get("related_signal_id") or ""),
+                "priority": str(prompt.get("priority") or ""),
+                "prompt_text": str(prompt.get("prompt_text") or ""),
+            }
+    raise HTTPException(status_code=404, detail=f"找不到 Prompt：{prompt_id}")
+
+
+def safe_prompt_id(prompt_id: str) -> str:
+    value = prompt_id.strip()
+    if not value or not re.fullmatch(r"[A-Za-z0-9_.-]+", value):
+        raise HTTPException(status_code=400, detail="prompt_id 格式不合法。")
+    return value
+
+
+def extract_answer_text(data: Any) -> str:
+    if isinstance(data, str):
+        return data
+    if not isinstance(data, dict):
+        return ""
+    for key in ("answer_text", "answer", "content", "result", "summary"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False).strip()
+
+
+def read_yaml_file(path: Path) -> Any:
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
 def cleanup_date_artifacts(date: str) -> list[str]:
     compact = date.replace("-", "")
     removed: list[str] = []
@@ -364,7 +701,7 @@ def cleanup_date_artifacts(date: str) -> list[str]:
     for path in dated_dirs:
         remove_path(path, removed)
 
-    for dirname in ("research_signals", "pull_requests", "agent_logs", "errors"):
+    for dirname in ("research_signals", "pull_requests", "perplexity_results", "agent_logs", "errors"):
         remove_matching_children(DATA_DIR / dirname, date, compact, removed)
 
     remove_matching_children(DATA_DIR / "orchestrator" / "logs", date, compact, removed)

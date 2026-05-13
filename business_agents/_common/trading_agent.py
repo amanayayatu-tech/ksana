@@ -19,6 +19,7 @@ from business_agents._common.output_validator import (
     OutputValidationError,
     validate_trading_recommendation_output,
 )
+from business_agents._common.perplexity_results import PerplexityContext, collect_perplexity_context
 from business_agents._common.stock_pool import StockPool
 
 
@@ -56,10 +57,16 @@ class TradingAgent(BaseBusinessAgent):
             for target in signal.candidate_targets:
                 if target.ticker not in stock_pool.trading_tickers():
                     continue
-                user_prompt = self.render_user_prompt(signal, target.ticker)
+                perplexity_context = collect_perplexity_context(self.data_dir, signal)
+                user_prompt = self.render_user_prompt(signal, target.ticker, perplexity_context)
                 llm_messages.append({"role": "user", "content": user_prompt})
                 if no_llm:
-                    payload = self.build_debug_recommendation(signal, target.ticker, index)
+                    payload = self.build_debug_recommendation(
+                        signal,
+                        target.ticker,
+                        index,
+                        perplexity_context,
+                    )
                 else:
                     try:
                         client = self.llm_client or build_llm_client_from_env()
@@ -73,7 +80,12 @@ class TradingAgent(BaseBusinessAgent):
                         payload = json.loads(text)
                         llm_used = True
                     except Exception:
-                        payload = self.build_debug_recommendation(signal, target.ticker, index)
+                        payload = self.build_debug_recommendation(
+                            signal,
+                            target.ticker,
+                            index,
+                            perplexity_context,
+                        )
 
                 try:
                     rec = validate_trading_recommendation_output(
@@ -110,13 +122,19 @@ class TradingAgent(BaseBusinessAgent):
             signals.append(ResearchSignal.model_validate(payload))
         return signals
 
-    def render_user_prompt(self, signal: ResearchSignal, ticker: str) -> str:
+    def render_user_prompt(
+        self,
+        signal: ResearchSignal,
+        ticker: str,
+        perplexity_context: PerplexityContext | None = None,
+    ) -> str:
+        context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
         return self.env.get_template("trading_user_prompt.j2").render(
             target_ticker=ticker,
             signal_id=signal.research_signal_id,
             signal_summary=signal.signal_summary,
             market_data_yaml=compact_financial_snapshot(ticker),
-            perplexity_results_yaml="无",
+            perplexity_results_yaml=context.yaml_text,
             upstream_signal_full_yaml=signal.model_dump(mode="json"),
             schema_name=self.agent_id,
         )
@@ -126,8 +144,16 @@ class TradingAgent(BaseBusinessAgent):
         signal: ResearchSignal,
         ticker: str,
         index: int,
+        perplexity_context: PerplexityContext | None = None,
     ) -> dict[str, Any]:
         today = datetime.now().strftime("%Y%m%d")
+        context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
+        used_perplexity = context.has_filled_results
+        verdict_reason = (
+            "已读取 Nepha 回填的 Perplexity 深度研究；debug/no-LLM 模式保持 watch，等待人工或 LLM 做方向升级。"
+            if used_perplexity
+            else "阶段 3.7 debug run，等待更完整证据。"
+        )
         base = {
             "recommendation_id": f"{self.recommendation_prefix}-{today}-{index:03d}",
             "agent_id": self.agent_id,
@@ -139,7 +165,12 @@ class TradingAgent(BaseBusinessAgent):
             "target_price": None,
             "stop_loss": None,
             "position_size_pct": 0,
-            "thesis": f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，但当前证据未充分回填，先 watch。",
+            "thesis": (
+                f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，已读取 Perplexity 回填，"
+                "debug/no-LLM 模式先 watch。"
+                if used_perplexity
+                else f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，但当前证据未充分回填，先 watch。"
+            ),
             "deployment_compliance": _deployment_compliance(),
             "authority_resolution": _authority_resolution(),
             "upstream_research_signals": [
@@ -147,25 +178,18 @@ class TradingAgent(BaseBusinessAgent):
                     "research_signal_id": signal.research_signal_id,
                     "signal_summary": signal.signal_summary,
                     "my_methodology_verdict": "partial",
-                    "verdict_reason": "阶段 3.7 debug run，等待更完整证据。",
+                    "verdict_reason": verdict_reason,
                     "relevance_score": 80,
-                    "pull_request_id": None,
-                    "used_perplexity_results": False,
-                    "perplexity_prompt_ids_consumed": [],
-                    "evidence_unverified_inherited": True,
-                    "confidence_ceiling_applied": 70,
-                    "red_team_priority_flag": "medium",
-                    "chairman_weight_multiplier": 0.7,
+                    "pull_request_id": context.all_prompt_ids[0] if context.all_prompt_ids else None,
+                    "used_perplexity_results": used_perplexity,
+                    "perplexity_prompt_ids_consumed": context.filled_prompt_ids,
+                    "evidence_unverified_inherited": not used_perplexity,
+                    "confidence_ceiling_applied": None if used_perplexity else 70,
+                    "red_team_priority_flag": "low" if used_perplexity else "medium",
+                    "chairman_weight_multiplier": 1.0 if used_perplexity else 0.7,
                 }
             ],
-            "data_points": [
-                {
-                    "label": "4.1 signal",
-                    "value": signal.signal_summary,
-                    "date": datetime.now().date().isoformat(),
-                    "source_url": f"file://data/research_signals/{signal.research_signal_id}.yaml",
-                }
-            ],
+            "data_points": build_data_points(signal, context),
             "catalysts": ["4.1 research signal"],
             "thesis_kill_criteria": ["Nepha 手动研究回填后若证据不足则维持 watch 或 abstain。"],
         }
@@ -227,3 +251,24 @@ def _authority_resolution() -> dict[str, Any]:
         "upstream_signal_disagreement": False,
         "disagreement_reason": None,
     }
+
+
+def build_data_points(signal: ResearchSignal, context: PerplexityContext) -> list[dict[str, Any]]:
+    data_points = [
+        {
+            "label": "4.1 signal",
+            "value": signal.signal_summary,
+            "date": datetime.now().date().isoformat(),
+            "source_url": f"file://data/research_signals/{signal.research_signal_id}.yaml",
+        }
+    ]
+    for prompt_id in context.filled_prompt_ids:
+        data_points.append(
+            {
+                "label": f"Perplexity filled result {prompt_id}",
+                "value": "Nepha 已回填 Perplexity 深度研究结果，完整内容已注入交易 Agent prompt。",
+                "date": datetime.now().date().isoformat(),
+                "source_url": f"file://data/perplexity_results/{prompt_id}_filled.yaml",
+            }
+        )
+    return data_points

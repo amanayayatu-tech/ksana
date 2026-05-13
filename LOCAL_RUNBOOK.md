@@ -102,11 +102,12 @@ Uvicorn running on http://127.0.0.1:7777
 http://127.0.0.1:7777
 ```
 
-Web UI 顶部有四个页面：
+Web UI 顶部有五个页面：
 
 - 「主页」：选择日期，一键运行早间报告或晚间报告，实时查看日志，运行完成后直接阅读 Brief 和 Red Team Audit。
 - 「运行历史」：查看最近 10 条运行记录，包括 run_id、日期、brief-type 和 status。
 - 「股池管理」：读取并编辑 `data/stock_pool/master_pool.yaml`，支持港股、美股、A 股参考、观察池四类股票。
+- 「深度研究」：查看 Research Agent 生成的 Perplexity prompt，复制问题、粘贴答案、保存回填，并触发回填后重跑。
 - 「环境配置」：切换 `LLM_PROVIDER=local|openai`，设置 `LLM_MODEL` 和 `OPENAI_API_KEY`。API Key 只写入本地 `.env`，页面只显示脱敏状态。
 
 ### 3.1 第一次用 Web UI 跑 Morning Brief
@@ -266,6 +267,25 @@ data/pull_requests/
 
 如果它觉得需要更深入研究，会把问题写到这里，让你自己决定要不要拿去 Perplexity 里查。
 
+最新版 Web UI 已经把这条人工研究闭环接进来。你可以进入「深度研究」页面：
+
+1. 查看 `data/pull_requests/*.yaml` 里的 prompt。
+2. 点击「复制 Prompt」，去 Perplexity 做深入研究。
+3. 把 Perplexity 答案粘贴回页面。
+4. 点击「保存回填」，系统会写入：
+
+```text
+data/perplexity_results/PROMPT_ID_filled.yaml
+```
+
+如果你决定这条 prompt 暂不研究，可以点击「标记跳过」，系统会写入：
+
+```text
+data/perplexity_results/PROMPT_ID_skipped.yaml
+```
+
+保存回填后，点击「重跑交易 Agent + Chairman + Red Team」。三位交易 Agent 会读取 `data/perplexity_results/` 里的结果，不再把 Perplexity 结果当成“无”。
+
 ## 7. 日常怎么使用
 
 ### 7.1 推荐：每天从 Web UI 运行
@@ -280,6 +300,7 @@ uv run python webui.py
 - 早上点「运行早间报告」
 - 晚上点「运行晚间报告」
 - 跑完后直接在页面阅读 Brief 和 Red Team Audit
+- Research Agent 生成研究问题后，进入「深度研究」复制 prompt、保存 Perplexity 回答、重跑分析
 - 需要修改股池时，进入「股池管理」
 - 需要切换 local/openai 时，进入「环境配置」
 
@@ -409,6 +430,7 @@ uv run research-agent run --type scan --no-llm
 ```text
 data/research_signals/
 data/pull_requests/
+data/perplexity_results/
 ```
 
 ### 10.2 只跑冯柳 Agent
@@ -557,7 +579,7 @@ Web UI 主页里有「清除所选日期运行结果」按钮。它只会清理�
 如果你确定要用命令行清空全部运行结果，可以运行下面命令。注意：这会删除所有历史运行结果，不只是今天。
 
 ```bash
-rm -rf data/agent_logs data/research_signals data/recommendations data/pull_requests data/briefs data/red_team_audits data/orchestrator data/notifications data/errors
+rm -rf data/agent_logs data/research_signals data/recommendations data/pull_requests data/perplexity_results data/briefs data/red_team_audits data/orchestrator data/notifications data/errors
 ```
 
 不要删除：
@@ -624,7 +646,7 @@ run_id=RUN-20260513-60b5a1c1 status=completed
 - Red Team 成功生成 Audit
 - Orchestrator 记录为 completed
 - `uv run python webui.py` 可启动本地网页服务
-- 浏览器打开 `http://127.0.0.1:7777` 可看到主页、运行历史、股池管理、环境配置
+- 浏览器打开 `http://127.0.0.1:7777` 可看到主页、运行历史、股池管理、深度研究、环境配置
 
 已验证检查：
 

@@ -58,6 +58,37 @@ def test_trading_agent_evidence_unverified_propagates(tmp_path):
     assert "confidence: 60" in content
 
 
+def test_trading_agent_consumes_filled_perplexity_result(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+    ResearchAgent(data_dir=data_dir).run(no_llm=True)
+    prompt_path = next((data_dir / "pull_requests").glob("*.yaml"))
+    prompt_id = prompt_path.stem
+    results_dir = data_dir / "perplexity_results"
+    results_dir.mkdir(parents=True)
+    (results_dir / f"{prompt_id}_filled.yaml").write_text(
+        f"""
+prompt_id: {prompt_id}
+status: filled
+source: perplexity
+answer_text: |
+  Perplexity 深入研究结论：腾讯最近 7 天出现非连续变化证据。
+""",
+        encoding="utf-8",
+    )
+
+    result = FengliuTradingAgent(data_dir=data_dir).run(no_llm=True)
+    content = result.output_files[0].read_text(encoding="utf-8")
+    log_content = next((data_dir / "agent_logs").glob("*/trading_fengliu/*.llm.log")).read_text(
+        encoding="utf-8"
+    )
+
+    assert "used_perplexity_results: true" in content
+    assert f"- {prompt_id}" in content
+    assert "evidence_unverified_inherited: false" in content
+    assert "Perplexity 深入研究结论" in log_content
+
+
 def test_three_trading_agent_schema_differences(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
