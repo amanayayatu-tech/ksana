@@ -39,6 +39,8 @@ STOCK_CATEGORIES = (
     "watchlist",
 )
 DEEP_RESEARCH_STATUSES = {"all", "pending", "filled", "skipped"}
+LLM_PROVIDERS = {"local", "openai", "codex_cli"}
+CODEX_LOGIN_TIMEOUT_SECONDS = 300
 
 app = FastAPI(title="Agent Trading System Web UI")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
@@ -220,10 +222,24 @@ def api_save_env(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     model = str(payload.get("llm_model") or "").strip()
     api_key = str(payload.get("openai_api_key") or "")
     clear_api_key = bool(payload.get("clear_api_key"))
-    if provider not in {"local", "openai"}:
-        raise HTTPException(status_code=400, detail="LLM Provider 只能是 local 或 openai。")
+    if provider not in LLM_PROVIDERS:
+        raise HTTPException(status_code=400, detail="LLM Provider 只能是 local、openai 或 codex_cli。")
     write_env_file(provider, model, api_key, clear_api_key)
     return {"ok": True, "message": ".env 已保存", "env": get_env_status()}
+
+
+@app.get("/api/codex/login-status")
+def api_codex_login_status() -> dict[str, Any]:
+    return {"ok": True, "codex": get_codex_status()}
+
+
+@app.get("/api/codex/login-stream")
+def api_codex_login_stream() -> StreamingResponse:
+    return StreamingResponse(
+        stream_codex_login(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/deep-research/prompts")
@@ -422,6 +438,71 @@ async def stream_command_sequence(
                 yield sse("done", {"status": "failed", "return_code": return_code, "step": label})
                 return
         yield sse("done", {"status": "completed", "return_code": 0})
+
+
+async def stream_codex_login():
+    if not shutil.which("codex"):
+        yield sse("error", {"status": "failed", "message": "找不到 codex CLI，请先安装 Codex。"})
+        yield sse("done", {"status": "failed", "return_code": 127})
+        return
+
+    command = ["codex", "login", "--device-auth"]
+    yield sse("start", {"command": format_display_command(command, {}), "status": "running"})
+    process = None
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=PROJECT_ROOT,
+            env=build_child_env(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+    except FileNotFoundError:
+        yield sse("error", {"status": "failed", "message": "找不到 codex CLI，请先安装 Codex。"})
+        yield sse("done", {"status": "failed", "return_code": 127})
+        return
+
+    try:
+        assert process.stdout is not None
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + CODEX_LOGIN_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                await stop_process(process)
+                yield sse("error", {"status": "failed", "message": "Codex 登录超时，请重新启动登录。"})
+                yield sse("done", {"status": "failed", "return_code": 124})
+                return
+            try:
+                line = await asyncio.wait_for(process.stdout.readline(), timeout=remaining)
+            except asyncio.TimeoutError:
+                await stop_process(process)
+                yield sse("error", {"status": "failed", "message": "Codex 登录超时，请重新启动登录。"})
+                yield sse("done", {"status": "failed", "return_code": 124})
+                return
+            if not line:
+                break
+            yield sse("log", {"line": line.decode("utf-8", errors="replace").rstrip()})
+
+        return_code = await process.wait()
+        status = "completed" if return_code == 0 else "failed"
+        yield sse("done", {"status": status, "return_code": return_code, "codex": get_codex_status()})
+    except asyncio.CancelledError:
+        await stop_process(process)
+        raise
+    finally:
+        await stop_process(process)
+
+
+async def stop_process(process: Any) -> None:
+    if process is None or process.returncode is not None:
+        return
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
 
 
 def sse(event: str, payload: dict[str, Any]) -> str:
@@ -800,7 +881,66 @@ def get_env_status() -> dict[str, Any]:
         "llm_model": values.get("LLM_MODEL", ""),
         "openai_api_key_masked": mask_secret(api_key),
         "openai_api_key_set": bool(api_key),
+        "codex": get_codex_status(),
     }
+
+
+def get_codex_status() -> dict[str, Any]:
+    if not shutil.which("codex"):
+        return {
+            "available": False,
+            "status": "unavailable",
+            "label": "codex 不可用",
+            "detail": "PATH 中未找到 codex CLI。",
+        }
+    try:
+        completed = subprocess.run(
+            ["codex", "login", "status"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            cwd=PROJECT_ROOT,
+        )
+    except FileNotFoundError:
+        return {
+            "available": False,
+            "status": "unavailable",
+            "label": "codex 不可用",
+            "detail": "PATH 中未找到 codex CLI。",
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "available": True,
+            "status": "unknown",
+            "label": "状态未知",
+            "detail": "codex login status 超时。",
+        }
+
+    detail = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+    if completed.returncode != 0:
+        return {
+            "available": True,
+            "status": "logged_out",
+            "label": "未登录",
+            "detail": detail,
+        }
+    label = classify_codex_login_label(detail)
+    return {
+        "available": True,
+        "status": "logged_in",
+        "label": label,
+        "detail": detail,
+    }
+
+
+def classify_codex_login_label(detail: str) -> str:
+    lowered = detail.lower()
+    if "chatgpt" in lowered:
+        return "ChatGPT 登录"
+    if "api key" in lowered or "api-key" in lowered:
+        return "API key 登录"
+    return "已登录"
 
 
 def write_env_file(provider: str, model: str, api_key: str, clear_api_key: bool) -> None:

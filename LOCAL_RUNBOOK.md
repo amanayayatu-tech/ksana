@@ -108,7 +108,7 @@ Web UI 顶部有五个页面：
 - 「运行历史」：查看最近 10 条运行记录，包括 run_id、日期、brief-type 和 status。
 - 「股池管理」：读取并编辑 `data/stock_pool/master_pool.yaml`，支持港股、美股、A 股参考、观察池四类股票。
 - 「深度研究」：查看 Research Agent 生成的 Perplexity prompt，复制问题、粘贴答案、保存回填，并触发回填后重跑。
-- 「环境配置」：切换 `LLM_PROVIDER=local|openai`，设置 `LLM_MODEL` 和 `OPENAI_API_KEY`。API Key 只写入本地 `.env`，页面只显示脱敏状态。
+- 「环境配置」：切换 `LLM_PROVIDER=local|openai|codex_cli`，设置 `LLM_MODEL` / `OPENAI_API_KEY`，查看 Codex 登录状态或启动 Codex 登录。API Key 只写入本地 `.env`，页面只显示脱敏状态。
 
 ### 3.1 第一次用 Web UI 跑 Morning Brief
 
@@ -302,7 +302,7 @@ uv run python webui.py
 - 跑完后直接在页面阅读 Brief 和 Red Team Audit
 - Research Agent 生成研究问题后，进入「深度研究」复制 prompt、保存 Perplexity 回答、重跑分析
 - 需要修改股池时，进入「股池管理」
-- 需要切换 local/openai 时，进入「环境配置」
+- 需要切换 local/openai/codex_cli 或检查 Codex 登录时，进入「环境配置」
 
 ### 7.2 命令行：每天早上跑 Morning Brief
 
@@ -374,9 +374,11 @@ us_stocks:
 
 不要随便改缩进。YAML 文件最怕缩进错。
 
-## 9. 如果你想让它用 OpenAI / GPT-5.5
+## 9. 如果你想让它用 OpenAI API 或 Codex CLI
 
 第一次建议先别开。等本地保守模式跑通后再开。
+
+### 9.1 使用 OpenAI API
 
 最简单的方式是在 Web UI 的「环境配置」页面：
 
@@ -414,6 +416,29 @@ uv run orchestrator run --type full --brief-type morning --date $(date +%F)
 - 没有 API Key 时，系统也能跑，只是会用保守 fallback。
 - 当前编排里 Chairman 和 Red Team 默认用确定性模板，避免最后总结阶段乱发挥。
 - 业务 Agent 会优先尝试 LLM；如果失败，会自动降级，不应该把整个系统跑崩。
+
+### 9.2 使用 Codex CLI 登录态
+
+如果本机已经安装并登录 Codex CLI，可以不填写 `OPENAI_API_KEY`，直接让后端通过本机登录态调用 `codex exec`。
+
+在 Web UI 里：
+
+1. 进入「环境配置」。
+2. 查看「Codex 登录状态」。状态会显示 `ChatGPT 登录`、`API key 登录`、`未登录` 或 `codex 不可用`。
+3. 如果未登录，点击「启动 Codex 登录」，按页面日志里的 device auth 提示完成登录。
+4. LLM Provider 选择 `codex_cli`。
+5. `LLM_MODEL` 可以留空，使用 Codex CLI 默认配置；也可以填写具体模型，例如 `gpt-5.5`。
+6. 点击「保存 .env」。
+
+手动配置 `.env` 时可以这样写：
+
+```text
+LLM_PROVIDER=codex_cli
+LLM_MODEL=
+OPENAI_API_KEY=
+```
+
+Codex 的登录信息由 `~/.codex/` 管理，Web UI 只启动登录流程和显示 CLI 输出，不保存 token，也不会读取或展示密钥。
 
 ## 10. 如果你只想单独跑某一个 Agent
 
@@ -599,7 +624,7 @@ uv run python -m pytest -q
 看到类似下面这样就是正常：
 
 ```text
-76 passed
+88 passed
 ```
 
 运行格式检查：
@@ -651,10 +676,20 @@ run_id=RUN-20260513-60b5a1c1 status=completed
 已验证检查：
 
 ```text
-uv run ruff check webui.py
+uv run ruff check chairman red_team orchestrator business_agents tests webui.py
 uv run python -m pytest -q
-76 passed
+88 passed
 ```
+
+Codex CLI provider 已做过冒烟验证：
+
+```text
+LLM_PROVIDER=codex_cli research-agent run --type scan
+LLM_PROVIDER=codex_cli trading-fengliu run
+LLM_PROVIDER=codex_cli chairman generate-brief
+```
+
+这些路径都能通过本机 Codex 登录态触发 LLM，并继续由 Python pipeline 做 schema 校验和产物写入。
 
 ## 14. 一句话版
 

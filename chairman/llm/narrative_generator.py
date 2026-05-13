@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
+import tempfile
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -86,6 +90,85 @@ class OpenAIClient(LLMClient):
             raise LLMError(str(exc)) from exc
 
 
+class CodexCliClient(LLMClient):
+    """Codex CLI implementation using the local Codex login state."""
+
+    def __init__(
+        self,
+        model: str | None = None,
+        project_root: str | Path | None = None,
+        codex_binary: str = "codex",
+    ) -> None:
+        load_dotenv()
+        self.model = model if model is not None else os.getenv("LLM_MODEL", "")
+        self.project_root = resolve_codex_project_root(project_root)
+        self.codex_binary = codex_binary
+
+    def complete(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        timeout_seconds: int,
+        temperature: float,
+    ) -> str:
+        """Call Codex CLI as a provider and return only the final message."""
+
+        if not shutil.which(self.codex_binary):
+            raise LLMError("codex CLI is not installed or not on PATH")
+
+        prompt = build_codex_provider_prompt(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", suffix=".txt") as output_file:
+            # codex 0.130 exposes approval as a global option, before `exec`.
+            command = [
+                self.codex_binary,
+                "--ask-for-approval",
+                "never",
+                "exec",
+                "--cd",
+                str(self.project_root),
+                "--sandbox",
+                "workspace-write",
+                "--output-last-message",
+                output_file.name,
+            ]
+            if self.model:
+                command.extend(["--model", self.model])
+            command.append(prompt)
+
+            try:
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                    cwd=self.project_root,
+                )
+            except FileNotFoundError as exc:
+                raise LLMError("codex CLI is not installed or not on PATH") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise LLMTimeout(str(exc)) from exc
+
+            stdout = completed.stdout or ""
+            stderr = completed.stderr or ""
+            if completed.returncode != 0:
+                detail = (stderr or stdout).strip()
+                if looks_like_codex_login_error(detail):
+                    raise LLMError("codex CLI is not logged in")
+                raise LLMError(f"codex CLI failed with exit code {completed.returncode}: {detail}")
+
+            output_file.seek(0)
+            final_message = output_file.read().strip()
+            return final_message or stdout.strip()
+
+
 class AnthropicClient(LLMClient):
     """Anthropic placeholder behind the same interface."""
 
@@ -105,14 +188,90 @@ def build_llm_client_from_env() -> LLMClient:
 
     load_dotenv()
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    model = os.getenv("LLM_MODEL", "gpt-5.5")
+    model = os.getenv("LLM_MODEL", "")
     if provider == "openai":
-        return OpenAIClient(model=model)
+        return OpenAIClient(model=model or "gpt-5.5")
+    if provider == "codex_cli":
+        return CodexCliClient(model=model)
     if provider == "anthropic":
         return AnthropicClient()
     if provider == "local":
         return LocalClient()
     raise LLMError(f"unsupported LLM_PROVIDER={provider!r}")
+
+
+def build_codex_provider_prompt(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    temperature: float,
+) -> str:
+    """Compose a strict provider prompt for non-interactive Codex CLI."""
+
+    return f"""You are the Codex CLI acting as an LLM provider for worldpay77.
+
+Hard constraints:
+- Do not modify files, run migrations, edit data, or call external services.
+- Do not call Perplexity or any web/data API.
+- Return only the requested final answer. If JSON is requested, return strict JSON only.
+- Do not wrap JSON in Markdown fences.
+- Keep the response within roughly {max_tokens} tokens.
+- Use temperature guidance {temperature}, but preserve the requested schema exactly.
+
+<system_prompt>
+{system_prompt}
+</system_prompt>
+
+<user_prompt>
+{user_prompt}
+</user_prompt>
+"""
+
+
+def resolve_codex_project_root(project_root: str | Path | None = None) -> Path:
+    """Resolve the repository root Codex should use as its workspace."""
+
+    explicit = project_root or os.getenv("CODEX_PROJECT_ROOT", "")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+
+    cwd_root = find_repo_root(Path.cwd())
+    if cwd_root:
+        return cwd_root
+
+    module_root = find_repo_root(Path(__file__).resolve())
+    if module_root:
+        return module_root
+
+    return Path.cwd().resolve()
+
+
+def find_repo_root(start: Path) -> Path | None:
+    """Walk upward until a project marker is found."""
+
+    current = start if start.is_dir() else start.parent
+    for path in (current, *current.parents):
+        if (path / ".git").exists() or (path / "pyproject.toml").exists():
+            return path.resolve()
+    return None
+
+
+def looks_like_codex_login_error(detail: str) -> bool:
+    """Best-effort classification for Codex auth failures."""
+
+    lowered = detail.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "not logged in",
+            "login",
+            "log in",
+            "authenticate",
+            "authentication",
+            "auth",
+        )
+    )
 
 
 def generate_disagreement_narrative(
