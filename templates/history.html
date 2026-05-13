@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}运行历史 · Agent Trading System{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="panel-title">运行历史</h1>
+    <div class="row">
+      <span id="historyStatus" class="pill">待刷新</span>
+      <button id="refreshHistory">刷新</button>
+    </div>
+  </div>
+  <div class="panel-body">
+    <table>
+      <thead>
+        <tr>
+          <th>run_id</th>
+          <th>日期</th>
+          <th>brief-type</th>
+          <th>status</th>
+          <th>started_at</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const body = document.getElementById("historyBody");
+  const status = document.getElementById("historyStatus");
+
+  function setStatus(text, kind = "") {
+    status.className = `pill ${kind}`.trim();
+    status.textContent = text;
+  }
+
+  async function loadHistory() {
+    setStatus("读取中", "warn");
+    const res = await fetch("/api/history?tail=10");
+    const data = await res.json();
+    if (!data.ok) {
+      setStatus("读取失败", "error");
+      body.innerHTML = `<tr><td colspan="5" class="muted">${escapeHtml(data.error)}</td></tr>`;
+      return;
+    }
+    setStatus(`最近 ${data.rows.length} 条`, "ok");
+    if (!data.rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="muted">暂无运行记录</td></tr>';
+      return;
+    }
+    body.innerHTML = data.rows.map((row) => `
+      <tr>
+        <td><code>${escapeHtml(row.run_id || "")}</code></td>
+        <td>${escapeHtml(row.date || "")}</td>
+        <td>${escapeHtml(row.brief_type || "")}</td>
+        <td><span class="pill ${row.status === "completed" ? "ok" : "warn"}">${escapeHtml(row.status || "")}</span></td>
+        <td>${escapeHtml(row.started_at || "")}</td>
+      </tr>
+    `).join("");
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  document.getElementById("refreshHistory").addEventListener("click", loadHistory);
+  loadHistory();
+</script>
+{% endblock %}

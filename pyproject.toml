@@ -38,6 +38,10 @@ dev = [
     "pytest-cov",
     "ruff",
 ]
+webui = [
+    "fastapi",
+    "uvicorn[standard]",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

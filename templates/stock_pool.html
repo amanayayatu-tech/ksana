@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}股池管理 · Agent Trading System{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="panel-title">股池管理</h1>
+    <div class="row">
+      <span id="stockPath" class="pill">master_pool.yaml</span>
+      <span id="stockStatus" class="pill">待加载</span>
+      <button id="savePool" class="primary">保存股池</button>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="row">
+      <label>
+        version
+        <input id="poolVersion" type="number" min="1">
+      </label>
+      <label>
+        last_updated_by_nepha
+        <input id="poolUpdated" type="date">
+      </label>
+    </div>
+    <div id="poolSections" class="grid mt"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const categoryLabels = {
+    hk_stocks: "港股",
+    us_stocks: "美股",
+    a_stocks_reference_only: "A 股参考",
+    watchlist: "观察池",
+  };
+  const categories = Object.keys(categoryLabels);
+  let pool = {};
+
+  function setStatus(text, kind = "") {
+    const node = document.getElementById("stockStatus");
+    node.className = `pill ${kind}`.trim();
+    node.textContent = text;
+  }
+
+  async function loadPool() {
+    setStatus("加载中", "warn");
+    const res = await fetch("/api/stock-pool");
+    const data = await res.json();
+    if (!res.ok) {
+      setStatus(data.detail || "加载失败", "error");
+      return;
+    }
+    pool = data.stock_pool;
+    document.getElementById("stockPath").textContent = data.path;
+    document.getElementById("poolVersion").value = pool.version || 1;
+    document.getElementById("poolUpdated").value = pool.last_updated_by_nepha || "";
+    renderPool();
+    setStatus("已加载", "ok");
+  }
+
+  function renderPool() {
+    const root = document.getElementById("poolSections");
+    root.innerHTML = categories.map((category) => sectionHtml(category, pool[category] || [])).join("");
+    root.querySelectorAll("[data-add]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const category = button.dataset.add;
+        pool[category] = collectCategory(category);
+        const item = category === "watchlist"
+          ? { ticker: "", name: "", reason_to_watch: "" }
+          : { ticker: "", name: "", tags: [] };
+        pool[category].push(item);
+        renderPool();
+      });
+    });
+    root.querySelectorAll("[data-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const [category, index] = button.dataset.delete.split(":");
+        pool[category] = collectCategory(category).filter((_, idx) => idx !== Number(index));
+        renderPool();
+      });
+    });
+  }
+
+  function sectionHtml(category, items) {
+    const extraHead = category === "watchlist" ? "观察理由" : "标签";
+    const rows = items.map((item, index) => `
+      <tr data-row="${category}">
+        <td><input data-field="ticker" value="${escapeHtml(item.ticker || "")}"></td>
+        <td><input data-field="name" value="${escapeHtml(item.name || "")}"></td>
+        <td><input data-field="${category === "watchlist" ? "reason_to_watch" : "tags"}" value="${fieldValue(category, item)}"></td>
+        <td><button class="danger" data-delete="${category}:${index}">删除</button></td>
+      </tr>
+    `).join("");
+    return `
+      <section class="stock-section">
+        <div class="stock-section-head">
+          <h2 class="panel-title">${categoryLabels[category]}</h2>
+          <button data-add="${category}">新增</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 180px;">ticker</th>
+              <th style="width: 260px;">name</th>
+              <th>${extraHead}</th>
+              <th style="width: 96px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="4" class="muted">暂无股票</td></tr>'}</tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  function fieldValue(category, item) {
+    if (category === "watchlist") return escapeHtml(item.reason_to_watch || "");
+    return escapeHtml((item.tags || []).join(", "));
+  }
+
+  function collectCategory(category) {
+    return Array.from(document.querySelectorAll(`tr[data-row="${category}"]`)).map((row) => {
+      const item = {};
+      row.querySelectorAll("[data-field]").forEach((input) => {
+        item[input.dataset.field] = input.value.trim();
+      });
+      if (category !== "watchlist") {
+        item.tags = (item.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
+      }
+      return item;
+    }).filter((item) => item.ticker || item.name);
+  }
+
+  function collectPool() {
+    const next = {
+      version: Number(document.getElementById("poolVersion").value || 1),
+      last_updated_by_nepha: document.getElementById("poolUpdated").value || "",
+    };
+    categories.forEach((category) => next[category] = collectCategory(category));
+    return { stock_pool: next };
+  }
+
+  async function savePool() {
+    setStatus("保存中", "warn");
+    const res = await fetch("/api/stock-pool", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectPool()),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      setStatus(data.detail || "保存失败", "error");
+      return;
+    }
+    pool = data.stock_pool;
+    renderPool();
+    setStatus("已保存", "ok");
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  document.getElementById("savePool").addEventListener("click", savePool);
+  loadPool();
+</script>
+{% endblock %}

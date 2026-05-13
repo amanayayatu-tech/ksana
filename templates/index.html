@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}主页 · Agent Trading System{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="panel">
+    <div class="panel-head">
+      <h1 class="panel-title">本地运行</h1>
+      <div class="row">
+        <span class="pill">Provider：{{ env_status.llm_provider }}</span>
+        <span id="runStatus" class="pill">待命</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="row">
+        <label>
+          日期
+          <input id="runDate" type="date" value="{{ today }}">
+        </label>
+        <div class="spacer"></div>
+      </div>
+      <div class="grid two mt">
+        <button class="primary big-action" data-run="morning">运行早间报告</button>
+        <button class="primary big-action" data-run="evening">运行晚间报告</button>
+      </div>
+      <pre id="logBox" class="terminal mt"></pre>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">报告阅读器</h2>
+      <div class="row">
+        <input id="reportDate" type="date" value="{{ today }}">
+        <div class="tabs">
+          <button class="tab active" data-report-type="morning">早间</button>
+          <button class="tab" data-report-type="evening">晚间</button>
+        </div>
+        <button id="loadReport">读取报告</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="grid two">
+        <div>
+          <div class="row">
+            <strong>Brief</strong>
+            <span id="briefPath" class="pill">未读取</span>
+          </div>
+          <article id="briefView" class="markdown mt"></article>
+        </div>
+        <div>
+          <div class="row">
+            <strong>Red Team Audit</strong>
+            <span id="auditPath" class="pill">未读取</span>
+          </div>
+          <article id="auditView" class="markdown mt"></article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">单 Agent</h2>
+      <span id="agentStatus" class="pill">待命</span>
+    </div>
+    <div class="panel-body">
+      <div class="row">
+        <label>
+          Agent
+          <select id="agentName">
+            <option value="research">Research Agent</option>
+            <option value="fengliu">冯柳 Agent</option>
+            <option value="wanmu">万木 Agent</option>
+            <option value="liguofei">李国飞 Agent</option>
+            <option value="chairman">Chairman</option>
+            <option value="red-team">Red Team</option>
+          </select>
+        </label>
+        <label>
+          报告类型
+          <select id="agentBriefType">
+            <option value="morning">早间</option>
+            <option value="evening">晚间</option>
+          </select>
+        </label>
+        <label>
+          日期
+          <input id="agentDate" type="date" value="{{ today }}">
+        </label>
+        <label>
+          LLM
+          <select id="agentNoLlm">
+            <option value="true">--no-llm</option>
+            <option value="false">启用 LLM</option>
+          </select>
+        </label>
+        <button id="runAgent">运行 Agent</button>
+        <button id="cleanupToday" class="danger">清除所选日期运行结果</button>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const logBox = document.getElementById("logBox");
+  const runStatus = document.getElementById("runStatus");
+  const agentStatus = document.getElementById("agentStatus");
+  let reportType = "morning";
+
+  function setPill(node, text, kind = "") {
+    node.className = `pill ${kind}`.trim();
+    node.textContent = text;
+  }
+
+  function appendLog(line) {
+    logBox.textContent += `${line}\n`;
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function stream(url, statusNode, afterDone) {
+    logBox.textContent = "";
+    setPill(statusNode, "运行中", "warn");
+    const source = new EventSource(url);
+    source.addEventListener("start", (event) => {
+      const data = JSON.parse(event.data);
+      appendLog(`$ ${data.command}`);
+    });
+    source.addEventListener("log", (event) => {
+      appendLog(JSON.parse(event.data).line);
+    });
+    source.addEventListener("status", (event) => {
+      const data = JSON.parse(event.data);
+      setPill(statusNode, data.message || data.status, "warn");
+    });
+    source.addEventListener("error", (event) => {
+      if (event.data) {
+        const data = JSON.parse(event.data);
+        appendLog(data.message || "运行失败");
+      }
+      setPill(statusNode, "失败", "error");
+      source.close();
+    });
+    source.addEventListener("done", (event) => {
+      const data = JSON.parse(event.data);
+      const ok = data.return_code === 0 && data.status !== "failed";
+      setPill(statusNode, data.status, ok ? "ok" : "error");
+      source.close();
+      if (afterDone) afterDone(data);
+    });
+  }
+
+  document.querySelectorAll("[data-run]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = button.dataset.run;
+      const date = document.getElementById("runDate").value;
+      document.getElementById("reportDate").value = date;
+      setReportType(type);
+      const url = `/api/run-stream?brief_type=${type}&date=${encodeURIComponent(date)}`;
+      stream(url, runStatus, () => loadReport());
+    });
+  });
+
+  function setReportType(type) {
+    reportType = type;
+    document.querySelectorAll("[data-report-type]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.reportType === type);
+    });
+  }
+
+  document.querySelectorAll("[data-report-type]").forEach((button) => {
+    button.addEventListener("click", () => setReportType(button.dataset.reportType));
+  });
+
+  document.getElementById("loadReport").addEventListener("click", loadReport);
+
+  async function loadReport() {
+    const date = document.getElementById("reportDate").value;
+    const res = await fetch(`/api/report?date=${encodeURIComponent(date)}&brief_type=${reportType}`);
+    const data = await res.json();
+    renderMarkdown("briefView", "briefPath", data.brief, "Brief 暂无内容");
+    renderMarkdown("auditView", "auditPath", data.audit, "Red Team Audit 暂无内容");
+  }
+
+  function renderMarkdown(viewId, pathId, item, emptyText) {
+    const view = document.getElementById(viewId);
+    const path = document.getElementById(pathId);
+    if (!item.exists) {
+      path.textContent = "未找到";
+      path.className = "pill warn";
+      view.innerHTML = `<p class="muted">${emptyText}</p>`;
+      return;
+    }
+    path.textContent = item.path;
+    path.className = "pill ok";
+    view.innerHTML = DOMPurify.sanitize(marked.parse(item.content));
+  }
+
+  document.getElementById("runAgent").addEventListener("click", () => {
+    const agent = document.getElementById("agentName").value;
+    const date = document.getElementById("agentDate").value;
+    const type = document.getElementById("agentBriefType").value;
+    const noLlm = document.getElementById("agentNoLlm").value;
+    const url = `/api/agent-stream?agent=${agent}&brief_type=${type}&date=${encodeURIComponent(date)}&no_llm=${noLlm}`;
+    stream(url, agentStatus, () => {
+      if (agent === "chairman" || agent === "red-team") {
+        document.getElementById("reportDate").value = date;
+        setReportType(type);
+        loadReport();
+      }
+    });
+  });
+
+  document.getElementById("cleanupToday").addEventListener("click", async () => {
+    const date = document.getElementById("runDate").value;
+    if (!confirm(`确认清除 ${date} 的运行结果？股池不会删除，其他日期不会清除。`)) return;
+    const res = await fetch(`/api/cleanup?date=${encodeURIComponent(date)}`, { method: "POST" });
+    const data = await res.json();
+    appendLog(data.message);
+    if (data.removed.length) appendLog(`已删除：${data.removed.join(", ")}`);
+  });
+
+  loadReport();
+</script>
+{% endblock %}
