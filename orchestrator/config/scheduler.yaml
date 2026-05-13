@@ -1,0 +1,44 @@
+pipelines:
+  full_pipeline:
+    steps:
+      - research_scan
+      - trading_agents_parallel
+      - perplexity_wait
+      - chairman
+      - red_team
+      - notify
+  ad_hoc_pipeline:
+    steps:
+      - trading_agents_parallel
+      - chairman
+      - red_team
+      - notify
+
+schedules:
+  morning_brief:
+    cron: "30 8 * * 1-5"
+    timezone: Asia/Hong_Kong
+    pipeline: full_pipeline
+    brief_type: morning
+  evening_brief:
+    cron: "30 17 * * 1-5"
+    timezone: Asia/Hong_Kong
+    pipeline: full_pipeline
+    brief_type: evening
+
+ad_hoc_throttle:
+  max_per_day: 3
+  min_interval_minutes: 60
+
+perplexity_wait:
+  enabled: true
+  timeout_seconds: 1800
+  poll_interval_seconds: 30
+  only_wait_for_priority: [P0]
+
+notifications:
+  channels: [local]
+  on_completion: true
+  on_failure: true
+  on_perplexity_pending: true
+  on_red_team_critical: true

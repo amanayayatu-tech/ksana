@@ -1,0 +1,101 @@
+# 🛡️ Red Team Audit — {{ audit_id }}
+
+**生成时间**：{{ generated_at }}
+**类型**：{{ audit_type | trans }}
+**对应 Chairman brief**：{{ chairman_brief_consumed }}
+
+---
+
+## 📋 执行摘要
+
+- 审计建议总数：**{{ total_recommendations_audited }}**
+- 🔴 强烈反对：{{ strongly_oppose | join(', ') if strongly_oppose else '无' }}
+- 🟡 有保留：{{ with_reservations | join(', ') if with_reservations else '无' }}
+- 🟢 未发现严重问题：{{ no_major_issues | join(', ') if no_major_issues else '无' }}
+- ⚠️ 系统级风险：{{ systemic_risks_count }} 条
+
+---
+
+## 🚨 规则审计发现（共 {{ rule_audit_findings | length }} 条）
+
+{% for finding in rule_audit_findings %}
+### [{{ finding.severity | upper }}] {{ finding.rule_id }}
+
+**目标**：{{ finding.target_agent_id }} / {{ finding.target_recommendation_id }}
+**关联决策**：{{ finding.referenced_decisions | join(', ') }}
+
+{{ finding.finding_text }}
+
+{% if finding.evidence %}
+```yaml
+{{ finding.evidence | to_yaml }}
+```
+{% endif %}
+
+---
+{% endfor %}
+
+## 🎯 方法论挑刺
+
+{% for ch in methodology_challenges %}
+### {{ ch.ticker }} — {{ ch.agent_id }}
+
+{% for q in ch.challenges %}
+{{ loop.index }}. {{ q.text }}
+{% endfor %}
+
+{% if ch.agent_response_required %}
+> 要求 {{ ch.agent_id }} 在下一轮 recommendation 中回应这些质疑
+{% endif %}
+
+---
+{% endfor %}
+
+## ⚠️ 风险充分性评估
+
+{% for risk in risk_completeness_findings %}
+### {{ risk.risk_type | trans }} ({{ risk.severity }})
+
+涉及建议：{{ risk.affected_recommendations | join(', ') }}
+
+{{ risk.finding_text }}
+
+---
+{% endfor %}
+
+## 🔍 与 Chairman 的对照
+
+### 同意 Chairman 标注
+
+{{ chairman_alignment.agreements | join(', ') if chairman_alignment.agreements else '无' }}
+
+### Red Team 反对 Chairman 标注
+
+{% if chairman_alignment.disagreements %}
+{% for d in chairman_alignment.disagreements %}
+- {{ d }}
+{% endfor %}
+{% else %}
+无反对
+{% endif %}
+
+### Red Team 新增发现（Chairman 未标注）
+
+{% if chairman_alignment.additions %}
+{% for a in chairman_alignment.additions %}
+- {{ a }}
+{% endfor %}
+{% else %}
+无新增
+{% endif %}
+
+---
+
+## 📎 附录
+
+- **本次应用决策**：{{ decisions_applied | join(', ') }}
+- **LLM**：{% if llm_used %}已使用 {{ llm_model }}{% else %}模板化质疑（LLM 已禁用或失败）{% endif %}
+- **处理耗时**：{{ processing_time_seconds }}s
+- **rules_only**：{{ rules_only }}
+
+> Red Team 不替 Nepha 做决策。本 audit 仅指出潜在风险与逻辑漏洞，由 Nepha 综合 Chairman brief 与本 audit 自行判断。

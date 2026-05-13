@@ -1,0 +1,126 @@
+# 投研委员会简报 — {{ brief_id }}
+
+**生成时间**：{{ generated_at }}
+**简报类型**：{{ brief_type | trans }}（{{ time_zone_local }}）
+**Chairman 版本**：v{{ chairman_version }}
+
+---
+
+## 📋 执行摘要（30 秒可读完）
+
+- 今日 4.1 信号数：**{{ total_signals_today }}**
+- 收到交易 Agent 建议数：**{{ total_recommendations }}**
+- ✅ 三方一致 long：{{ full_consensus_long | join(', ') }}
+- ❌ 三方一致 avoid：{{ full_consensus_avoid | join(', ') }}
+- ⚠️ 分歧建议：{{ split_decisions | length }} 条
+- 🔍 高优先级 Red Team 待审：**{{ red_team_high_priority }}** 条
+- 💭 全员 abstain 但 4.1 信号优先级高的：{{ abstain_with_high_signals | length }} 条
+{% if perplexity_prompts_pending > 0 %}
+- 🧠 待 Nepha 手动跑的 Perplexity prompt：**{{ perplexity_prompts_pending }}** 条
+{% endif %}
+
+---
+
+## 📊 每条建议详情
+
+{% for rec_summary in per_recommendation_summary %}
+### {{ loop.index }}. {{ rec_summary.ticker }} ({{ rec_summary.market }})
+
+**一致度**：{{ rec_summary.direction_consensus.consensus_level | trans }}
+**4.1 信号 ID**：`{{ rec_summary.research_signal_id }}`
+
+#### 三方观点并列
+
+| Agent | direction | confidence | 权重 | 一句话 thesis |
+|---|---|---:|---:|---|
+{% for view in rec_summary.individual_views %}
+| {{ view.agent_id }} | **{{ view.direction }}**{% if view.abstain_reason %} ({{ view.abstain_reason }}){% endif %} | {{ view.confidence }} | × {{ view.chairman_weight_multiplier }} | {{ view.one_liner_thesis }} |
+{% endfor %}
+
+{% if rec_summary.disagreement_analysis.primary_type %}
+#### 分歧分析（{{ rec_summary.disagreement_analysis.primary_type | trans }}）
+
+> {{ rec_summary.disagreement_analysis.narrative }}
+
+{% if rec_summary.disagreement_analysis.red_team_escalation_required %}
+**已升级到 Red Team**：{{ rec_summary.disagreement_analysis.escalation_reason }}
+{% endif %}
+{% endif %}
+
+#### 仓位建议汇总（不替代 Nepha 决策）
+
+| Agent | 建议仓位 | 入场区 | 目标价 | 止损 |
+|---|---:|---|---|---|
+{% for view in rec_summary.individual_views %}
+| {{ view.agent_id }} | {{ view.position_size_pct if view.position_size_pct is not none else 'n/a' }}% | {{ view.entry_zone or 'n/a' }} | {{ view.target_price or 'n/a' }} | {{ view.stop_loss or 'n/a' }} |
+{% endfor %}
+
+仓位分歧度：**{{ rec_summary.position_aggregation.range_pct }}%**
+部署层合规：{{ rec_summary.position_aggregation.deployment_layer_compliance_aggregate | trans }}
+
+{% if rec_summary.nepha_action_hint.primary_attention_point %}
+#### Chairman 给 Nepha 的导航
+
+**主要看点**：{{ rec_summary.nepha_action_hint.primary_attention_point }}
+
+{% if rec_summary.nepha_action_hint.suggested_followup_questions %}
+**建议你追问 Red Team 或 Agent**：
+{% for q in rec_summary.nepha_action_hint.suggested_followup_questions %}
+- {{ q }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+---
+{% endfor %}
+
+## 🔍 4.1 研究上游覆盖状态
+
+- 今日 4.1 信号总数：{{ upstream_coverage_status.today_signals_emitted }}
+- 完全无 Agent 响应的信号：{{ upstream_coverage_status.signals_with_zero_agent_response | length }} 条
+{% if upstream_coverage_status.signals_with_zero_agent_response %}
+  - 详见：{{ upstream_coverage_status.signals_with_zero_agent_response | join(', ') }}
+{% endif %}
+- 全员 abstain 的信号：{{ upstream_coverage_status.signals_with_all_abstain | length }} 条
+- 待 Nepha 跑的 Perplexity prompt：{{ upstream_coverage_status.perplexity_prompt_brief_pending }} 条
+
+---
+
+## 🛡️ Red Team 待审清单
+
+{% if red_team_queue.high_priority %}
+### 高优先级（{{ red_team_queue.high_priority | length }} 条）
+
+{% for item in red_team_queue.high_priority %}
+- **{{ item.recommendation_id }}**（{{ item.agent_id }}）：{{ item.reason }}
+{% endfor %}
+{% endif %}
+
+{% if red_team_queue.medium_priority %}
+### 中优先级（{{ red_team_queue.medium_priority | length }} 条）
+
+{% for item in red_team_queue.medium_priority %}
+- **{{ item.recommendation_id or item.ticker }}**：{{ item.reason }}
+{% endfor %}
+{% endif %}
+
+---
+
+## 💭 Chairman 主动观察
+
+{% for obs in chairman_observations %}
+**{{ obs.observation_type | trans }}**：{{ obs.content }}
+{% if obs.affected_agents %}受影响 Agent：{{ obs.affected_agents | join(', ') }}{% endif %}
+
+{% endfor %}
+
+---
+
+## 📎 附录
+
+- **Brief 完整 JSON**：`{{ brief_id }}.json`
+- **本次应用的决策**：{{ decisions_applied | join(', ') }}
+- **处理耗时**：{{ processing_time_seconds }}s
+- **LLM 使用**：{% if llm_used %}是（{{ llm_model }}）{% else %}否（模板化叙事）{% endif %}
+
+> 本简报由 Chairman v0.1 自动生成。Chairman 不替你做决策——它只汇总、标注分歧、转发 4.1 prompt brief。所有最终决策权在你手上。
