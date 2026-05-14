@@ -12,15 +12,17 @@
     </div>
   </div>
   <div class="panel-body">
-    <div class="row">
-      <label>
-        version
-        <input id="poolVersion" type="number" min="1">
-      </label>
-      <label>
-        last_updated_by_nepha
-        <input id="poolUpdated" type="date">
-      </label>
+    <div class="toolbar">
+      <div class="toolbar-main">
+        <label>
+          version
+          <input id="poolVersion" type="number" min="1">
+        </label>
+        <label>
+          last_updated_by_nepha
+          <input id="poolUpdated" type="date">
+        </label>
+      </div>
     </div>
     <div id="poolSections" class="grid mt"></div>
   </div>
@@ -99,17 +101,19 @@
           <h2 class="panel-title">${categoryLabels[category]}</h2>
           <button data-add="${category}">新增</button>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 180px;">ticker</th>
-              <th style="width: 260px;">name</th>
-              <th>${extraHead}</th>
-              <th style="width: 96px;">操作</th>
-            </tr>
-          </thead>
-          <tbody>${rows || '<tr><td colspan="4" class="muted">暂无股票</td></tr>'}</tbody>
-        </table>
+        <div class="data-shell">
+          <table class="stock-table">
+            <thead>
+              <tr>
+                <th style="width: 180px;">ticker</th>
+                <th style="width: 260px;">name</th>
+                <th>${extraHead}</th>
+                <th style="width: 96px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="4" class="muted">暂无股票</td></tr>'}</tbody>
+          </table>
+        </div>
       </section>
     `;
   }

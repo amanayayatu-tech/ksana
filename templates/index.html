@@ -20,18 +20,19 @@
         <span id="pendingPerplexityPill" class="pill">Perplexity 待回填：{{ trial_status.pending_perplexity }}</span>
         <span id="filledPerplexityPill" class="pill ok">Perplexity 已回填：{{ trial_status.filled_perplexity }}</span>
       </div>
-      <div class="row">
-        <label>
-          日期
-          <input id="runDate" type="date" value="{{ today }}">
-        </label>
-        <div class="spacer"></div>
+      <div class="surface-split">
+        <div class="compact-stack">
+          <label>
+            日期
+            <input id="runDate" type="date" value="{{ today }}">
+          </label>
+          <div class="grid two">
+            <button class="primary big-action" data-run="morning">运行早间报告</button>
+            <button class="primary big-action" data-run="evening">运行晚间报告</button>
+          </div>
+        </div>
+        <pre id="logBox" class="terminal"></pre>
       </div>
-      <div class="grid two mt">
-        <button class="primary big-action" data-run="morning">运行早间报告</button>
-        <button class="primary big-action" data-run="evening">运行晚间报告</button>
-      </div>
-      <pre id="logBox" class="terminal mt"></pre>
     </div>
   </section>
 
@@ -50,14 +51,14 @@
     <div class="panel-body">
       <div class="grid two">
         <div>
-          <div class="row">
+          <div class="split-title">
             <strong>Brief</strong>
             <span id="briefPath" class="pill">未读取</span>
           </div>
           <article id="briefView" class="markdown mt"></article>
         </div>
         <div>
-          <div class="row">
+          <div class="split-title">
             <strong>Red Team Audit</strong>
             <span id="auditPath" class="pill">未读取</span>
           </div>
