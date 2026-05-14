@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -11,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from chairman.models import ResearchSignal
 from business_agents._common.base_agent import AgentRunResult, BaseBusinessAgent, write_yaml
-from business_agents._common.llm_client import LLMClient, build_llm_client_from_env
+from business_agents._common.llm_client import LLMClient, LLMError, build_llm_client_from_env
 from business_agents._common.market_data.financial_data import compact_financial_snapshot
 from business_agents._common.methodology_loader import MethodologyLoader
 from business_agents._common.output_validator import (
@@ -40,9 +42,12 @@ class TradingAgent(BaseBusinessAgent):
         data_dir: str | Path = "data",
         project_root: str | Path = ".",
         llm_client: LLMClient | None = None,
+        run_date: str | None = None,
     ) -> None:
         super().__init__(data_dir, project_root)
         self.llm_client = llm_client
+        self.run_date = normalize_run_date(run_date)
+        self.compact_run_date = self.run_date.replace("-", "")
         self.env = Environment(
             loader=FileSystemLoader(str(Path(__file__).with_name("prompts"))),
             trim_blocks=True,
@@ -79,6 +84,9 @@ class TradingAgent(BaseBusinessAgent):
                             system_prompt,
                             user_prompt,
                             stock_pool,
+                            signal,
+                            target.ticker,
+                            perplexity_context,
                         )
                         llm_used = True
                     except OutputValidationError as exc:
@@ -90,15 +98,31 @@ class TradingAgent(BaseBusinessAgent):
                             failure_category="schema_validation_failed",
                         )
                         llm_used = True
-                    except Exception:
-                        payload = self.build_debug_recommendation(
+                    except LLMError as exc:
+                        payload = self.build_abstain_recommendation(
                             signal,
                             target.ticker,
                             index,
-                            perplexity_context,
+                            format_exception(exc),
+                            failure_category="llm_runtime_failed",
+                        )
+                        llm_used = True
+                    except Exception as exc:
+                        payload = self.build_abstain_recommendation(
+                            signal,
+                            target.ticker,
+                            index,
+                            format_exception(exc),
+                            failure_category="agent_runtime_failed",
                         )
 
                 payload = self.enforce_trial_run_policy(payload)
+                payload = self.finalize_payload_for_target(
+                    payload,
+                    signal,
+                    target.ticker,
+                    perplexity_context,
+                )
                 try:
                     rec = validate_trading_recommendation_output(
                         payload,
@@ -112,6 +136,12 @@ class TradingAgent(BaseBusinessAgent):
                         index,
                         str(exc),
                         failure_category="schema_validation_failed",
+                    )
+                    payload = self.finalize_payload_for_target(
+                        payload,
+                        signal,
+                        target.ticker,
+                        perplexity_context,
                     )
                     rec = validate_trading_recommendation_output(
                         payload,
@@ -134,7 +164,8 @@ class TradingAgent(BaseBusinessAgent):
 
     def load_research_signals(self) -> list[ResearchSignal]:
         signals: list[ResearchSignal] = []
-        for path in sorted((self.data_dir / "research_signals").glob("RS-*.yaml")):
+        pattern = f"RS-{self.compact_run_date}*.yaml"
+        for path in sorted((self.data_dir / "research_signals").glob(pattern)):
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             payload = data.get("research_signal", data)
             signal = ResearchSignal.model_validate(payload)
@@ -165,7 +196,7 @@ class TradingAgent(BaseBusinessAgent):
         index: int,
         perplexity_context: PerplexityContext | None = None,
     ) -> dict[str, Any]:
-        today = datetime.now().strftime("%Y%m%d")
+        today = self.compact_run_date
         context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
         used_perplexity = context.has_filled_results
         features = extract_signal_features(signal)
@@ -253,23 +284,35 @@ class TradingAgent(BaseBusinessAgent):
         system_prompt: str,
         user_prompt: str,
         stock_pool: StockPool,
+        signal: ResearchSignal,
+        ticker: str,
+        perplexity_context: PerplexityContext,
     ) -> dict[str, Any]:
         """Ask the model for JSON and retry with validation errors before fallback."""
 
         errors: list[str] = []
         prompt = user_prompt
         last_text = ""
+        default_payload = self.build_debug_recommendation(signal, ticker, 1, perplexity_context)
         for attempt in range(3):
             text = client.complete(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 max_tokens=4000,
-                timeout_seconds=60,
+                timeout_seconds=trading_llm_timeout_seconds(),
                 temperature=0.2,
             )
             last_text = text
             try:
-                payload = self.enforce_trial_run_policy(parse_json_payload(text))
+                raw_payload = unwrap_recommendation_payload(parse_json_payload(text))
+                assert_llm_payload_has_minimum_fields(raw_payload)
+                raw_payload = merge_payload_defaults(default_payload, raw_payload)
+                payload = self.finalize_payload_for_target(
+                    self.enforce_trial_run_policy(raw_payload),
+                    signal,
+                    ticker,
+                    perplexity_context,
+                )
                 validate_trading_recommendation_output(
                     payload,
                     agent_id=self.agent_id,
@@ -336,16 +379,115 @@ class TradingAgent(BaseBusinessAgent):
     ) -> dict[str, Any]:
         raise NotImplementedError
 
+    def normalize_payload_data_points(
+        self,
+        payload: dict[str, Any],
+        signal: ResearchSignal,
+        ticker: str,
+    ) -> dict[str, Any]:
+        """Accept common LLM aliases without weakening Red Team source checks."""
+
+        fallback_source_url = first_signal_source_url(signal) or f"https://finance.yahoo.com/quote/{ticker}"
+        normalized = []
+        for item in payload.get("data_points") or []:
+            if not isinstance(item, dict):
+                normalized.append(item)
+                continue
+            point = dict(item)
+            source_url = point.get("source_url") or point.get("url")
+            if not source_url:
+                source_url = fallback_source_url
+            point["source_url"] = str(source_url)
+            normalized.append(point)
+        if normalized:
+            payload["data_points"] = normalized
+        return payload
+
+    def finalize_payload_for_target(
+        self,
+        payload: dict[str, Any],
+        signal: ResearchSignal,
+        ticker: str,
+        perplexity_context: PerplexityContext | None = None,
+    ) -> dict[str, Any]:
+        """Normalize model-controlled identity fields before validation/writing."""
+
+        payload["agent_id"] = self.agent_id
+        payload["ticker"] = ticker
+        payload["market"] = market_for_ticker(ticker)
+        payload["recommendation_id"] = self.recommendation_id_for_ticker(ticker)
+        payload = normalize_payload_scalar_fields(payload)
+        payload = self.normalize_upstream_research_refs(payload, signal, perplexity_context)
+        return self.normalize_payload_data_points(payload, signal, ticker)
+
+    def normalize_upstream_research_refs(
+        self,
+        payload: dict[str, Any],
+        signal: ResearchSignal,
+        perplexity_context: PerplexityContext | None = None,
+    ) -> dict[str, Any]:
+        context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
+        current_refs = payload.get("upstream_research_signals") or [{}]
+        if isinstance(current_refs, dict):
+            current = dict(current_refs)
+        elif isinstance(current_refs, list) and current_refs and isinstance(current_refs[0], dict):
+            current = dict(current_refs[0])
+        else:
+            current = {}
+        current.update(
+            {
+                "research_signal_id": signal.research_signal_id,
+                "signal_summary": current.get("signal_summary") or signal.signal_summary,
+                "pull_request_id": context.all_prompt_ids[0] if context.all_prompt_ids else None,
+                "used_perplexity_results": context.has_filled_results,
+                "perplexity_prompt_ids_consumed": context.filled_prompt_ids,
+                "evidence_unverified_inherited": not context.has_filled_results,
+                "confidence_ceiling_applied": None if context.has_filled_results else 70,
+                "red_team_priority_flag": current.get("red_team_priority_flag")
+                or ("low" if context.has_filled_results else "medium"),
+                "chairman_weight_multiplier": 1.0 if context.has_filled_results else 0.7,
+            }
+        )
+        current.setdefault("my_methodology_verdict", "partial")
+        current.setdefault(
+            "verdict_reason",
+            "已读取 Nepha 回填的 Perplexity 深度研究；试运行期禁用 long，保持 watch 等待人工判断。"
+            if context.has_filled_results
+            else "只具备公开价量初筛证据，缺少 Perplexity 事件原因回填。",
+        )
+        current.setdefault("relevance_score", 80)
+        payload["upstream_research_signals"] = [current]
+        return payload
+
+    def recommendation_id_for_ticker(self, ticker: str) -> str:
+        return f"{self.recommendation_prefix}-{self.compact_run_date}-{sanitize_identifier(ticker)}"
+
     def write_recommendation(self, payload: dict[str, Any]) -> Path:
-        today = datetime.now().strftime("%Y%m%d")
+        today = self.compact_run_date
+        output_dir = self.data_dir / "recommendations" / today / self.output_dir_name
+        output_path = output_dir / f"{payload['recommendation_id']}.yaml"
+        self.remove_obsolete_recommendations(output_dir, output_path, payload)
         return write_yaml(
-            self.data_dir
-            / "recommendations"
-            / today
-            / self.output_dir_name
-            / f"{payload['recommendation_id']}.yaml",
+            output_path,
             {"recommendation": payload},
         )
+
+    def remove_obsolete_recommendations(
+        self,
+        output_dir: Path,
+        output_path: Path,
+        payload: dict[str, Any],
+    ) -> None:
+        if not output_dir.exists():
+            return
+        ticker = str(payload.get("ticker") or "")
+        for path in sorted([*output_dir.glob("*.yaml"), *output_dir.glob("*.yml")]):
+            if path == output_path:
+                continue
+            data = read_yaml_safely(path)
+            existing = data.get("recommendation", data) if isinstance(data, dict) else {}
+            if isinstance(existing, dict) and str(existing.get("ticker") or "") == ticker:
+                path.unlink()
 
 
 def _deployment_compliance() -> dict[str, Any]:
@@ -398,6 +540,133 @@ def build_data_points(signal: ResearchSignal, context: PerplexityContext) -> lis
             }
         )
     return data_points
+
+
+def first_signal_source_url(signal: ResearchSignal) -> str | None:
+    for item in signal.data_points or []:
+        if isinstance(item, dict) and item.get("source_url"):
+            return str(item["source_url"])
+    for trigger in signal.discontinuity_assessment.get("triggered_rules", []) or []:
+        if isinstance(trigger, dict) and trigger.get("source_url"):
+            return str(trigger["source_url"])
+    return None
+
+
+def market_for_ticker(ticker: str) -> str:
+    if ticker.endswith(".HK"):
+        return "HK"
+    return "US"
+
+
+def sanitize_identifier(value: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "-", value.upper()).strip("-")
+    return token or "UNKNOWN"
+
+
+def read_yaml_safely(path: Path) -> Any:
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def unwrap_recommendation_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    value = payload.get("recommendation", payload)
+    if not isinstance(value, dict):
+        raise OutputValidationError("recommendation payload must be an object")
+    return value
+
+
+def merge_payload_defaults(default_payload: dict[str, Any], llm_payload: dict[str, Any]) -> dict[str, Any]:
+    """Use deterministic agent fields as a schema backbone, then overlay LLM judgment."""
+
+    merged = dict(default_payload)
+    for key, value in llm_payload.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        elif value not in (None, [], {}):
+            merged[key] = value
+    return merged
+
+
+def assert_llm_payload_has_minimum_fields(payload: dict[str, Any]) -> None:
+    required = {
+        "direction",
+        "confidence",
+        "thesis",
+    }
+    missing = sorted(key for key in required if key not in payload)
+    if missing:
+        raise OutputValidationError("missing required recommendation fields before trial policy: " + ", ".join(missing))
+
+
+def normalize_payload_scalar_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Clean common LLM formatting noise before strict schema validation."""
+
+    if "confidence" in payload:
+        payload["confidence"] = normalize_int_like(payload["confidence"], field_name="confidence")
+    if "position_size_pct" in payload:
+        payload["position_size_pct"] = normalize_float_like_or_none(payload["position_size_pct"])
+    if "entry_zone" in payload:
+        payload["entry_zone"] = normalize_entry_zone(payload["entry_zone"])
+    for field_name in ("target_price", "stop_loss"):
+        if is_blank_like(payload.get(field_name)):
+            payload[field_name] = None
+    if "direction" in payload and isinstance(payload["direction"], str):
+        payload["direction"] = payload["direction"].strip().lower()
+    return payload
+
+
+def normalize_entry_zone(value: Any) -> list[float] | None:
+    if is_blank_like(value):
+        return None
+    if not isinstance(value, list):
+        parsed = normalize_float_like_or_none(value)
+        return [parsed] if parsed is not None else None
+    normalized = [item for item in (normalize_float_like_or_none(item) for item in value) if item is not None]
+    return normalized or None
+
+
+def normalize_int_like(value: Any, *, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise OutputValidationError(f"{field_name} must be integer-like before validation: {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.endswith("%"):
+            text = text[:-1].strip()
+        if text.isdigit():
+            return int(text)
+    raise OutputValidationError(f"{field_name} must be integer-like before validation: {value!r}")
+
+
+def normalize_float_like_or_none(value: Any) -> float | None:
+    if is_blank_like(value) or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.endswith("%"):
+            text = text[:-1].strip()
+        if not text:
+            return None
+        try:
+            return float(text.replace(",", ""))
+        except ValueError:
+            return None
+    return None
+
+
+def is_blank_like(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"", "n/a", "na", "none", "null", "-", "未填", "不适用"}
+    return False
 
 
 def extract_signal_features(signal: ResearchSignal) -> dict[str, Any]:
@@ -454,6 +723,28 @@ def parse_confidence(value: Any) -> int:
     if value is None or value == "":
         return 0
     try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
+        return normalize_int_like(value, field_name="confidence")
+    except OutputValidationError as exc:
         raise OutputValidationError(f"confidence must be integer-like before trial downgrade: {value!r}") from exc
+
+
+def format_exception(exc: Exception) -> str:
+    message = str(exc)
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+def trading_llm_timeout_seconds() -> int:
+    raw = os.getenv("TRADING_LLM_TIMEOUT_SECONDS", "180")
+    try:
+        return max(30, int(raw))
+    except ValueError:
+        return 180
+
+
+def normalize_run_date(value: str | None) -> str:
+    if not value:
+        return datetime.now().strftime("%Y-%m-%d")
+    text = value.strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return text

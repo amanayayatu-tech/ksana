@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,10 +32,13 @@ class ResearchAgent(BaseBusinessAgent):
         project_root: str | Path = ".",
         llm_client: LLMClient | None = None,
         market_client: YFinanceClient | None = None,
+        run_date: str | None = None,
     ) -> None:
         super().__init__(data_dir, project_root)
         self.llm_client = llm_client
         self.market_client = market_client or YFinanceClient()
+        self.run_date = normalize_run_date(run_date)
+        self.compact_run_date = self.run_date.replace("-", "")
         self.env = Environment(
             loader=FileSystemLoader(str(Path(__file__).with_name("prompts"))),
             trim_blocks=True,
@@ -98,7 +102,7 @@ class ResearchAgent(BaseBusinessAgent):
     def build_scan_payload(self, stock_pool: StockPool) -> dict[str, Any]:
         """Scan every HK/US main-pool ticker and emit only rule-triggered signals."""
 
-        today = datetime.now().strftime("%Y%m%d")
+        today = self.compact_run_date
         emitted_at = datetime.now().astimezone().isoformat()
         signals: list[dict[str, Any]] = []
         prompts: list[dict[str, Any]] = []
@@ -134,9 +138,9 @@ class ResearchAgent(BaseBusinessAgent):
                 no_signal_tickers.append(entry.ticker)
                 continue
 
-            signal_index = len(signals) + 1
-            signal_id = f"RS-{today}-{signal_index:03d}"
-            prompt_id = f"PR-{today}-{len(prompts) + 1:03d}" if len(prompts) < 30 else None
+            target_key = sanitize_identifier(entry.ticker)
+            signal_id = f"RS-{today}-{target_key}"
+            prompt_id = f"PR-{today}-{target_key}" if len(prompts) < 30 else None
             data_points = build_signal_data_points(features, triggers)
             signal = {
                 "research_signal_id": signal_id,
@@ -208,7 +212,7 @@ class ResearchAgent(BaseBusinessAgent):
                     "expected_disagreement": ["证据未验证", "方法论阈值可能不通过"],
                 },
                 "upstream_to_trading_agents": {
-                    "chairman_route_id": f"ROUTE-{today}-{signal_index:03d}",
+                    "chairman_route_id": f"ROUTE-{today}-{target_key}",
                     "downstream_agents_notified": [
                         "fengliu_reverse_odds",
                         "wanmu_single_sided",
@@ -549,3 +553,17 @@ def build_perplexity_prompt(
         f"10 日变化：{features.get('ten_day_change_pct')}%。\n"
         "输出请包含来源链接、结论可信度、反证和仍未验证的地方。"
     )
+
+
+def normalize_run_date(value: str | None) -> str:
+    if not value:
+        return datetime.now().strftime("%Y-%m-%d")
+    text = value.strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return text
+
+
+def sanitize_identifier(value: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "-", value.upper()).strip("-")
+    return token or "UNKNOWN"

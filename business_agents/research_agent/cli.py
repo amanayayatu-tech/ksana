@@ -20,11 +20,12 @@ def cli() -> None:
 @click.option("--type", "run_type", default="scan", type=click.Choice(["scan", "event"]))
 @click.option("--signal", default=None)
 @click.option("--no-llm", is_flag=True)
+@click.option("--date", "run_date", default=None)
 @click.option("--data-dir", default="data", type=click.Path(path_type=Path))
-def run_command(run_type: str, signal: str | None, no_llm: bool, data_dir: Path) -> None:
+def run_command(run_type: str, signal: str | None, no_llm: bool, run_date: str | None, data_dir: Path) -> None:
     del signal
     try:
-        result = ResearchAgent(data_dir=data_dir).run(trigger_type=run_type, no_llm=no_llm)
+        result = ResearchAgent(data_dir=data_dir, run_date=run_date).run(trigger_type=run_type, no_llm=no_llm)
     except StockPoolError as exc:
         click.echo(str(exc), err=True)
         raise click.exceptions.Exit(1) from exc

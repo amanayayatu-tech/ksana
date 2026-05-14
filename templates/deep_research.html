@@ -251,6 +251,15 @@
     });
     source.addEventListener("done", (event) => {
       const data = JSON.parse(event.data);
+      if (data.status === "running") {
+        setPill(rerunStatus, "后台运行中", "warn");
+        if (data.run_id) {
+          appendLog(`已转入后台运行，运行历史：${data.run_id}`);
+          document.getElementById("rerunHint").innerHTML = `后台任务已创建。本页可以离开，稍后到 <a href="/history">运行历史</a> 查看结果：<code>${escapeHtml(data.run_id)}</code>`;
+        }
+        source.close();
+        return;
+      }
       const ok = data.return_code === 0 && data.status !== "failed";
       setPill(rerunStatus, data.status, ok ? "ok" : "error");
       if (data.run_id) {

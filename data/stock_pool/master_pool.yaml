@@ -1,6 +1,6 @@
 stock_pool:
   version: 1
-  last_updated_by_nepha: "2026-05-13"
+  last_updated_by_nepha: "2026-05-14"
   hk_stocks:
     - ticker: "0700.HK"
       name: "Tencent Holdings"
@@ -9,6 +9,36 @@ stock_pool:
     - ticker: "BABA"
       name: "Alibaba ADR"
       tags: ["internet", "platform"]
+    - ticker: "MSFT"
+      name: "Microsoft"
+      tags: ["cloud", "ai-infrastructure", "enterprise-software"]
+    - ticker: "NVDA"
+      name: "NVIDIA"
+      tags: ["gpu", "ai-chip", "datacenter"]
+    - ticker: "GOOGL"
+      name: "Alphabet Class A"
+      tags: ["search", "cloud", "ai-platform"]
+    - ticker: "AMZN"
+      name: "Amazon"
+      tags: ["cloud", "ecommerce", "ai-infrastructure"]
+    - ticker: "AVGO"
+      name: "Broadcom"
+      tags: ["custom-chip", "networking", "ai-infrastructure"]
+    - ticker: "META"
+      name: "Meta Platforms"
+      tags: ["social", "advertising", "ai-application"]
+    - ticker: "AAPL"
+      name: "Apple"
+      tags: ["device", "ecosystem", "edge-ai"]
+    - ticker: "AMD"
+      name: "Advanced Micro Devices"
+      tags: ["gpu", "ai-chip", "challenger"]
+    - ticker: "MU"
+      name: "Micron Technology"
+      tags: ["hbm", "memory", "ai-supply-chain"]
+    - ticker: "LLY"
+      name: "Eli Lilly"
+      tags: ["healthcare", "glp-1", "ai-drug-discovery"]
   a_stocks_reference_only:
     - ticker: "600519.SH"
       name: "Kweichow Moutai"

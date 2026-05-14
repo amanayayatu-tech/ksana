@@ -20,6 +20,8 @@ def test_methodology_loader():
     prompt = MethodologyLoader(".").load("research_system_event_bayesian")
     assert "4.1 研究体系" in prompt
     assert "你的工作约束" in prompt
+    assert "公开价量" in prompt
+    assert "research_signals" in prompt
 
 
 def test_user_prompt_renders_with_market_data(tmp_path):

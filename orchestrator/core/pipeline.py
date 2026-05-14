@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,7 +36,7 @@ def build_full_pipeline_steps(
             name="research_scan",
             command=python_noop
             if include_noop_agent_steps
-            else ["research-agent", "run", "--type", "scan", "--data-dir", "{data_dir}"],
+            else ["research-agent", "run", "--type", "scan", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=600,
             skip_on_failure=False,
         ),
@@ -43,7 +44,7 @@ def build_full_pipeline_steps(
             name="trading_fengliu",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-fengliu", "run", "--data-dir", "{data_dir}"],
+            else ["trading-fengliu", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
@@ -52,7 +53,7 @@ def build_full_pipeline_steps(
             name="trading_wanmu",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-wanmu", "run", "--data-dir", "{data_dir}"],
+            else ["trading-wanmu", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
@@ -61,7 +62,7 @@ def build_full_pipeline_steps(
             name="trading_liguofei",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-liguofei", "run", "--data-dir", "{data_dir}"],
+            else ["trading-liguofei", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
@@ -153,7 +154,10 @@ def run_full_pipeline(
         metadata={"brief_type": brief_type, "date": date},
     )
     context = {"run_id": run_id, "date": date, "brief_type": brief_type, "data_dir": str(data_dir)}
+    using_default_steps = steps is None
     steps = steps or build_full_pipeline_steps(date=date, brief_type=brief_type, data_dir=data_dir)
+    if using_default_steps:
+        clean_pipeline_inputs_for_date(data_dir, date)
     results: dict[str, StepResult] = {}
     fallback_path: Path | None = None
 
@@ -231,6 +235,29 @@ def _find_step(name: str, steps: list[PipelineStep]) -> PipelineStep:
         if step.name == name:
             return step
     raise KeyError(f"unknown step {name}")
+
+
+def clean_pipeline_inputs_for_date(data_dir: str | Path, date: str) -> list[Path]:
+    """Remove stale same-date generated inputs before a fresh full run."""
+
+    root = Path(data_dir)
+    compact = date.replace("-", "")
+    removed: list[Path] = []
+    for pattern in (
+        f"research_signals/RS-{compact}*.y*ml",
+        f"pull_requests/PR-{compact}*.y*ml",
+        f"research_runs/*{compact}*.y*ml",
+    ):
+        for path in root.glob(pattern):
+            if path.is_file():
+                path.unlink()
+                removed.append(path)
+
+    recommendations_root = root / "recommendations" / compact
+    if recommendations_root.exists():
+        shutil.rmtree(recommendations_root)
+        removed.append(recommendations_root)
+    return removed
 
 
 def _run_chairman_fallback(date: str, brief_type: str, data_dir: str | Path) -> None:

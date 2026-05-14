@@ -4,6 +4,7 @@ import asyncio
 import json
 import sqlite3
 import sys
+from pathlib import Path
 
 import yaml
 from fastapi.testclient import TestClient
@@ -116,6 +117,144 @@ def test_history_marks_fallback_from_agent_log(tmp_path, monkeypatch):
     assert row["schema_repair_or_fallback"] is True
 
 
+def test_history_reconciles_stale_running_rerun(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: False)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-14",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == [run_id]
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status, metadata_json FROM pipeline_runs").fetchone()
+    assert row[0] == "cancelled"
+    assert '"cancelled": true' in row[1]
+    assert '"cancelled_reason": "stale_running_without_backend_process"' in row[1]
+
+
+def test_history_does_not_reconcile_while_rerun_process_exists(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: True)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-14",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == []
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status FROM pipeline_runs").fetchone()
+    assert row[0] == "running"
+
+
+def test_active_rerun_process_detects_dated_trading_command(monkeypatch):
+    class ProcessList:
+        returncode = 0
+        stdout = "uv run trading-fengliu run --date 2026-05-14 --data-dir data\n"
+
+    monkeypatch.setattr(webui.subprocess, "run", lambda *args, **kwargs: ProcessList())
+
+    assert webui.has_active_rerun_process() is True
+
+
+def test_history_does_not_reconcile_while_background_task_exists(tmp_path, monkeypatch):
+    class PendingTask:
+        def done(self) -> bool:
+            return False
+
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "background_tasks", {PendingTask()})
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: False)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-14",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == []
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status FROM pipeline_runs").fetchone()
+    assert row[0] == "running"
+
+
+def test_history_reconciles_stale_running_rerun_even_if_lock_is_stuck(tmp_path, monkeypatch):
+    class LockedRunLock:
+        def locked(self):
+            return True
+
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "run_lock", LockedRunLock())
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: False)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-14",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == [run_id]
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status FROM pipeline_runs").fetchone()
+    assert row[0] == "cancelled"
+
+
 def test_artifact_endpoint_reads_project_markdown(tmp_path, monkeypatch):
     project_root = tmp_path / "app"
     data_dir = project_root / "data"
@@ -200,6 +339,167 @@ def test_deep_research_rerun_stream_writes_history(tmp_path, monkeypatch):
     assert row[0] == "deep_research_rerun"
     assert row[1] == "completed"
     assert '"date": "2026-05-13"' in row[2]
+
+
+def test_deep_research_background_rerun_survives_stream_close(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "run_lock", asyncio.Lock())
+    monkeypatch.setattr(webui, "background_tasks", set())
+
+    async def start_and_close() -> None:
+        stream = webui.stream_background_command_sequence_start(
+            [
+                (
+                    "Smoke Step",
+                    [sys.executable, "-c", "import time; print('background-ok'); time.sleep(0.2)"],
+                )
+            ],
+            {},
+            history={
+                "pipeline_type": "deep_research_rerun",
+                "trigger_source": "manual",
+                "date": "2026-05-13",
+                "brief_type": "evening",
+                "no_llm": False,
+            },
+        )
+        first_event = await stream.__anext__()
+        await stream.aclose()
+        assert "已创建后台任务" in first_event
+        tasks = list(webui.background_tasks)
+        assert len(tasks) == 1
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)
+
+    asyncio.run(start_and_close())
+
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        run_row = conn.execute("SELECT status, metadata_json FROM pipeline_runs").fetchone()
+        step_row = conn.execute("SELECT status, stdout_path FROM step_executions").fetchone()
+    assert run_row[0] == "completed"
+    assert '"background": true' in run_row[1]
+    assert step_row[0] == "success"
+    assert "background-ok" in Path(step_row[1]).read_text(encoding="utf-8")
+    assert not webui.run_lock.locked()
+
+
+def test_background_command_start_returns_history_run_id(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "run_lock", asyncio.Lock())
+    monkeypatch.setattr(webui, "background_tasks", set())
+    script = (
+        "import sys, time;"
+        "from orchestrator.persistence.run_log import RunLog;"
+        "run_log=RunLog(sys.argv[1]);"
+        "run_id=run_log.create_run("
+        "pipeline_type='full', trigger_source='manual', "
+        "metadata={'date':'2026-05-14','brief_type':'morning'}"
+        ");"
+        "time.sleep(0.2);"
+        "run_log.finish_run(run_id,'completed',{'date':'2026-05-14','brief_type':'morning'})"
+    )
+
+    async def start_background() -> list[str]:
+        events = [
+            chunk
+            async for chunk in webui.stream_background_command_start(
+                [sys.executable, "-c", script, str(data_dir / "orchestrator" / "runs.db")],
+                {},
+                expected_history={
+                    "pipeline_type": "full",
+                    "date": "2026-05-14",
+                    "brief_type": "morning",
+                },
+            )
+        ]
+        await asyncio.wait_for(asyncio.gather(*list(webui.background_tasks)), timeout=5)
+        return events
+
+    events = asyncio.run(start_background())
+
+    assert any('"status": "running"' in event for event in events)
+    assert any('"run_id": "RUN-20260514-' in event for event in events)
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status, metadata_json FROM pipeline_runs").fetchone()
+    assert row[0] == "completed"
+    assert '"brief_type": "morning"' in row[1]
+    assert not webui.run_lock.locked()
+
+
+def test_deep_research_background_rerun_cleans_stale_downstream_outputs(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    rec_dir = data_dir / "recommendations" / "20260514" / "fengliu"
+    brief_dir = data_dir / "briefs" / "20260514"
+    audit_dir = data_dir / "red_team_audits" / "20260514"
+    rec_dir.mkdir(parents=True)
+    brief_dir.mkdir(parents=True)
+    audit_dir.mkdir(parents=True)
+    (rec_dir / "OLD.yaml").write_text("recommendation: {ticker: AMD}", encoding="utf-8")
+    (brief_dir / "BRIEF-20260514-AM.md").write_text("old brief", encoding="utf-8")
+    (audit_dir / "AUDIT-20260514-AM.md").write_text("old audit", encoding="utf-8")
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "run_lock", asyncio.Lock())
+    monkeypatch.setattr(webui, "background_tasks", set())
+
+    async def start_background() -> None:
+        events = [
+            chunk
+            async for chunk in webui.stream_background_command_sequence_start(
+                [("Smoke Step", [sys.executable, "-c", "print('ok')"])],
+                {},
+                history={
+                    "pipeline_type": "deep_research_rerun",
+                    "trigger_source": "manual",
+                    "date": "2026-05-14",
+                    "brief_type": "morning",
+                    "no_llm": False,
+                },
+            )
+        ]
+        assert any("已创建后台任务" in event for event in events)
+        await asyncio.wait_for(asyncio.gather(*list(webui.background_tasks)), timeout=5)
+
+    asyncio.run(start_background())
+
+    assert not rec_dir.exists()
+    assert not (brief_dir / "BRIEF-20260514-AM.md").exists()
+    assert not (audit_dir / "AUDIT-20260514-AM.md").exists()
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status, metadata_json FROM pipeline_runs").fetchone()
+    assert row[0] == "completed"
+    assert '"cleanup_removed_count": 3' in row[1]
+
+
+def test_deep_research_rerun_commands_include_selected_date():
+    commands = webui.build_deep_research_rerun_commands("morning", "2026-05-14", no_llm=False)
+    trading_commands = [command for label, command in commands if label.endswith("Agent")]
+
+    assert trading_commands
+    assert all("--date" in command and "2026-05-14" in command for command in trading_commands)
+
+
+def test_running_history_row_does_not_show_stale_date_artifacts(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    brief_dir = data_dir / "briefs" / "20260514"
+    audit_dir = data_dir / "red_team_audits" / "20260514"
+    brief_dir.mkdir(parents=True)
+    audit_dir.mkdir(parents=True)
+    (brief_dir / "BRIEF-20260514-AM.md").write_text("old brief", encoding="utf-8")
+    (audit_dir / "AUDIT-20260514-AM.md").write_text("old audit", encoding="utf-8")
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    row = webui.shape_history_row(
+        {
+            "run_id": "RUN-20260514-ABC",
+            "status": "running",
+            "metadata_json": json.dumps({"date": "2026-05-14", "brief_type": "morning"}),
+            "started_at": "2026-05-14T13:00:00+08:00",
+            "ended_at": None,
+        }
+    )
+
+    assert row["artifacts"] == {}
 
 
 def test_deep_research_rerun_stream_marks_cancelled_history(tmp_path, monkeypatch):

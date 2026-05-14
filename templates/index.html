@@ -153,6 +153,17 @@
     });
     source.addEventListener("done", (event) => {
       const data = JSON.parse(event.data);
+      if (data.status === "running") {
+        setPill(statusNode, "后台运行中", "warn");
+        if (data.run_id) {
+          appendLog(`已转入后台运行，运行历史：${data.run_id}`);
+          appendLog("可以离开本页；完成后到“运行历史”查看 Brief 和 Red Team 产物。");
+        } else {
+          appendLog("已转入后台运行；稍后刷新“运行历史”查看状态。");
+        }
+        source.close();
+        return;
+      }
       const ok = data.return_code === 0 && data.status !== "failed";
       setPill(statusNode, data.status, ok ? "ok" : "error");
       source.close();

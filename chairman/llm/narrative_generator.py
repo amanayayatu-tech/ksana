@@ -131,6 +131,8 @@ class CodexCliClient(LLMClient):
                 "--ask-for-approval",
                 "never",
                 "exec",
+                "-c",
+                f'model_reasoning_effort="{codex_provider_reasoning_effort()}"',
                 "--cd",
                 str(self.project_root),
                 "--sandbox",
@@ -198,6 +200,12 @@ def build_llm_client_from_env() -> LLMClient:
     if provider == "local":
         return LocalClient()
     raise LLMError(f"unsupported LLM_PROVIDER={provider!r}")
+
+
+def codex_provider_reasoning_effort() -> str:
+    """Keep provider-style Codex calls responsive unless explicitly overridden."""
+
+    return os.getenv("CODEX_PROVIDER_REASONING_EFFORT", "low").strip() or "low"
 
 
 def build_codex_provider_prompt(

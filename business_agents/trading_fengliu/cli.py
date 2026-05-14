@@ -18,10 +18,11 @@ def cli() -> None:
 
 @cli.command("run")
 @click.option("--no-llm", is_flag=True)
+@click.option("--date", "run_date", default=None)
 @click.option("--data-dir", default="data", type=click.Path(path_type=Path))
-def run_command(no_llm: bool, data_dir: Path) -> None:
+def run_command(no_llm: bool, run_date: str | None, data_dir: Path) -> None:
     try:
-        result = FengliuTradingAgent(data_dir=data_dir).run(no_llm=no_llm)
+        result = FengliuTradingAgent(data_dir=data_dir, run_date=run_date).run(no_llm=no_llm)
     except StockPoolError as exc:
         click.echo(str(exc), err=True)
         raise click.exceptions.Exit(1) from exc

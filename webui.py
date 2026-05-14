@@ -10,7 +10,7 @@ import shlex
 import shutil
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +45,7 @@ STOCK_CATEGORIES = (
 DEEP_RESEARCH_STATUSES = {"all", "pending", "filled", "skipped"}
 LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
+RUNNING_RUN_STALE_SECONDS = 300
 RERUN_STEP_NAMES = {
     "冯柳 Agent": "trading_fengliu",
     "万木 Agent": "trading_wanmu",
@@ -56,6 +57,7 @@ RERUN_STEP_NAMES = {
 app = FastAPI(title="Agent Trading System Web UI")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 run_lock = asyncio.Lock()
+background_tasks: set[asyncio.Task[Any]] = set()
 
 
 @app.get("/")
@@ -135,7 +137,15 @@ async def run_stream(
         "--date",
         date,
     ]
-    return stream_command_response(command, {"LLM_PROVIDER": provider})
+    return stream_background_command_response(
+        command,
+        {"LLM_PROVIDER": provider},
+        expected_history={
+            "pipeline_type": "full",
+            "date": date,
+            "brief_type": brief_type,
+        },
+    )
 
 
 @app.get("/api/agent-stream")
@@ -182,6 +192,7 @@ def api_artifact(path: str = Query(...)) -> dict[str, Any]:
 
 @app.get("/api/history")
 def api_history(tail: int = Query(10, ge=1, le=100)) -> dict[str, Any]:
+    reconcile_stale_running_runs()
     command = ["uv", "run", "orchestrator", "history", "--data-dir", "data", "--tail", str(tail)]
     try:
         result = subprocess.run(
@@ -355,7 +366,7 @@ async def deep_research_rerun_stream(
     validate_brief_type(brief_type)
     date = normalize_date(run_date)
     commands = build_deep_research_rerun_commands(brief_type, date, no_llm)
-    return stream_command_sequence_response(
+    return stream_background_command_sequence_response(
         commands,
         {},
         history={
@@ -387,6 +398,18 @@ def stream_command_response(
     )
 
 
+def stream_background_command_response(
+    command: list[str],
+    env_overrides: dict[str, str],
+    expected_history: dict[str, Any] | None = None,
+) -> StreamingResponse:
+    return StreamingResponse(
+        stream_background_command_start(command, env_overrides, expected_history=expected_history),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 def stream_command_sequence_response(
     commands: list[tuple[str, list[str]]],
     env_overrides: dict[str, str],
@@ -396,6 +419,191 @@ def stream_command_sequence_response(
         stream_command_sequence(commands, env_overrides, history=history),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def stream_background_command_start(
+    command: list[str],
+    env_overrides: dict[str, str],
+    expected_history: dict[str, Any] | None = None,
+):
+    if run_lock.locked():
+        yield sse("status", {"status": "busy", "message": "已有任务正在运行。"})
+        yield sse("done", {"status": "busy", "return_code": 1})
+        return
+    if not shutil.which(command[0]):
+        yield sse("error", {"status": "failed", "message": f"找不到 {command[0]}，请先安装。"})
+        yield sse("done", {"status": "failed", "return_code": 127})
+        return
+
+    existing_run_ids = current_run_ids()
+    await run_lock.acquire()
+    try:
+        task = asyncio.create_task(run_background_command(command, env_overrides))
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
+    except Exception as exc:
+        if run_lock.locked():
+            run_lock.release()
+        yield sse("error", {"status": "failed", "message": f"后台任务创建失败：{exc}"})
+        yield sse("done", {"status": "failed", "return_code": 1})
+        return
+
+    display_command = format_display_command(command, env_overrides)
+    yield sse("start", {"command": display_command, "status": "running"})
+    run_id = await wait_for_new_history_run(existing_run_ids, expected_history)
+    message = f"已创建后台任务：{run_id}" if run_id else "已创建后台任务，稍后刷新运行历史查看。"
+    yield sse(
+        "status",
+        {
+            "status": "running",
+            "message": message,
+            "run_id": run_id,
+        },
+    )
+    yield sse(
+        "done",
+        {
+            "status": "running",
+            "return_code": 0,
+            "run_id": run_id,
+            "history_path": "/history",
+        },
+    )
+
+
+async def run_background_command(command: list[str], env_overrides: dict[str, str]) -> None:
+    env = build_child_env(env_overrides)
+    process: Any | None = None
+    logs_dir = DATA_DIR / "webui_background_logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = logs_dir / f"command-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.out"
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=PROJECT_ROOT,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert process.stdout is not None
+        with stdout_path.open("w", encoding="utf-8") as output:
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                output.write(line.decode("utf-8", errors="replace"))
+        await process.wait()
+    except asyncio.CancelledError:
+        await stop_process(process)
+        raise
+    finally:
+        await stop_process(process)
+        if run_lock.locked():
+            run_lock.release()
+
+
+def current_run_ids() -> set[str]:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    return {str(row.get("run_id", "")) for row in run_log.list_runs(tail=100)}
+
+
+async def wait_for_new_history_run(
+    existing_run_ids: set[str],
+    expected_history: dict[str, Any] | None,
+    timeout_seconds: float = 5.0,
+) -> str:
+    if not expected_history:
+        return ""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while loop.time() < deadline:
+        run_id = find_new_history_run(existing_run_ids, expected_history)
+        if run_id:
+            return run_id
+        await asyncio.sleep(0.2)
+    return ""
+
+
+def find_new_history_run(existing_run_ids: set[str], expected_history: dict[str, Any]) -> str:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    for row in run_log.list_runs(tail=50):
+        run_id = str(row.get("run_id", ""))
+        if run_id in existing_run_ids:
+            continue
+        if expected_history.get("pipeline_type") and row.get("pipeline_type") != expected_history["pipeline_type"]:
+            continue
+        metadata = parse_metadata_json(row.get("metadata_json", ""))
+        if expected_history.get("date") and metadata.get("date") != expected_history["date"]:
+            continue
+        if expected_history.get("brief_type") and metadata.get("brief_type") != expected_history["brief_type"]:
+            continue
+        return run_id
+    return ""
+
+
+def stream_background_command_sequence_response(
+    commands: list[tuple[str, list[str]]],
+    env_overrides: dict[str, str],
+    history: dict[str, Any],
+) -> StreamingResponse:
+    return StreamingResponse(
+        stream_background_command_sequence_start(commands, env_overrides, history=history),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def stream_background_command_sequence_start(
+    commands: list[tuple[str, list[str]]],
+    env_overrides: dict[str, str],
+    history: dict[str, Any],
+):
+    if run_lock.locked():
+        yield sse("status", {"status": "busy", "message": "已有任务正在运行。"})
+        yield sse("done", {"status": "busy", "return_code": 1})
+        return
+
+    await run_lock.acquire()
+    lock_transferred = False
+    try:
+        run_log, run_id, history_metadata, logs_dir = create_rerun_history(history)
+        task = asyncio.create_task(
+            run_background_command_sequence(
+                commands,
+                env_overrides,
+                run_log,
+                run_id,
+                history_metadata,
+                logs_dir,
+            )
+        )
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
+        lock_transferred = True
+    except Exception as exc:
+        if not lock_transferred and run_lock.locked():
+            run_lock.release()
+        yield sse("error", {"status": "failed", "message": f"后台任务创建失败：{exc}"})
+        yield sse("done", {"status": "failed", "return_code": 1})
+        return
+
+    yield sse(
+        "status",
+        {
+            "status": "running",
+            "message": f"已创建后台任务：{run_id}",
+            "run_id": run_id,
+        },
+    )
+    yield sse(
+        "done",
+        {
+            "status": "running",
+            "return_code": 0,
+            "run_id": run_id,
+            "history_path": "/history",
+        },
     )
 
 
@@ -622,6 +830,173 @@ async def stream_command_sequence(
             await stop_process(active_process)
 
 
+def create_rerun_history(history: dict[str, Any]) -> tuple[RunLog, str, dict[str, Any], Path]:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    history_metadata = {
+        "brief_type": history["brief_type"],
+        "date": history["date"],
+        "source": "deep_research_rerun",
+        "no_llm": history["no_llm"],
+        "background": True,
+    }
+    run_id = run_log.create_run(
+        pipeline_type=history["pipeline_type"],
+        trigger_source=history["trigger_source"],
+        metadata=history_metadata,
+    )
+    logs_dir = DATA_DIR / "orchestrator" / "logs" / run_id
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return run_log, run_id, history_metadata, logs_dir
+
+
+async def run_background_command_sequence(
+    commands: list[tuple[str, list[str]]],
+    env_overrides: dict[str, str],
+    run_log: RunLog,
+    run_id: str,
+    history_metadata: dict[str, Any],
+    logs_dir: Path,
+) -> None:
+    env = build_child_env(env_overrides)
+    active_process: Any | None = None
+    active_step_name = ""
+    active_stdout_lines: list[str] = []
+    run_finished = False
+    try:
+        cleanup_removed = cleanup_deep_research_rerun_outputs(
+            history_metadata.get("date", ""),
+            history_metadata.get("brief_type", ""),
+        )
+        history_metadata["cleanup_removed_count"] = len(cleanup_removed)
+        for label, command in commands:
+            step_name = RERUN_STEP_NAMES.get(
+                label,
+                re.sub(r"[^A-Za-z0-9_]+", "_", label).strip("_").lower(),
+            )
+            active_step_name = step_name
+            active_stdout_lines = []
+            try:
+                active_process = await asyncio.create_subprocess_exec(
+                    *command,
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+            except FileNotFoundError:
+                record_background_rerun_step(
+                    run_log,
+                    run_id,
+                    logs_dir,
+                    step_name,
+                    active_stdout_lines,
+                    "找不到 uv，请先安装 uv。\n",
+                    "failed",
+                    127,
+                    history_metadata,
+                )
+                failed_metadata = dict(history_metadata)
+                failed_metadata["failed_step"] = step_name
+                run_log.finish_run(run_id, "failed", failed_metadata)
+                run_finished = True
+                return
+
+            assert active_process.stdout is not None
+            while True:
+                line = await active_process.stdout.readline()
+                if not line:
+                    break
+                active_stdout_lines.append(line.decode("utf-8", errors="replace").rstrip())
+
+            return_code = await active_process.wait()
+            active_process = None
+            step_status = "success" if return_code == 0 else "failed"
+            record_background_rerun_step(
+                run_log,
+                run_id,
+                logs_dir,
+                step_name,
+                active_stdout_lines,
+                "",
+                step_status,
+                return_code,
+                history_metadata,
+            )
+            if return_code != 0:
+                failed_metadata = dict(history_metadata)
+                failed_metadata["failed_step"] = step_name
+                run_log.finish_run(run_id, "failed", failed_metadata)
+                run_finished = True
+                return
+            active_step_name = ""
+            active_stdout_lines = []
+
+        run_log.finish_run(run_id, "completed", history_metadata)
+        run_finished = True
+    except asyncio.CancelledError:
+        await stop_process(active_process)
+        if not run_finished:
+            cancelled_metadata = dict(history_metadata)
+            cancelled_metadata["cancelled"] = True
+            if active_step_name:
+                cancelled_metadata["failed_step"] = active_step_name
+                record_cancelled_rerun_step(
+                    run_log,
+                    run_id,
+                    logs_dir,
+                    active_step_name,
+                    active_stdout_lines,
+                    history_metadata,
+                    active_process.returncode if active_process else None,
+                )
+            run_log.finish_run(run_id, "cancelled", cancelled_metadata)
+        raise
+    except Exception as exc:
+        await stop_process(active_process)
+        if not run_finished:
+            failed_metadata = dict(history_metadata)
+            failed_metadata["failed_step"] = active_step_name or "unknown"
+            failed_metadata["error"] = str(exc)[:500]
+            run_log.finish_run(run_id, "failed", failed_metadata)
+    finally:
+        await stop_process(active_process)
+        if run_lock.locked():
+            run_lock.release()
+
+
+def record_background_rerun_step(
+    run_log: RunLog,
+    run_id: str,
+    logs_dir: Path,
+    step_name: str,
+    stdout_lines: list[str],
+    stderr_text: str,
+    status: str,
+    exit_code: int | None,
+    history_metadata: dict[str, Any],
+) -> None:
+    stdout_path = logs_dir / f"{step_name}-1.out"
+    stderr_path = logs_dir / f"{step_name}-1.err"
+    stdout_path.write_text("\n".join(stdout_lines) + ("\n" if stdout_lines else ""), encoding="utf-8")
+    stderr_path.write_text(stderr_text, encoding="utf-8")
+    run_log.record_step(
+        run_id,
+        StepResult(
+            step_name=step_name,
+            status=status,
+            exit_code=exit_code,
+            attempts=1,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            output_files=output_files_for_rerun_step(
+                step_name,
+                history_metadata.get("date", ""),
+                history_metadata.get("brief_type", ""),
+            ),
+        ),
+    )
+
+
 def record_cancelled_rerun_step(
     run_log: RunLog,
     run_id: str,
@@ -728,9 +1103,9 @@ def build_deep_research_rerun_commands(
     no_llm: bool,
 ) -> list[tuple[str, list[str]]]:
     trading_commands = [
-        ("冯柳 Agent", ["uv", "run", "trading-fengliu", "run", "--data-dir", "data"]),
-        ("万木 Agent", ["uv", "run", "trading-wanmu", "run", "--data-dir", "data"]),
-        ("李国飞 Agent", ["uv", "run", "trading-liguofei", "run", "--data-dir", "data"]),
+        ("冯柳 Agent", ["uv", "run", "trading-fengliu", "run", "--date", date, "--data-dir", "data"]),
+        ("万木 Agent", ["uv", "run", "trading-wanmu", "run", "--date", date, "--data-dir", "data"]),
+        ("李国飞 Agent", ["uv", "run", "trading-liguofei", "run", "--date", date, "--data-dir", "data"]),
     ]
     if no_llm:
         for _, command in trading_commands:
@@ -802,6 +1177,10 @@ def output_files_for_rerun_step(step_name: str, date: str, brief_type: str) -> l
 def build_agent_command(agent: str, brief_type: str, date: str, no_llm: bool) -> list[str]:
     if agent in AGENT_COMMANDS:
         command = list(AGENT_COMMANDS[agent])
+        if agent == "research":
+            command.extend(["--date", date])
+        elif agent in {"fengliu", "wanmu", "liguofei"}:
+            command.extend(["--date", date])
         if no_llm:
             command.append("--no-llm")
         return command
@@ -911,7 +1290,7 @@ def shape_prompt_record(path: Path) -> dict[str, Any]:
     related_signal_id = str(prompt.get("related_signal_id") or "")
     priority = str(prompt.get("priority") or "")
     prompt_text = str(prompt.get("prompt_text") or "")
-    status_payload = deep_research_status(prompt_id)
+    status_payload = deep_research_status(prompt_id, prompt_text=prompt_text, related_signal_id=related_signal_id)
     record = {
         "prompt_id": prompt_id,
         "related_signal_id": related_signal_id,
@@ -953,12 +1332,29 @@ def prompt_matches_date(prompt: dict[str, Any], date: str) -> bool:
     return compact in haystack or date in haystack
 
 
-def deep_research_status(prompt_id: str) -> dict[str, Any]:
+def deep_research_status(
+    prompt_id: str,
+    *,
+    prompt_text: str = "",
+    related_signal_id: str = "",
+) -> dict[str, Any]:
     results_dir = DATA_DIR / "perplexity_results"
     filled_path = results_dir / f"{prompt_id}_filled.yaml"
     skipped_path = results_dir / f"{prompt_id}_skipped.yaml"
     if filled_path.exists():
         data = read_yaml_file(filled_path)
+        mismatch = deep_research_result_mismatch(data, prompt_id, prompt_text, related_signal_id)
+        if mismatch:
+            return {
+                "status": "pending",
+                "status_label": "待回填",
+                "result_path": "",
+                "answer_text": "",
+                "updated_at": "",
+                "skip_reason": "",
+                "ignored_result_path": relative_path(filled_path),
+                "ignored_result_reason": mismatch,
+            }
         return {
             "status": "filled",
             "status_label": "已回填",
@@ -969,6 +1365,18 @@ def deep_research_status(prompt_id: str) -> dict[str, Any]:
         }
     if skipped_path.exists():
         data = read_yaml_file(skipped_path)
+        mismatch = deep_research_result_mismatch(data, prompt_id, prompt_text, related_signal_id)
+        if mismatch:
+            return {
+                "status": "pending",
+                "status_label": "待回填",
+                "result_path": "",
+                "answer_text": "",
+                "updated_at": "",
+                "skip_reason": "",
+                "ignored_result_path": relative_path(skipped_path),
+                "ignored_result_reason": mismatch,
+            }
         return {
             "status": "skipped",
             "status_label": "已跳过",
@@ -985,6 +1393,27 @@ def deep_research_status(prompt_id: str) -> dict[str, Any]:
         "updated_at": "",
         "skip_reason": "",
     }
+
+
+def deep_research_result_mismatch(
+    data: Any,
+    prompt_id: str,
+    prompt_text: str,
+    related_signal_id: str,
+) -> str:
+    if not isinstance(data, dict):
+        return ""
+    actual_prompt_id = str(data.get("prompt_id") or "")
+    if actual_prompt_id and actual_prompt_id != prompt_id:
+        return "prompt_id 不一致，已忽略旧回填。"
+    actual_signal_id = str(data.get("related_signal_id") or "")
+    if actual_signal_id and related_signal_id and actual_signal_id != related_signal_id:
+        return "related_signal_id 不一致，已忽略旧回填。"
+    actual_prompt_text = " ".join(str(data.get("prompt_text") or "").split())
+    expected_prompt_text = " ".join(prompt_text.split())
+    if actual_prompt_text and expected_prompt_text and actual_prompt_text != expected_prompt_text:
+        return "prompt 文本不一致，已忽略旧回填。"
+    return ""
 
 
 def find_pull_request(prompt_id: str) -> dict[str, Any]:
@@ -1034,6 +1463,93 @@ def read_yaml_file_safely(path: Path) -> Any:
         return {}
 
 
+def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECONDS) -> list[str]:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    rows = run_log.list_runs(status="running", tail=100)
+    if not rows:
+        return []
+
+    now = datetime.now().astimezone()
+    stale_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in rows:
+        metadata = parse_metadata_json(row.get("metadata_json", ""))
+        if row.get("pipeline_type") != "deep_research_rerun" and metadata.get("source") != "deep_research_rerun":
+            continue
+        started_at = parse_datetime(row.get("started_at", ""))
+        if started_at and now - started_at < timedelta(seconds=max_age_seconds):
+            continue
+        stale_rows.append((row, metadata))
+
+    if not stale_rows or has_active_background_rerun_task() or has_active_rerun_process():
+        return []
+
+    cancelled_run_ids: list[str] = []
+    for row, metadata in stale_rows:
+        cancelled_metadata = dict(metadata)
+        cancelled_metadata["cancelled"] = True
+        cancelled_metadata.setdefault("failed_step", "unknown")
+        cancelled_metadata["cancelled_reason"] = "stale_running_without_backend_process"
+        run_log.finish_run(row["run_id"], "cancelled", cancelled_metadata)
+        cancelled_run_ids.append(row["run_id"])
+    return cancelled_run_ids
+
+
+def has_active_background_rerun_task() -> bool:
+    return any(not task.done() for task in background_tasks)
+
+
+def parse_metadata_json(value: str) -> dict[str, Any]:
+    try:
+        metadata = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def parse_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return parsed
+
+
+def has_active_rerun_process() -> bool:
+    process_markers = (
+        ("trading-fengliu", "run", "--data-dir"),
+        ("trading-wanmu", "run", "--data-dir"),
+        ("trading-liguofei", "run", "--data-dir"),
+        ("chairman", "generate-brief"),
+        ("red-team", "audit"),
+        ("Codex CLI acting as an LLM provider for worldpay77",),
+    )
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "command"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    if result.returncode != 0:
+        return True
+    return any(
+        process_command_matches(line, marker_tokens)
+        for line in result.stdout.splitlines()
+        for marker_tokens in process_markers
+    )
+
+
+def process_command_matches(command_line: str, marker_tokens: tuple[str, ...]) -> bool:
+    return all(token in command_line for token in marker_tokens)
+
+
 def cleanup_date_artifacts(date: str) -> list[str]:
     compact = date.replace("-", "")
     removed: list[str] = []
@@ -1059,6 +1575,26 @@ def cleanup_date_artifacts(date: str) -> list[str]:
     remove_matching_children(DATA_DIR / "orchestrator" / "logs", date, compact, removed)
     for run_id in cleanup_run_history(date, compact):
         remove_path(DATA_DIR / "orchestrator" / "logs" / run_id, removed)
+    return removed
+
+
+def cleanup_deep_research_rerun_outputs(date: str, brief_type: str) -> list[str]:
+    """Remove downstream outputs that would otherwise mix old and new reruns."""
+
+    if not date or brief_type not in BRIEF_TYPES:
+        return []
+    compact = date.replace("-", "")
+    suffix = BRIEF_TYPES[brief_type]
+    removed: list[str] = []
+    for path in (
+        DATA_DIR / "recommendations" / compact,
+        DATA_DIR / "agent_logs" / compact,
+        DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.md",
+        DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.json",
+        DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.md",
+        DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.json",
+    ):
+        remove_path(path, removed)
     return removed
 
 
@@ -1302,7 +1838,7 @@ def shape_history_row(row: dict[str, Any]) -> dict[str, Any]:
         "brief_type": brief_type,
         "status": row.get("status", ""),
         "failed_step": metadata.get("failed_step", ""),
-        "artifacts": find_run_artifacts(date, brief_type),
+        "artifacts": find_run_artifacts_for_row(row, date, brief_type),
         "schema_repair_or_fallback": run_has_schema_repair_or_fallback(date, metadata),
         "started_at": started_at,
         "ended_at": row.get("ended_at") or "",
@@ -1387,6 +1923,60 @@ def find_run_artifacts(date: str, brief_type: str) -> dict[str, str]:
         artifacts["brief"] = relative_path(brief)
     if audit:
         artifacts["audit"] = relative_path(audit)
+    return artifacts
+
+
+def find_run_artifacts_for_row(row: dict[str, Any], date: str, brief_type: str) -> dict[str, str]:
+    """Prefer artifacts recorded for this run; never show stale files for running rows."""
+
+    status = str(row.get("status") or "")
+    if status == "running":
+        return {}
+    run_id = str(row.get("run_id") or "")
+    artifacts = find_recorded_run_artifacts(run_id)
+    if artifacts:
+        return artifacts
+    if status in {"completed", "partial_success"}:
+        return find_run_artifacts(date, brief_type)
+    return {}
+
+
+def find_recorded_run_artifacts(run_id: str) -> dict[str, str]:
+    if not run_id:
+        return {}
+    db_path = DATA_DIR / "orchestrator" / "runs.db"
+    if not db_path.exists():
+        return {}
+    artifacts: dict[str, str] = {}
+    try:
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT output_files_json
+                FROM step_executions
+                WHERE run_id = ?
+                ORDER BY ended_at ASC
+                """,
+                (run_id,),
+            ).fetchall()
+    except sqlite3.Error:
+        return {}
+    for (value,) in rows:
+        try:
+            paths = json.loads(value or "[]")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(paths, list):
+            continue
+        for path_text in paths:
+            path = Path(str(path_text))
+            if path.suffix.lower() != ".md":
+                continue
+            path_parts = set(path.parts)
+            if "briefs" in path_parts:
+                artifacts["brief"] = relative_path(path)
+            elif "red_team_audits" in path_parts:
+                artifacts["audit"] = relative_path(path)
     return artifacts
 
 

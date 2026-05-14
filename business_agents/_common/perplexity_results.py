@@ -10,6 +10,8 @@ import yaml
 
 from chairman.models import ResearchSignal
 
+MAX_PERPLEXITY_ANSWER_CHARS = 3200
+
 
 @dataclass(frozen=True)
 class PerplexityContext:
@@ -121,7 +123,10 @@ def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, An
         prompt = data.get("prompt", data) if isinstance(data, dict) else {}
         prompt_id = str(prompt.get("prompt_id") or path.stem)
         related_signal_id = str(prompt.get("related_signal_id") or "")
-        if related_signal_id == signal.research_signal_id or prompt_id in prompt_ids:
+        if prompt_id in prompt_ids or (
+            related_signal_id == signal.research_signal_id
+            and prompt_record_matches_signal(prompt, signal)
+        ):
             prompt_ids.add(prompt_id)
             records[prompt_id] = {
                 "prompt_id": prompt_id,
@@ -142,7 +147,7 @@ def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, An
                 "prompt_path": "",
             },
         )
-        record.update(load_result_status(root, prompt_id))
+        record.update(load_result_status(root, record))
 
     return [records[prompt_id] for prompt_id in sorted(records)]
 
@@ -156,21 +161,40 @@ def prompt_ids_for_signal(signal: ResearchSignal) -> set[str]:
     return ids
 
 
-def load_result_status(root: Path, prompt_id: str) -> dict[str, Any]:
+def load_result_status(root: Path, record: dict[str, Any] | str) -> dict[str, Any]:
+    if isinstance(record, str):
+        record = {"prompt_id": record, "related_signal_id": "", "prompt_text": ""}
+    prompt_id = str(record["prompt_id"])
     results_dir = root / "perplexity_results"
     filled_path = results_dir / f"{prompt_id}_filled.yaml"
     skipped_path = results_dir / f"{prompt_id}_skipped.yaml"
     if filled_path.exists():
         data = read_yaml(filled_path)
+        mismatch = result_mismatch_reason(data, record)
+        if mismatch:
+            return {
+                "status": "pending",
+                "result_path": "",
+                "ignored_result_path": str(filled_path),
+                "ignored_result_reason": mismatch,
+            }
         return {
             "status": "filled",
             "result_path": str(filled_path),
-            "answer_text": extract_answer_text(data),
+            **compact_answer_text(extract_answer_text(data)),
             "filled_at": data.get("filled_at") or data.get("created_at") or "",
             "source": data.get("source") or "perplexity",
         }
     if skipped_path.exists():
         data = read_yaml(skipped_path)
+        mismatch = result_mismatch_reason(data, record)
+        if mismatch:
+            return {
+                "status": "pending",
+                "result_path": "",
+                "ignored_result_path": str(skipped_path),
+                "ignored_result_reason": mismatch,
+            }
         return {
             "status": "skipped",
             "result_path": str(skipped_path),
@@ -178,6 +202,49 @@ def load_result_status(root: Path, prompt_id: str) -> dict[str, Any]:
             "skip_reason": data.get("reason") or data.get("skip_reason") or "",
         }
     return {"status": "pending", "result_path": ""}
+
+
+def prompt_record_matches_signal(prompt: dict[str, Any], signal: ResearchSignal) -> bool:
+    """Protect reruns from reusing same-date prompt records for a different ticker."""
+
+    prompt_text = str(prompt.get("prompt_text") or "")
+    if not prompt_text:
+        return True
+    haystack = prompt_text.upper()
+    for target in signal.candidate_targets:
+        ticker = str(target.ticker or "").upper()
+        company_name = str(target.company_name or "").upper()
+        if ticker and ticker in haystack:
+            return True
+        if company_name and company_name in haystack:
+            return True
+    return False
+
+
+def result_mismatch_reason(data: Any, record: dict[str, Any]) -> str:
+    """Return why a filled/skipped result should not be attached to this prompt."""
+
+    if not isinstance(data, dict):
+        return ""
+    expected_prompt_id = str(record.get("prompt_id") or "")
+    actual_prompt_id = str(data.get("prompt_id") or "")
+    if actual_prompt_id and expected_prompt_id and actual_prompt_id != expected_prompt_id:
+        return f"prompt_id mismatch: expected {expected_prompt_id}, got {actual_prompt_id}"
+
+    expected_signal_id = str(record.get("related_signal_id") or "")
+    actual_signal_id = str(data.get("related_signal_id") or "")
+    if actual_signal_id and expected_signal_id and actual_signal_id != expected_signal_id:
+        return f"related_signal_id mismatch: expected {expected_signal_id}, got {actual_signal_id}"
+
+    expected_text = normalize_prompt_text(str(record.get("prompt_text") or ""))
+    actual_text = normalize_prompt_text(str(data.get("prompt_text") or ""))
+    if actual_text and expected_text and actual_text != expected_text:
+        return "prompt_text mismatch; ignored stale Perplexity result from an older rerun"
+    return ""
+
+
+def normalize_prompt_text(value: str) -> str:
+    return " ".join(value.split())
 
 
 def extract_answer_text(data: Any) -> str:
@@ -190,6 +257,23 @@ def extract_answer_text(data: Any) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return yaml.safe_dump(data, allow_unicode=True, sort_keys=False).strip()
+
+
+def compact_answer_text(text: str) -> dict[str, Any]:
+    """Keep LLM prompts responsive while preserving the full result on disk."""
+
+    if len(text) <= MAX_PERPLEXITY_ANSWER_CHARS:
+        return {
+            "answer_text": text,
+            "answer_text_truncated": False,
+            "answer_text_original_chars": len(text),
+        }
+    return {
+        "answer_text": text[:MAX_PERPLEXITY_ANSWER_CHARS].rstrip()
+        + "\n\n[已截断：完整回填内容请查看 result_path 指向的本地文件]",
+        "answer_text_truncated": True,
+        "answer_text_original_chars": len(text),
+    }
 
 
 def read_yaml(path: Path) -> Any:
