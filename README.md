@@ -6,6 +6,14 @@
 
 这是一个本地运行的多 Agent 投资决策系统。它的核心仍然是本地命令行流水线，最新版额外提供了一个本地网页控制台，地址是 `http://127.0.0.1:7777`。
 
+如果你想先看“信息是怎么流转的、LLM 在哪里工作”，先打开：
+
+```text
+SYSTEM_FLOW.md
+```
+
+这份系统流程图覆盖了 Web UI / Orchestrator / Research Agent / 三位交易 Agent / Chairman / Red Team / Perplexity 手动回填 / Codex CLI LLM provider 的完整链路。GitHub 会直接渲染里面的 Mermaid 流程图。
+
 它的工作方式是：
 
 1. `research-agent` 先从你的股池里挑出研究对象，生成研究信号。
@@ -109,6 +117,8 @@ Web UI 顶部有五个页面：
 - 「股池管理」：读取并编辑 `data/stock_pool/master_pool.yaml`，支持港股、美股、A 股参考、观察池四类股票。
 - 「深度研究」：查看 Research Agent 生成的 Perplexity prompt，复制问题、粘贴答案、保存回填，并触发回填后重跑。
 - 「环境配置」：切换 `LLM_PROVIDER=local|openai|codex_cli`，设置 `LLM_MODEL` / `OPENAI_API_KEY`，查看 Codex 登录状态或启动 Codex 登录。API Key 只写入本地 `.env`，页面只显示脱敏状态。
+
+如果你不确定某个按钮背后跑了哪些 Agent，或者回填后的答案怎么进入 Brief / Audit，直接看 [SYSTEM_FLOW.md](SYSTEM_FLOW.md)。
 
 ### 3.1 第一次用 Web UI 跑 Morning Brief
 
@@ -624,7 +634,7 @@ uv run python -m pytest -q
 看到类似下面这样就是正常：
 
 ```text
-88 passed
+123 passed
 ```
 
 运行格式检查：
@@ -651,16 +661,14 @@ uv run python -m py_compile webui.py
 
 我已经在这台机器上验证过完整流水线和 Web UI。
 
-命令：
-
-```bash
-LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --date 2026-05-13
-```
-
-结果：
+最近一次完成的回填后重跑：
 
 ```text
-run_id=RUN-20260513-60b5a1c1 status=completed
+run_id=RUN-20260514-b6c3aedf
+pipeline_type=deep_research_rerun
+date=2026-05-14
+brief_type=morning
+status=completed
 ```
 
 说明：
@@ -670,6 +678,7 @@ run_id=RUN-20260513-60b5a1c1 status=completed
 - Chairman 成功生成 Morning Brief
 - Red Team 成功生成 Audit
 - Orchestrator 记录为 completed
+- 深度研究回填能同步到 research_signal，并被三位交易 Agent 读取
 - `uv run python webui.py` 可启动本地网页服务
 - 浏览器打开 `http://127.0.0.1:7777` 可看到主页、运行历史、股池管理、深度研究、环境配置
 
@@ -678,7 +687,7 @@ run_id=RUN-20260513-60b5a1c1 status=completed
 ```text
 uv run ruff check chairman red_team orchestrator business_agents tests webui.py
 uv run python -m pytest -q
-88 passed
+123 passed
 ```
 
 Codex CLI provider 已做过冒烟验证：
