@@ -4,6 +4,7 @@ import asyncio
 import json
 import sqlite3
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -127,6 +128,32 @@ def test_history_marks_fallback_from_agent_log(tmp_path, monkeypatch):
     assert row["schema_repair_or_fallback"] is True
 
 
+def test_history_row_exposes_pipeline_metadata(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    row = webui.shape_history_row(
+        {
+            "run_id": "RUN-1",
+            "pipeline_type": "deep_research_rerun",
+            "trigger_source": "manual",
+            "status": "running",
+            "metadata_json": json.dumps(
+                {
+                    "date": "2026-05-15",
+                    "brief_type": "morning",
+                    "source": "deep_research_rerun",
+                }
+            ),
+            "started_at": "2026-05-15T16:09:39+08:00",
+            "ended_at": "",
+        }
+    )
+
+    assert row["pipeline_type"] == "deep_research_rerun"
+    assert row["source"] == "deep_research_rerun"
+
+
 def test_history_reconciles_stale_running_rerun(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     monkeypatch.setattr(webui, "DATA_DIR", data_dir)
@@ -185,6 +212,247 @@ def test_history_does_not_reconcile_while_rerun_process_exists(tmp_path, monkeyp
     with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
         row = conn.execute("SELECT status FROM pipeline_runs").fetchone()
     assert row[0] == "running"
+
+
+def test_history_cancels_superseded_rerun_even_while_process_exists(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: True)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    old_run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-15",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    new_run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-15",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2026-05-15T15:59:31+08:00", old_run_id),
+        )
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2026-05-15T16:09:39+08:00", new_run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == [old_run_id]
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        rows = {
+            row[0]: (row[1], row[2])
+            for row in conn.execute("SELECT run_id, status, metadata_json FROM pipeline_runs")
+        }
+    assert rows[old_run_id][0] == "cancelled"
+    assert '"cancelled_reason": "superseded_by_newer_running_run"' in rows[old_run_id][1]
+    assert new_run_id in rows[old_run_id][1]
+    assert rows[new_run_id][0] == "running"
+
+
+def test_run_progress_infers_current_full_pipeline_step(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="full",
+        trigger_source="manual",
+        metadata={"date": "2026-05-15", "brief_type": "morning"},
+    )
+    client = TestClient(webui.app)
+
+    response = client.get(f"/api/run-progress?run_id={run_id}")
+
+    assert response.status_code == 200
+    progress = response.json()["progress"]
+    assert progress["status"] == "running"
+    assert progress["steps"][0]["step_name"] == "research_scan"
+    assert progress["steps"][0]["state"] == "running"
+    assert progress["steps"][0]["estimate_seconds"] > 0
+    assert "K deep" in progress["current_step_label"]
+
+
+def test_run_progress_marks_parallel_partners_after_research(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="full",
+        trigger_source="manual",
+        metadata={"date": "2026-05-15", "brief_type": "evening"},
+    )
+    run_log.record_step(
+        run_id,
+        webui.StepResult(
+            step_name="research_scan",
+            status="success",
+            exit_code=0,
+            attempts=1,
+        ),
+    )
+    client = TestClient(webui.app)
+
+    progress = client.get(f"/api/run-progress?run_id={run_id}").json()["progress"]
+    states = {step["step_name"]: step["state"] for step in progress["steps"]}
+
+    assert states["research_scan"] == "completed"
+    assert states["trading_f_partner"] == "running"
+    assert states["trading_w_partner"] == "running"
+    assert states["trading_g_partner"] == "running"
+    assert "F partner" in progress["current_step_label"]
+
+
+def test_run_progress_uses_rerun_step_plan(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-15",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    client = TestClient(webui.app)
+
+    progress = client.get(f"/api/run-progress?run_id={run_id}").json()["progress"]
+
+    assert progress["pipeline_type"] == "deep_research_rerun"
+    assert [step["step_name"] for step in progress["steps"]] == [
+        "trading_f_partner",
+        "trading_w_partner",
+        "trading_g_partner",
+        "chairman",
+        "red_team",
+    ]
+    assert progress["steps"][0]["state"] == "running"
+    assert "K deep" not in progress["current_step_label"]
+    assert "F partner" in progress["current_step_label"]
+
+
+def test_run_progress_advances_rerun_steps_sequentially(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-15",
+            "brief_type": "morning",
+            "source": "deep_research_rerun",
+            "no_llm": False,
+        },
+    )
+    run_log.record_step(
+        run_id,
+        webui.StepResult(
+            step_name="trading_f_partner",
+            status="success",
+            exit_code=0,
+            attempts=1,
+        ),
+    )
+    client = TestClient(webui.app)
+
+    progress = client.get(f"/api/run-progress?run_id={run_id}").json()["progress"]
+    states = {step["step_name"]: step["state"] for step in progress["steps"]}
+
+    assert states["trading_f_partner"] == "completed"
+    assert states["trading_w_partner"] == "running"
+    assert states["trading_g_partner"] == "pending"
+    assert progress["current_step_label"] == "W partner 重新生成投资建议"
+
+
+def test_run_progress_infers_current_step_elapsed_from_previous_step():
+    now = datetime.now().astimezone()
+    run_started_at = now - timedelta(minutes=30)
+    previous_finished_at = now - timedelta(seconds=12)
+    steps = webui.shape_run_progress_steps(
+        {
+            "run_id": "RUN-1",
+            "status": "running",
+            "started_at": run_started_at.isoformat(),
+        },
+        {
+            "trading_f_partner": {
+                "step_name": "trading_f_partner",
+                "status": "success",
+                "started_at": (previous_finished_at - timedelta(minutes=4)).isoformat(),
+                "ended_at": previous_finished_at.isoformat(),
+                "attempt": 1,
+                "exit_code": 0,
+            }
+        },
+        webui.RERUN_RUN_STEP_PLAN,
+    )
+
+    current = next(step for step in steps if step["step_name"] == "trading_w_partner")
+
+    assert current["state"] == "running"
+    assert current["elapsed_seconds"] is not None
+    assert current["elapsed_seconds"] < 60
+
+
+def test_trial_status_uses_investment_advice_language(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    status = webui.get_trial_status()
+
+    assert status["long_disabled"] is False
+    assert "投资建议" in status["allowed_directions"]
+    assert "不展示 long/short 标签" in status["recommendation_output"]
+
+
+def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    brief_dir = data_dir / "briefs" / "20260515"
+    brief_dir.mkdir(parents=True)
+    brief_path = brief_dir / "BRIEF-20260515-AM.md"
+    brief_path.write_text(
+        "\n".join(
+            [
+                "- ✅ 三方一致 long：BABA",
+                "| Agent | direction | confidence |",
+                "| f_partner | **watch** | 60 |",
+                "- **final_verdict**：`research_more`",
+                "- 三位 Agent 当前分布为 f_partner:watch, g_partner:abstain，只能 watch。",
+                "- English sanity: long-term growth and short-term pressure; watch for cash flow.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    result = webui.read_markdown_result(brief_path, humanize_investment_terms=True)
+
+    assert "三方一致买入候选" in result["content"]
+    assert "| Agent | 投资建议 |" in result["content"]
+    assert "**观察**" in result["content"]
+    assert "CIO 裁决" in result["content"]
+    assert "f_partner:观察" in result["content"]
+    assert "g_partner:暂不判断" in result["content"]
+    assert "只能 观察" in result["content"]
+    assert "long-term growth" in result["content"]
+    assert "short-term pressure" in result["content"]
+    assert "watch for cash flow" in result["content"]
 
 
 def test_active_rerun_process_detects_dated_trading_command(monkeypatch):

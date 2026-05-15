@@ -10,8 +10,8 @@
 
 - 今日 K deep 信号数：**{{ total_signals_today }}**
 - 收到交易 Agent 建议数：**{{ total_recommendations }}**
-- ✅ 三方一致 long：{{ full_consensus_long | join(', ') }}
-- ❌ 三方一致 avoid：{{ full_consensus_avoid | join(', ') }}
+- ✅ 三方一致买入候选：{{ full_consensus_long | join(', ') }}
+- ❌ 三方一致回避：{{ full_consensus_avoid | join(', ') }}
 - ⚠️ 分歧建议：{{ split_decisions | length }} 条
 - 🔍 高优先级 Red Team 待审：**{{ red_team_high_priority }}** 条
 - 💭 全员 abstain 但 K deep 信号优先级高的：{{ abstain_with_high_signals | length }} 条
@@ -31,10 +31,10 @@
 
 #### 三方观点并列
 
-| Agent | direction | confidence | 权重 | 一句话 thesis |
+| Agent | 投资建议 | confidence | 权重 | 一句话 thesis |
 |---|---|---:|---:|---|
 {% for view in rec_summary.individual_views %}
-| {{ view.agent_id }} | **{{ view.direction }}**{% if view.abstain_reason %} ({{ view.abstain_reason }}){% endif %} | {{ view.confidence }} | × {{ view.chairman_weight_multiplier }} | {{ view.one_liner_thesis }} |
+| {{ view.agent_id }} | **{{ view.direction | advice_label }}**{% if view.abstain_reason %} ({{ view.abstain_reason }}){% endif %} | {{ view.confidence }} | × {{ view.chairman_weight_multiplier }} | {{ view.one_liner_thesis }} |
 {% endfor %}
 
 {% if rec_summary.disagreement_analysis.primary_type %}
@@ -83,10 +83,10 @@
 {% if rec_summary.chairman_verdict %}
 #### Chairman 裁决导航
 
-- **final_verdict**：`{{ rec_summary.chairman_verdict.final_verdict }}`
+- **CIO 裁决**：{{ rec_summary.chairman_verdict.final_verdict | trans }}
 - **action_route**：`{{ rec_summary.chairman_verdict.action_route }}`
 - **裁决置信度**：{{ rec_summary.chairman_verdict.confidence }}
-- **暂时更信任**：{{ rec_summary.chairman_verdict.lead_agent.agent_id }} / {{ rec_summary.chairman_verdict.lead_agent.direction }}（方法论权重 ×{{ rec_summary.chairman_verdict.lead_agent.chairman_weight_multiplier }}，历史表现权重 ×{{ rec_summary.chairman_verdict.lead_agent.performance_weight_multiplier }}）
+- **暂时更信任**：{{ rec_summary.chairman_verdict.lead_agent.agent_id }} / {{ rec_summary.chairman_verdict.lead_agent.direction | advice_label }}（方法论权重 ×{{ rec_summary.chairman_verdict.lead_agent.chairman_weight_multiplier }}，历史表现权重 ×{{ rec_summary.chairman_verdict.lead_agent.performance_weight_multiplier }}）
 
 {% for step in rec_summary.chairman_verdict.decision_chain %}
 - {{ step }}

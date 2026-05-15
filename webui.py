@@ -54,6 +54,89 @@ RERUN_STEP_NAMES = {
     "Chairman": "chairman",
     "Red Team": "red_team",
 }
+FULL_RUN_STEP_PLAN = [
+    {
+        "step_name": "research_scan",
+        "label": "K deep 扫描股池与编排研究任务",
+        "estimate_seconds": 120,
+        "stage": "research",
+    },
+    {
+        "step_name": "trading_f_partner",
+        "label": "F partner 投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "trading_w_partner",
+        "label": "W partner 投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "trading_g_partner",
+        "label": "G partner 投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "perplexity_wait",
+        "label": "Perplexity 回填检查",
+        "estimate_seconds": 15,
+        "stage": "research_gate",
+    },
+    {
+        "step_name": "chairman",
+        "label": "Chairman CIO 裁决",
+        "estimate_seconds": 90,
+        "stage": "cio",
+    },
+    {
+        "step_name": "red_team",
+        "label": "Red Team 反对派审计",
+        "estimate_seconds": 90,
+        "stage": "red_team",
+    },
+    {
+        "step_name": "notify",
+        "label": "归档与通知",
+        "estimate_seconds": 10,
+        "stage": "archive",
+    },
+]
+TRADING_STEP_NAMES = {"trading_f_partner", "trading_w_partner", "trading_g_partner"}
+RERUN_RUN_STEP_PLAN = [
+    {
+        "step_name": "trading_f_partner",
+        "label": "F partner 重新生成投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "trading_w_partner",
+        "label": "W partner 重新生成投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "trading_g_partner",
+        "label": "G partner 重新生成投资建议",
+        "estimate_seconds": 240,
+        "stage": "investment_committee",
+    },
+    {
+        "step_name": "chairman",
+        "label": "Chairman CIO 二次裁决",
+        "estimate_seconds": 120,
+        "stage": "cio",
+    },
+    {
+        "step_name": "red_team",
+        "label": "Red Team 二次反对审计",
+        "estimate_seconds": 120,
+        "stage": "red_team",
+    },
+]
 
 app = FastAPI(title="Agent Trading System Web UI")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
@@ -180,8 +263,8 @@ def api_report(
     return {
         "date": date,
         "brief_type": brief_type,
-        "brief": read_markdown_result(brief_path),
-        "audit": read_markdown_result(audit_path),
+        "brief": read_markdown_result(brief_path, humanize_investment_terms=True),
+        "audit": read_markdown_result(audit_path, humanize_investment_terms=True),
     }
 
 
@@ -259,6 +342,14 @@ def api_trial_status() -> dict[str, Any]:
 @app.get("/api/ops-dashboard")
 def api_ops_dashboard() -> dict[str, Any]:
     return {"ok": True, "dashboard": build_ops_dashboard()}
+
+
+@app.get("/api/run-progress")
+def api_run_progress(run_id: str = Query(...)) -> dict[str, Any]:
+    progress = build_run_progress(run_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail=f"找不到运行档案：{run_id}")
+    return {"ok": True, "progress": progress}
 
 
 @app.post("/api/env")
@@ -1251,14 +1342,92 @@ def find_report_file(directory: Path, basename: str) -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def read_markdown_result(path: Path | None) -> dict[str, Any]:
+def read_markdown_result(
+    path: Path | None,
+    *,
+    humanize_investment_terms: bool = False,
+) -> dict[str, Any]:
     if not path or not path.exists():
         return {"exists": False, "path": "", "content": ""}
+    content = path.read_text(encoding="utf-8")
+    if humanize_investment_terms:
+        content = humanize_investment_report(content)
     return {
         "exists": True,
         "path": relative_path(path),
-        "content": path.read_text(encoding="utf-8"),
+        "content": content,
     }
+
+
+def humanize_investment_report(content: str) -> str:
+    """Convert internal direction/verdict labels into user-facing advice labels."""
+
+    replacements = {
+        "三方一致 long": "三方一致买入候选",
+        "三方一致 avoid": "三方一致回避",
+        "多数 long": "多数买入候选",
+        "多数 avoid": "多数回避",
+        "多数 abstain": "多数暂不判断",
+        "全员 abstain": "全员暂不判断",
+        "long / avoid 分歧": "买入候选 / 回避分歧",
+        "long / watch 混合": "买入候选 / 观察混合",
+        "| Agent | direction |": "| Agent | 投资建议 |",
+        "**final_verdict**": "**CIO 裁决**",
+        "final_verdict": "CIO 裁决",
+        "试运行期禁用 long": "证据闭环不足，暂不升级为买入候选",
+        "第一阶段禁止输出 long/short/leverage/put/hedge": "当前不展示杠杆、衍生品或内部方向标签",
+        "第一阶段禁止 long/short/leverage/put/hedge": "当前不展示杠杆、衍生品或内部方向标签",
+        "first_phase_long_disabled": "证据未闭环降级",
+    }
+    rendered = content
+    for old, new in replacements.items():
+        rendered = rendered.replace(old, new)
+    direction_labels = {
+        "long": "买入候选",
+        "short": "反向风险",
+        "watch": "观察",
+        "avoid": "回避",
+        "abstain": "暂不判断",
+        "act": "行动候选",
+        "wait": "等待观察",
+        "reject": "否决",
+        "research_more": "补充研究",
+    }
+
+    def replace_bold(match: re.Match[str]) -> str:
+        return f"**{direction_labels.get(match.group(1), match.group(1))}**"
+
+    def replace_inline_code(match: re.Match[str]) -> str:
+        return direction_labels.get(match.group(1), match.group(1))
+
+    rendered = re.sub(r"\*\*(long|short|watch|avoid|abstain)\*\*", replace_bold, rendered)
+    rendered = re.sub(r"`(act|wait|reject|research_more)`", replace_inline_code, rendered)
+    rendered = re.sub(
+        r"\b(f_partner|w_partner|g_partner):(long|short|watch|avoid|abstain)\b",
+        lambda match: f"{match.group(1)}:{direction_labels[match.group(2)]}",
+        rendered,
+    )
+    rendered = re.sub(
+        r"\b方向为 (long|short|watch|avoid|abstain)\b",
+        lambda match: f"投资建议为 {direction_labels[match.group(1)]}",
+        rendered,
+    )
+    rendered = re.sub(
+        r"\b/ (long|short|watch|avoid|abstain)\b",
+        lambda match: f"/ {direction_labels[match.group(1)]}",
+        rendered,
+    )
+    rendered = re.sub(
+        r"\|\s*(long|short|watch|avoid|abstain)\s*\|",
+        lambda match: f"| {direction_labels[match.group(1)]} |",
+        rendered,
+    )
+    rendered = re.sub(
+        r"\b只能 (long|short|watch|avoid|abstain)\b",
+        lambda match: f"只能 {direction_labels[match.group(1)]}",
+        rendered,
+    )
+    return rendered
 
 
 def resolve_artifact_path(path_text: str) -> Path:
@@ -1502,10 +1671,39 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
         return []
 
     now = datetime.now().astimezone()
-    stale_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    cancelled_run_ids: list[str] = []
+    rerun_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for row in rows:
         metadata = parse_metadata_json(row.get("metadata_json", ""))
         if row.get("pipeline_type") != "deep_research_rerun" and metadata.get("source") != "deep_research_rerun":
+            continue
+        rerun_rows.append((row, metadata))
+
+    duplicate_groups: dict[tuple[str, str], list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for row, metadata in rerun_rows:
+        key = (
+            str(metadata.get("date") or row.get("started_at", "")[:10]),
+            str(metadata.get("brief_type") or ""),
+        )
+        duplicate_groups.setdefault(key, []).append((row, metadata))
+
+    for group in duplicate_groups.values():
+        if len(group) <= 1:
+            continue
+        group.sort(key=lambda item: parse_datetime(item[0].get("started_at", "")) or datetime.min.replace(tzinfo=now.tzinfo), reverse=True)
+        keeper = group[0][0]
+        for row, metadata in group[1:]:
+            cancelled_metadata = dict(metadata)
+            cancelled_metadata["cancelled"] = True
+            cancelled_metadata.setdefault("failed_step", "superseded")
+            cancelled_metadata["cancelled_reason"] = "superseded_by_newer_running_run"
+            cancelled_metadata["superseded_by_run_id"] = keeper.get("run_id", "")
+            run_log.finish_run(row["run_id"], "cancelled", cancelled_metadata)
+            cancelled_run_ids.append(row["run_id"])
+
+    stale_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row, metadata in rerun_rows:
+        if row["run_id"] in cancelled_run_ids:
             continue
         started_at = parse_datetime(row.get("started_at", ""))
         if started_at and now - started_at < timedelta(seconds=max_age_seconds):
@@ -1513,9 +1711,8 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
         stale_rows.append((row, metadata))
 
     if not stale_rows or has_active_background_rerun_task() or has_active_rerun_process():
-        return []
+        return cancelled_run_ids
 
-    cancelled_run_ids: list[str] = []
     for row, metadata in stale_rows:
         cancelled_metadata = dict(metadata)
         cancelled_metadata["cancelled"] = True
@@ -1868,6 +2065,8 @@ def shape_history_row(row: dict[str, Any]) -> dict[str, Any]:
         "run_id": row.get("run_id", ""),
         "date": date,
         "brief_type": brief_type,
+        "pipeline_type": row.get("pipeline_type", ""),
+        "source": metadata.get("source") or row.get("trigger_source", ""),
         "status": row.get("status", ""),
         "failed_step": metadata.get("failed_step", ""),
         "artifacts": find_run_artifacts_for_row(row, date, brief_type),
@@ -2012,15 +2211,240 @@ def find_recorded_run_artifacts(run_id: str) -> dict[str, str]:
     return artifacts
 
 
+def build_run_progress(run_id: str) -> dict[str, Any]:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    row = run_log.get_run(run_id)
+    if not row:
+        return {}
+    metadata = parse_metadata_json(row.get("metadata_json", ""))
+    step_plan = run_step_plan(row, metadata)
+    step_rows = load_run_step_rows(run_id)
+    steps = shape_run_progress_steps(row, step_rows, step_plan)
+    active_steps = [step for step in steps if step["state"] == "running"]
+    finished_steps = [
+        step
+        for step in steps
+        if step["state"] in {"completed", "failed", "cancelled", "skipped"}
+    ]
+    total_estimate = sum(int(step["estimate_seconds"] or 0) for step in steps)
+    remaining_estimate = sum(
+        int(step["estimate_seconds"] or 0)
+        for step in steps
+        if step["state"] in {"running", "pending"}
+    )
+    progress_percent = 100 if row.get("status") == "completed" else round(len(finished_steps) / len(steps) * 100)
+    started_at = parse_datetime(row.get("started_at", ""))
+    ended_at = parse_datetime(row.get("ended_at", ""))
+    return {
+        "run_id": run_id,
+        "status": row.get("status") or "unknown",
+        "pipeline_type": row.get("pipeline_type") or "",
+        "date": metadata.get("date") or "",
+        "brief_type": metadata.get("brief_type") or "",
+        "started_at": row.get("started_at") or "",
+        "ended_at": row.get("ended_at") or "",
+        "elapsed_seconds": elapsed_between(started_at, ended_at),
+        "progress_percent": max(0, min(100, progress_percent)),
+        "estimated_total_seconds": total_estimate,
+        "estimated_remaining_seconds": remaining_estimate,
+        "current_step_label": " / ".join(step["label"] for step in active_steps),
+        "message": build_run_progress_message(row.get("status") or "", active_steps),
+        "steps": steps,
+    }
+
+
+def run_step_plan(
+    run_row: dict[str, Any],
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    pipeline_type = str(run_row.get("pipeline_type") or "")
+    if pipeline_type == "deep_research_rerun" or metadata.get("source") == "deep_research_rerun":
+        return RERUN_RUN_STEP_PLAN
+    return FULL_RUN_STEP_PLAN
+
+
+def load_run_step_rows(run_id: str) -> dict[str, dict[str, Any]]:
+    db_path = DATA_DIR / "orchestrator" / "runs.db"
+    if not db_path.exists():
+        return {}
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM step_executions
+                WHERE run_id = ?
+                ORDER BY started_at ASC, ended_at ASC
+                """,
+                (run_id,),
+            ).fetchall()
+    except sqlite3.DatabaseError:
+        return {}
+    return {str(row["step_name"]): dict(row) for row in rows}
+
+
+def shape_run_progress_steps(
+    run_row: dict[str, Any],
+    step_rows: dict[str, dict[str, Any]],
+    step_plan: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    active_step_names = infer_active_step_names(run_row, step_rows, step_plan)
+    shaped: list[dict[str, Any]] = []
+    for index, item in enumerate(step_plan, start=1):
+        step_name = item["step_name"]
+        row = step_rows.get(step_name)
+        if row:
+            state = map_step_status(row.get("status"))
+            started_at = parse_datetime(row.get("started_at", ""))
+            ended_at = parse_datetime(row.get("ended_at", ""))
+            elapsed_seconds = elapsed_between(started_at, ended_at)
+            attempts = row.get("attempt")
+            exit_code = row.get("exit_code")
+        elif step_name in active_step_names:
+            state = "running"
+            started_at = infer_running_step_started_at(step_name, step_plan, step_rows, run_row)
+            ended_at = None
+            elapsed_seconds = elapsed_between(started_at, ended_at)
+            attempts = None
+            exit_code = None
+        elif str(run_row.get("status") or "") in {"completed", "failed", "partial_success", "cancelled"}:
+            state = "skipped"
+            started_at = None
+            ended_at = None
+            elapsed_seconds = None
+            attempts = None
+            exit_code = None
+        else:
+            state = "pending"
+            started_at = None
+            ended_at = None
+            elapsed_seconds = None
+            attempts = None
+            exit_code = None
+        shaped.append(
+            {
+                "index": index,
+                "step_name": step_name,
+                "label": item["label"],
+                "stage": item["stage"],
+                "state": state,
+                "state_label": run_step_state_label(state),
+                "estimate_seconds": item["estimate_seconds"],
+                "elapsed_seconds": elapsed_seconds,
+                "started_at": row.get("started_at", "") if row else "",
+                "ended_at": row.get("ended_at", "") if row else "",
+                "attempts": attempts,
+                "exit_code": exit_code,
+            }
+        )
+    return shaped
+
+
+def infer_running_step_started_at(
+    step_name: str,
+    step_plan: list[dict[str, Any]],
+    step_rows: dict[str, dict[str, Any]],
+    run_row: dict[str, Any],
+) -> datetime | None:
+    """Estimate a current step start from the latest prior recorded step."""
+
+    started_at = parse_datetime(run_row.get("started_at", ""))
+    previous_times: list[datetime] = []
+    for item in step_plan:
+        planned_name = str(item["step_name"])
+        if planned_name == step_name:
+            break
+        row = step_rows.get(planned_name)
+        if not row:
+            continue
+        ended_at = parse_datetime(row.get("ended_at", ""))
+        row_started_at = parse_datetime(row.get("started_at", ""))
+        if ended_at:
+            previous_times.append(ended_at)
+        elif row_started_at:
+            previous_times.append(row_started_at)
+    if previous_times:
+        return max(previous_times)
+    return started_at
+
+
+def infer_active_step_names(
+    run_row: dict[str, Any],
+    step_rows: dict[str, dict[str, Any]],
+    step_plan: list[dict[str, Any]],
+) -> set[str]:
+    if str(run_row.get("status") or "") != "running":
+        return set()
+    recorded = set(step_rows)
+    plan_names = [str(item["step_name"]) for item in step_plan]
+    if plan_names == [str(item["step_name"]) for item in RERUN_RUN_STEP_PLAN]:
+        for step_name in plan_names:
+            if step_name not in recorded:
+                return {step_name}
+        return set()
+    if "research_scan" not in recorded:
+        return {"research_scan"}
+    missing_trading = TRADING_STEP_NAMES - recorded
+    if missing_trading:
+        return missing_trading
+    for item in step_plan:
+        step_name = item["step_name"]
+        if step_name not in recorded:
+            return {step_name}
+    return set()
+
+
+def map_step_status(status: Any) -> str:
+    normalized = str(status or "").lower()
+    if normalized == "success":
+        return "completed"
+    if normalized in {"failed", "cancelled", "skipped", "pending", "running"}:
+        return normalized
+    return "completed" if normalized else "pending"
+
+
+def run_step_state_label(state: str) -> str:
+    mapping = {
+        "completed": "完成",
+        "running": "运行中",
+        "pending": "等待",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "skipped": "未执行",
+    }
+    return mapping.get(state, state)
+
+
+def elapsed_between(started_at: datetime | None, ended_at: datetime | None) -> int | None:
+    if not started_at:
+        return None
+    end = ended_at or datetime.now().astimezone()
+    return max(0, round((end - started_at).total_seconds()))
+
+
+def build_run_progress_message(status: str, active_steps: list[dict[str, Any]]) -> str:
+    if status == "completed":
+        return "本轮投委会已完成，报告可读取。"
+    if status in {"failed", "partial_success"}:
+        return "本轮运行未完全成功，请查看运行档案和步骤状态。"
+    if status == "cancelled":
+        return "本轮运行已取消。"
+    if active_steps:
+        return f"正在执行：{' / '.join(step['label'] for step in active_steps)}"
+    return "等待步骤写入运行档案。"
+
+
 def get_trial_status() -> dict[str, Any]:
     prompts = load_deep_research_prompts(status_filter="all")
     pending = [prompt for prompt in prompts if prompt["status"] == "pending"]
     filled = [prompt for prompt in prompts if prompt["status"] == "filled"]
     skipped = [prompt for prompt in prompts if prompt["status"] == "skipped"]
     return {
-        "mode": "试运行模式",
-        "long_disabled": True,
-        "allowed_directions": "watch / avoid / abstain",
+        "mode": "AI Native 投委会",
+        "long_disabled": False,
+        "allowed_directions": "投资建议 / 观察 / 回避 / 暂不判断",
+        "recommendation_output": "直接输出投资建议，不展示 long/short 标签",
         "data_scope": "公开价量/成交额初筛 + 手动 Perplexity 回填",
         "total_perplexity": len(prompts),
         "pending_perplexity": len(pending),
@@ -2169,7 +2593,7 @@ def build_company_flow(trial: dict[str, Any]) -> list[dict[str, Any]]:
         {"label": "Perplexity 研究员", "metric": f"{pending} 待回填", "state": "质量门"},
         {"label": "知识库", "metric": f"{filled} 已回填", "state": "永久沉淀"},
         {"label": "三位投资合伙人", "metric": "F partner / W partner / G partner", "state": "并行分析"},
-        {"label": "Chairman CIO", "metric": "final_verdict", "state": "裁决"},
+        {"label": "Chairman CIO", "metric": "投资建议", "state": "裁决"},
         {"label": "Red Team", "metric": "反对意见", "state": "审计"},
     ]
 

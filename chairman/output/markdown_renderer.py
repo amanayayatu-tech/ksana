@@ -23,6 +23,7 @@ def render_markdown(brief: ChairmanBrief, template_name: str | None = None) -> s
         lstrip_blocks=True,
     )
     env.filters["trans"] = trans
+    env.filters["advice_label"] = advice_label
     env.filters["to_yaml"] = to_yaml
     selected = template_name or (
         "evening_brief.md.j2" if brief.brief_type.value == "evening" else "morning_brief.md.j2"
@@ -51,14 +52,18 @@ def trans(value: Any) -> str:
         "morning": "早盘",
         "evening": "晚盘",
         "ad_hoc": "临时",
-        "full_consensus_long": "三方一致 long",
-        "full_consensus_avoid": "三方一致 avoid",
-        "majority_long": "多数 long",
-        "majority_avoid": "多数 avoid",
-        "split_long_vs_avoid": "long / avoid 分歧",
-        "mixed_long_watch": "long / watch 混合",
-        "mostly_abstain": "多数 abstain",
-        "all_abstain": "全员 abstain",
+        "full_consensus_long": "三方一致买入候选",
+        "full_consensus_avoid": "三方一致回避",
+        "majority_long": "多数买入候选",
+        "majority_avoid": "多数回避",
+        "split_long_vs_avoid": "买入候选 / 回避分歧",
+        "mixed_long_watch": "买入候选 / 观察混合",
+        "mostly_abstain": "多数暂不判断",
+        "all_abstain": "全员暂不判断",
+        "act": "行动候选",
+        "wait": "等待观察",
+        "reject": "否决",
+        "research_more": "补充研究",
         "methodology_dna": "方法论 DNA 差异",
         "data_input_difference": "数据输入差异",
         "upstream_signal_consumption": "上游信号采纳差异",
@@ -67,6 +72,19 @@ def trans(value: Any) -> str:
         "passed": "通过",
         "has_failure": "存在硬规则失败",
         "not_applicable": "不适用",
+    }
+    return mapping.get(str(value), str(value))
+
+
+def advice_label(value: Any) -> str:
+    """Human-facing investment recommendation label for internal direction enums."""
+
+    mapping = {
+        "long": "买入候选",
+        "short": "反向风险",
+        "watch": "观察",
+        "avoid": "回避",
+        "abstain": "暂不判断",
     }
     return mapping.get(str(value), str(value))
 

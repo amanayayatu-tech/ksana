@@ -72,13 +72,13 @@
           <div class="toolbar-main">
             <label>
               日期
-              <input id="promptDate" type="date">
+              <input id="promptDate" type="date" value="{{ today }}">
             </label>
             <label>
               状态
               <select id="statusFilter">
                 <option value="all">全部</option>
-                <option value="pending">待回填</option>
+                <option value="pending" selected>待回填</option>
                 <option value="filled">已回填</option>
                 <option value="skipped">已跳过</option>
               </select>
@@ -117,9 +117,10 @@
             Perplexity Prompt
             <textarea id="promptText" class="textarea-large" readonly></textarea>
           </label>
-          <label>
+          <label id="answerDropZone" class="drop-zone">
             Perplexity 答案
             <textarea id="answerText" class="textarea-large" placeholder="把 Perplexity 深度研究报告粘贴到这里"></textarea>
+            <span class="drop-hint">可直接拖入 Perplexity 导出的 .md 文件；识别到 prompt_id 会自动匹配任务。</span>
           </label>
         </div>
         <div id="knowledgeReceipt" class="knowledge-receipt">
@@ -159,6 +160,19 @@
         </label>
         <button id="rerunAfterFill" class="primary">重跑投委会链路</button>
       </div>
+      <div id="rerunProgress" class="run-progress hidden mt">
+        <div class="run-progress-head">
+          <div>
+            <div id="rerunProgressTitle" class="run-progress-title">等待重跑步骤写入运行档案</div>
+            <div id="rerunProgressMeta" class="run-progress-meta">未开始</div>
+          </div>
+          <span id="rerunProgressPill" class="pill">0%</span>
+        </div>
+        <div class="progress-track">
+          <div id="rerunProgressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="rerunProgressSteps" class="step-list"></div>
+      </div>
       <pre id="rerunLog" class="terminal mt"></pre>
     </div>
   </section>
@@ -172,8 +186,13 @@
   const detailStatus = document.getElementById("detailStatus");
   const rerunStatus = document.getElementById("rerunStatus");
   const rerunLog = document.getElementById("rerunLog");
+  const rerunProgress = document.getElementById("rerunProgress");
+  const answerDropZone = document.getElementById("answerDropZone");
+  const answerText = document.getElementById("answerText");
   let prompts = [];
   let selectedPromptId = "";
+  let rerunProgressTimer = null;
+  let rerunProgressRunId = "";
 
   function setPill(node, text, kind = "") {
     node.className = `pill ${kind}`.trim();
@@ -258,7 +277,7 @@
     const resultPath = item.result_path || item.path_display || "未保存";
     root.innerHTML = `
       <div class="receipt-line"><span>入库状态</span><strong>${escapeHtml(status)}</strong></div>
-      <div class="receipt-line"><span>结果文件</span><strong>${escapeHtml(resultPath)}</strong></div>
+      <div class="receipt-line"><span>结果文件</span><strong id="resultPath">${escapeHtml(resultPath)}</strong></div>
       <div class="receipt-line"><span>抽取字段</span><strong>结论 / 反证 / 未验证 / 未关闭</strong></div>
     `;
   }
@@ -269,7 +288,7 @@
     document.getElementById("knowledgeReceipt").innerHTML = `
       <div class="receipt-line"><span>entry_id</span><strong>${escapeHtml(entry.entry_id || "")}</strong></div>
       <div class="receipt-line"><span>stock_code</span><strong>${escapeHtml(entry.stock_code || "")}</strong></div>
-      <div class="receipt-line"><span>知识卡片</span><strong>${escapeHtml(entry.cards_path || "")}</strong></div>
+      <div class="receipt-line"><span>知识卡片</span><strong id="resultPath">${escapeHtml(entry.cards_path || "")}</strong></div>
       <div class="receipt-line"><span>抽取计数</span><strong>公司 ${entry.company_conclusions_count || 0} / 行业 ${entry.industry_conclusions_count || 0} / 未关闭 ${entry.open_questions_count || 0}</strong></div>
     `;
   }
@@ -316,13 +335,139 @@
     document.getElementById("queueMetric").textContent = `${pending}/${filled}`;
   }
 
+  function extractPromptId(text) {
+    const match = String(text || "").match(/PR-\d{8}-[A-Za-z0-9-]+/);
+    return match ? match[0] : "";
+  }
+
+  function isSupportedResearchFile(file) {
+    return /\.(md|markdown|txt)$/i.test(file.name || "");
+  }
+
+  async function handleResearchFileDrop(event) {
+    event.preventDefault();
+    answerDropZone.classList.remove("drag-over");
+    const files = Array.from(event.dataTransfer?.files || []);
+    const file = files.find(isSupportedResearchFile);
+    if (!file) {
+      setPill(detailStatus, "只支持 .md / .markdown / .txt", "error");
+      return;
+    }
+    const text = await file.text();
+    const promptId = extractPromptId(file.name) || extractPromptId(text);
+    if (promptId && prompts.some((item) => item.prompt_id === promptId)) {
+      selectPrompt(promptId);
+    }
+    answerText.value = text;
+    document.getElementById("receiptMetric").textContent = "待读取";
+    setPill(detailStatus, promptId ? `已读取 ${promptId}` : `已读取 ${file.name}`, "ok");
+  }
+
   function appendLog(line) {
     rerunLog.textContent += `${line}\n`;
     rerunLog.scrollTop = rerunLog.scrollHeight;
   }
 
+  function resetRerunProgress() {
+    rerunProgressRunId = "";
+    rerunProgress.classList.add("hidden");
+    document.getElementById("rerunProgressTitle").textContent = "等待重跑步骤写入运行档案";
+    document.getElementById("rerunProgressMeta").textContent = "未开始";
+    setPill(document.getElementById("rerunProgressPill"), "0%");
+    document.getElementById("rerunProgressFill").style.width = "0%";
+    document.getElementById("rerunProgressSteps").innerHTML = "";
+  }
+
+  function clearRerunProgressPolling() {
+    if (rerunProgressTimer) {
+      clearInterval(rerunProgressTimer);
+      rerunProgressTimer = null;
+    }
+  }
+
+  function startRerunProgressPolling(runId) {
+    if (!runId) return;
+    if (rerunProgressRunId === runId && rerunProgressTimer) return;
+    clearRerunProgressPolling();
+    rerunProgressRunId = runId;
+    rerunProgress.classList.remove("hidden");
+    loadRerunProgress(runId);
+    rerunProgressTimer = setInterval(() => loadRerunProgress(runId), 2500);
+  }
+
+  async function loadRerunProgress(runId) {
+    if (!runId || rerunProgressRunId !== runId) return;
+    const res = await fetch(`/api/run-progress?run_id=${encodeURIComponent(runId)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+    const progress = data.progress || {};
+    renderRerunProgress(progress);
+    if (["completed", "failed", "partial_success", "cancelled"].includes(progress.status)) {
+      clearRerunProgressPolling();
+      const ok = progress.status === "completed";
+      document.getElementById("rerunMetric").textContent = ok ? "完成" : "失败";
+      setPill(rerunStatus, ok ? "已完成" : progress.status, ok ? "ok" : "error");
+      if (ok) loadPrompts();
+    }
+  }
+
+  async function resumeActiveRerunProgress() {
+    const res = await fetch("/api/history?tail=20");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+    const active = (data.rows || []).find((row) => (
+      row.status === "running"
+      && (
+        row.pipeline_type === "deep_research_rerun"
+        || row.source === "deep_research_rerun"
+        || (!row.pipeline_type && !row.source)
+      )
+    ));
+    if (!active) return;
+    document.getElementById("rerunMetric").textContent = "跟踪中";
+    setPill(rerunStatus, "步骤跟踪中", "warn");
+    document.getElementById("rerunHint").innerHTML = `检测到正在运行的重跑档案：<code>${escapeHtml(active.run_id)}</code>`;
+    startRerunProgressPolling(active.run_id);
+  }
+
+  function renderRerunProgress(progress) {
+    rerunProgress.classList.remove("hidden");
+    const pct = Math.max(0, Math.min(100, Number(progress.progress_percent || 0)));
+    document.getElementById("rerunProgressTitle").textContent = progress.message || "正在重跑投委会链路";
+    document.getElementById("rerunProgressMeta").textContent = [
+      progress.run_id,
+      progress.current_step_label ? `当前：${progress.current_step_label}` : "",
+      progress.estimated_remaining_seconds ? `预计剩余 ${formatDuration(progress.estimated_remaining_seconds)}` : "",
+      progress.elapsed_seconds ? `已用 ${formatDuration(progress.elapsed_seconds)}` : ""
+    ].filter(Boolean).join(" · ");
+    setPill(document.getElementById("rerunProgressPill"), `${pct}%`, progress.status === "completed" ? "ok" : "warn");
+    document.getElementById("rerunProgressFill").style.width = `${pct}%`;
+    document.getElementById("rerunProgressSteps").innerHTML = (progress.steps || []).map((step) => `
+      <div class="step-item ${escapeHtml(step.state)}">
+        <div class="step-index">${step.index}</div>
+        <div class="step-main">
+          <div class="step-name">${escapeHtml(step.label)}</div>
+          <div class="step-meta">预计 ${formatDuration(step.estimate_seconds)}${step.elapsed_seconds ? ` · 已用 ${formatDuration(step.elapsed_seconds)}` : ""}</div>
+        </div>
+        <div class="step-state">${escapeHtml(step.state_label)}</div>
+      </div>
+    `).join("");
+  }
+
+  function formatDuration(seconds) {
+    const value = Number(seconds || 0);
+    if (value < 60) return `${Math.max(1, Math.round(value))} 秒`;
+    const minutes = Math.floor(value / 60);
+    const rest = Math.round(value % 60);
+    return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
+  }
+
   function streamRerun(url) {
     rerunLog.textContent = "";
+    clearRerunProgressPolling();
+    resetRerunProgress();
     document.getElementById("rerunMetric").textContent = "运行中";
     setPill(rerunStatus, "运行中", "warn");
     const source = new EventSource(url);
@@ -337,6 +482,7 @@
       setPill(rerunStatus, data.message || data.status, "warn");
       if (data.run_id) {
         document.getElementById("rerunHint").innerHTML = `已创建运行档案 <code>${escapeHtml(data.run_id)}</code>。`;
+        startRerunProgressPolling(data.run_id);
       }
     });
     source.addEventListener("error", (event) => {
@@ -348,11 +494,13 @@
     source.addEventListener("done", (event) => {
       const data = JSON.parse(event.data);
       if (data.status === "running") {
-        document.getElementById("rerunMetric").textContent = "后台";
-        setPill(rerunStatus, "后台运行中", "warn");
+        document.getElementById("rerunMetric").textContent = "跟踪中";
+        setPill(rerunStatus, "步骤跟踪中", "warn");
         if (data.run_id) {
-          appendLog(`已转入后台运行，运行档案：${data.run_id}`);
-          document.getElementById("rerunHint").innerHTML = `后台任务已创建：<code>${escapeHtml(data.run_id)}</code>`;
+          appendLog(`已创建运行档案：${data.run_id}`);
+          appendLog("页面将继续跟踪 Trading Agents、Chairman 和 Red Team 的实时步骤。");
+          document.getElementById("rerunHint").innerHTML = `步骤跟踪中：<code>${escapeHtml(data.run_id)}</code>`;
+          startRerunProgressPolling(data.run_id);
         }
         source.close();
         return;
@@ -383,6 +531,19 @@
   });
   document.getElementById("saveAnswer").addEventListener("click", saveAnswer);
   document.getElementById("skipPrompt").addEventListener("click", skipPrompt);
+  ["dragenter", "dragover"].forEach((eventName) => {
+    answerDropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      answerDropZone.classList.add("drag-over");
+    });
+  });
+  ["dragleave", "drop"].forEach((eventName) => {
+    answerDropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      if (eventName !== "drop") answerDropZone.classList.remove("drag-over");
+    });
+  });
+  answerDropZone.addEventListener("drop", handleResearchFileDrop);
   document.getElementById("rerunAfterFill").addEventListener("click", () => {
     const date = document.getElementById("rerunDate").value;
     const type = document.getElementById("rerunBriefType").value;
@@ -400,5 +561,6 @@
   }
 
   loadPrompts();
+  resumeActiveRerunProgress();
 </script>
 {% endblock %}

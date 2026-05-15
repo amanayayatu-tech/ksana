@@ -42,7 +42,7 @@
     <section class="panel">
       <div class="panel-head">
         <h2 class="panel-title">本轮调度</h2>
-        <span class="pill warn">long 已禁用</span>
+        <span class="pill ok">{{ trial_status.recommendation_output }}</span>
       </div>
       <div class="panel-body execution-panel">
         <div class="run-selector">
@@ -54,6 +54,19 @@
             <button class="primary big-action" data-run="morning">早间投委会</button>
             <button class="primary big-action" data-run="evening">晚间投委会</button>
           </div>
+        </div>
+        <div id="runProgress" class="run-progress hidden">
+          <div class="run-progress-head">
+            <div>
+              <div id="runProgressTitle" class="run-progress-title">等待步骤写入运行档案</div>
+              <div id="runProgressMeta" class="run-progress-meta">未开始</div>
+            </div>
+            <span id="runProgressPill" class="pill">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="runProgressFill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <div id="runProgressSteps" class="step-list"></div>
         </div>
         <pre id="logBox" class="terminal"></pre>
       </div>
@@ -154,7 +167,10 @@
   const logBox = document.getElementById("logBox");
   const runStatus = document.getElementById("runStatus");
   const agentStatus = document.getElementById("agentStatus");
+  const runProgress = document.getElementById("runProgress");
   let reportType = "morning";
+  let progressTimer = null;
+  let progressRunId = "";
 
   function setPill(node, text, kind = "") {
     node.className = `pill ${kind}`.trim();
@@ -168,6 +184,8 @@
 
   function stream(url, statusNode, afterDone) {
     logBox.textContent = "";
+    clearProgressPolling();
+    resetRunProgress();
     setPill(statusNode, "运行中", "warn");
     const source = new EventSource(url);
     source.addEventListener("start", (event) => {
@@ -192,9 +210,11 @@
     source.addEventListener("done", (event) => {
       const data = JSON.parse(event.data);
       if (data.status === "running") {
-        setPill(statusNode, "后台运行中", "warn");
+        setPill(statusNode, "步骤跟踪中", "warn");
         if (data.run_id) {
-          appendLog(`已转入后台运行，运行档案：${data.run_id}`);
+          appendLog(`已创建运行档案：${data.run_id}`);
+          appendLog("页面将继续跟踪每一步状态和预计耗时。");
+          startProgressPolling(data.run_id, afterDone);
         } else {
           appendLog("已转入后台运行；稍后刷新运行档案。");
         }
@@ -208,6 +228,82 @@
       loadOpsDashboard();
       if (afterDone) afterDone(data);
     });
+  }
+
+  function resetRunProgress() {
+    progressRunId = "";
+    runProgress.classList.add("hidden");
+    document.getElementById("runProgressTitle").textContent = "等待步骤写入运行档案";
+    document.getElementById("runProgressMeta").textContent = "未开始";
+    setPill(document.getElementById("runProgressPill"), "0%");
+    document.getElementById("runProgressFill").style.width = "0%";
+    document.getElementById("runProgressSteps").innerHTML = "";
+  }
+
+  function clearProgressPolling() {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }
+
+  function startProgressPolling(runId, afterDone) {
+    progressRunId = runId;
+    runProgress.classList.remove("hidden");
+    loadRunProgress(runId, afterDone);
+    progressTimer = setInterval(() => loadRunProgress(runId, afterDone), 2500);
+  }
+
+  async function loadRunProgress(runId, afterDone) {
+    if (!runId || progressRunId !== runId) return;
+    const res = await fetch(`/api/run-progress?run_id=${encodeURIComponent(runId)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+    const progress = data.progress || {};
+    renderRunProgress(progress);
+    if (["completed", "failed", "partial_success", "cancelled"].includes(progress.status)) {
+      clearProgressPolling();
+      setPill(
+        runStatus,
+        progress.status === "completed" ? "已完成" : progress.status,
+        progress.status === "completed" ? "ok" : "error"
+      );
+      loadOpsDashboard();
+      if (progress.status === "completed" && afterDone) afterDone(progress);
+    }
+  }
+
+  function renderRunProgress(progress) {
+    runProgress.classList.remove("hidden");
+    const pct = Math.max(0, Math.min(100, Number(progress.progress_percent || 0)));
+    document.getElementById("runProgressTitle").textContent = progress.message || "正在运行";
+    document.getElementById("runProgressMeta").textContent = [
+      progress.run_id,
+      progress.current_step_label ? `当前：${progress.current_step_label}` : "",
+      progress.estimated_remaining_seconds ? `预计剩余 ${formatDuration(progress.estimated_remaining_seconds)}` : "",
+      progress.elapsed_seconds ? `已用 ${formatDuration(progress.elapsed_seconds)}` : ""
+    ].filter(Boolean).join(" · ");
+    setPill(document.getElementById("runProgressPill"), `${pct}%`, progress.status === "completed" ? "ok" : "warn");
+    document.getElementById("runProgressFill").style.width = `${pct}%`;
+    document.getElementById("runProgressSteps").innerHTML = (progress.steps || []).map((step) => `
+      <div class="step-item ${escapeHtml(step.state)}">
+        <div class="step-index">${step.index}</div>
+        <div class="step-main">
+          <div class="step-name">${escapeHtml(step.label)}</div>
+          <div class="step-meta">预计 ${formatDuration(step.estimate_seconds)}${step.elapsed_seconds ? ` · 已用 ${formatDuration(step.elapsed_seconds)}` : ""}</div>
+        </div>
+        <div class="step-state">${escapeHtml(step.state_label)}</div>
+      </div>
+    `).join("");
+  }
+
+  function formatDuration(seconds) {
+    const value = Number(seconds || 0);
+    if (value < 60) return `${Math.max(1, Math.round(value))} 秒`;
+    const minutes = Math.floor(value / 60);
+    const rest = Math.round(value % 60);
+    return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
   }
 
   document.querySelectorAll("[data-run]").forEach((button) => {
