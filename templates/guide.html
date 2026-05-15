@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}使用指南 · Nepha AI IC{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="guide-hero">
+    <div>
+      <div class="status-grid">
+        <span class="pill ok">操作手册</span>
+        <span class="pill">日频系统</span>
+        <span class="pill warn">Nepha 最终拍板</span>
+      </div>
+      <h1 class="guide-title">把 AI Native 投资公司当成每天的投研操作台</h1>
+      <p class="guide-subtitle">
+        这个系统不是自动交易器。它每天帮你完成研究发现、Perplexity 深度研究回填、三位投资合伙人并行分析、Chairman CIO 裁决、Red Team 反对审计和知识沉淀。你的工作是维护股池、把控研究质量门、阅读操作建议，并决定是否继续跟踪、补研究或执行自己的投资动作。
+      </p>
+    </div>
+    <div class="guide-visual" aria-label="系统运转示意图">
+      <div class="guide-orbit"></div>
+      <div class="guide-core">Nepha GP<br>最终决策</div>
+      <div class="guide-node node-research">K deep<small>扫描股池，编排研究任务</small></div>
+      <div class="guide-node node-perplexity">Perplexity<small>人类提交，深度研究回填</small></div>
+      <div class="guide-node node-partners">F / W / G partner<small>三套方法论并行分析</small></div>
+      <div class="guide-node node-red">Red Team<small>反对意见与风险触发器</small></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">每日运转链路</h2>
+      <span class="pill ok">从信号到操作建议</span>
+    </div>
+    <div class="panel-body">
+      <div class="guide-flow">
+        <div class="flow-step"><strong>1. 维护股票池</strong><span>在“股票池”里维护 Nepha 真正关心的 HK/US 标的；系统只围绕这个池子工作。</span></div>
+        <div class="flow-step"><strong>2. 运行投委会</strong><span>早间或晚间触发 K deep 扫描；价量只是入口，核心是研究任务编排。</span></div>
+        <div class="flow-step"><strong>3. 回填 Perplexity</strong><span>进入“研究中枢”，把 Deep Research 导出的 Markdown 拖入回填区。</span></div>
+        <div class="flow-step"><strong>4. 重跑投委会</strong><span>回填后重跑 F / W / G partner、Chairman 和 Red Team，页面会显示实时步骤。</span></div>
+        <div class="flow-step"><strong>5. 阅读报告</strong><span>在“运行档案”打开 Brief 和 Red Team，重点看操作建议、等待条件和风险触发器。</span></div>
+        <div class="flow-step"><strong>6. 复盘沉淀</strong><span>知识库会保留研究结论、未关闭问题和相似案例，下一次先复用再追问。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="guide-split">
+    <div class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">你每天该怎么用</h2>
+        <span class="pill">Nepha 工作流</span>
+      </div>
+      <div class="panel-body guide-checklist">
+        <div class="guide-item"><span class="guide-index">1</span><div><strong>先看是否有待回填研究</strong><span>研究中枢默认显示待回填任务。不要跳过 Perplexity 质量门，因为三位 partner 的分析质量取决于这份研究报告。</span></div></div>
+        <div class="guide-item"><span class="guide-index">2</span><div><strong>拖入 Perplexity Markdown</strong><span>把 Perplexity 导出的 `.md` 文件直接拖到答案窗口。系统会识别 prompt_id，保存回填，并抽取知识卡片。</span></div></div>
+        <div class="guide-item"><span class="guide-index">3</span><div><strong>点击重跑投委会链路</strong><span>重跑后不要盯终端。页面会显示当前步骤、预计耗时和运行档案；切到其他页面再回来也会续接。</span></div></div>
+        <div class="guide-item"><span class="guide-index">4</span><div><strong>读“操作建议汇总”</strong><span>不要再看 0% 仓位。真正该看的是建议动作、理由、等待条件、风险触发器，以及是否需要你人工拍板。</span></div></div>
+        <div class="guide-item"><span class="guide-index">5</span><div><strong>用 Red Team 反过来审自己</strong><span>Red Team 的价值不是格式检查，而是指出这次判断可能被什么证据推翻。</span></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">每个页面负责什么</h2>
+        <span class="pill ok">导航地图</span>
+      </div>
+      <div class="panel-body guide-map">
+        <div class="guide-item"><span class="guide-index">IC</span><div><strong>投委会</strong><span>触发早间/晚间系统运行，看公司记忆和最新报告入口。</span></div></div>
+        <div class="guide-item"><span class="guide-index">R</span><div><strong>研究中枢</strong><span>处理 Perplexity prompt、拖入 Markdown、保存回填、重跑投委会链路。</span></div></div>
+        <div class="guide-item"><span class="guide-index">H</span><div><strong>运行档案</strong><span>查看每一次 run 的状态、步骤进度、Brief 和 Red Team 审计报告。</span></div></div>
+        <div class="guide-item"><span class="guide-index">P</span><div><strong>股票池</strong><span>维护系统每日扫描和分析的对象边界。股池质量决定系统注意力质量。</span></div></div>
+        <div class="guide-item"><span class="guide-index">E</span><div><strong>环境</strong><span>检查 LLM provider、模型、Codex 登录状态和运行依赖。</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">如何读最终报告</h2>
+      <span class="pill warn">不替代你的决策</span>
+    </div>
+    <div class="panel-body guide-checklist">
+      <div class="guide-item"><span class="guide-index">A</span><div><strong>先读 Chairman 裁决</strong><span>看 final verdict、CIO 路由和暂时更信任哪位 partner。它告诉你系统当前更倾向等待、补研究、回避还是行动候选。</span></div></div>
+      <div class="guide-item"><span class="guide-index">B</span><div><strong>再读操作建议汇总</strong><span>逐行看 F / W / G partner 的建议动作、理由、等待条件、风险触发器。这里是你第二天跟踪和提问的清单。</span></div></div>
+      <div class="guide-item"><span class="guide-index">C</span><div><strong>最后读 Red Team</strong><span>如果 Red Team 给出 block 或 challenge，就不要只看正方叙事；优先关闭反证和未验证项。</span></div></div>
+      <div class="guide-item"><span class="guide-index">D</span><div><strong>仓位由你自己定</strong><span>系统只给操作建议和风险边界，不给仓位百分比。任何真实交易动作都必须由 Nepha 结合账户、现金、风险预算和现实约束自行决定。</span></div></div>
+    </div>
+  </section>
+</div>
+{% endblock %}

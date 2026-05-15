@@ -107,7 +107,7 @@ def assemble_brief(
                 "direction_consensus": consensus.model_dump(mode="json"),
                 "individual_views": [build_individual_view(rec) for rec in group_recs],
                 "disagreement_analysis": disagreement.model_dump(mode="json"),
-                "position_aggregation": build_position_aggregation(group_recs),
+                "operation_summary": build_operation_summary(group_recs, verdict),
                 "nepha_action_hint": build_nepha_action_hint(disagreement),
                 "historical_knowledge": historical_knowledge,
                 "chairman_verdict": verdict,
@@ -568,30 +568,105 @@ def _extract_logic_kill_confidence(rec: FPartnerRecommendation) -> float | None:
     return None
 
 
-def build_position_aggregation(recommendations: list[Recommendation]) -> dict[str, Any]:
-    """Aggregate proposed positions without making a decision for Nepha."""
+def build_operation_summary(
+    recommendations: list[Recommendation],
+    chairman_verdict: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build actionable operating guidance without proposing portfolio sizing."""
 
-    positions = [rec.position_size_pct for rec in recommendations if rec.position_size_pct is not None]
-    if not positions:
-        return {
-            "individual_proposals": [],
-            "min_proposed": None,
-            "max_proposed": None,
-            "range_pct": 0,
-            "deployment_layer_compliance_aggregate": "not_applicable",
-        }
+    chairman_verdict = chairman_verdict or {}
+    rows = [build_operation_row(rec) for rec in recommendations]
     return {
-        "individual_proposals": [
-            {"agent_id": rec.agent_id.value, "position_size_pct": rec.position_size_pct}
-            for rec in recommendations
-        ],
-        "min_proposed": min(positions),
-        "max_proposed": max(positions),
-        "range_pct": round(max(positions) - min(positions), 4),
+        "rows": rows,
+        "action_route": chairman_verdict.get("action_route") or "watchlist_monitor",
+        "final_verdict": chairman_verdict.get("final_verdict") or "wait",
+        "decision_required": any(row["nepha_decision_required"] for row in rows),
         "deployment_layer_compliance_aggregate": "passed"
         if all(not rec.deployment_compliance.any_failure_must_abstain for rec in recommendations)
         else "has_failure",
     }
+
+
+def build_operation_row(rec: Recommendation) -> dict[str, Any]:
+    """Translate one partner recommendation into Nepha-facing operating language."""
+
+    return {
+        "agent_id": rec.agent_id.value,
+        "suggested_action": suggested_action_label(rec.direction.value),
+        "reason": compact_cell(rec.one_liner_thesis or rec.thesis, fallback="未提供核心理由"),
+        "waiting_condition": compact_cell(extract_waiting_condition(rec), fallback="等待下一轮公开证据或 Nepha 人工复核"),
+        "risk_trigger": compact_cell(extract_risk_trigger(rec), fallback="核心 thesis 被公开数据证伪或 Red Team 升级为 block"),
+        "nepha_decision_required": True,
+        "nepha_decision_label": nepha_decision_label(rec.direction.value),
+    }
+
+
+def suggested_action_label(direction: str) -> str:
+    mapping = {
+        "long": "买入候选，需 Nepha 拍板",
+        "watch": "继续观察，等待证据闭环",
+        "avoid": "回避，降低优先级",
+        "abstain": "暂不判断，补材料后再跑",
+        "short": "反向风险提示，不执行交易",
+    }
+    return mapping.get(direction, "人工复核")
+
+
+def nepha_decision_label(direction: str) -> str:
+    mapping = {
+        "long": "是，确认是否执行",
+        "watch": "是，确认继续跟踪或补研究",
+        "avoid": "是，确认是否移出观察",
+        "abstain": "是，确认补资料后是否重跑",
+        "short": "是，仅作风险判断",
+    }
+    return mapping.get(direction, "是，Nepha 最终拍板")
+
+
+def extract_waiting_condition(rec: Recommendation) -> str:
+    extra = rec.model_extra or {}
+    candidates = first_non_empty_list_item(extra.get("analysis_gaps"))
+    if candidates:
+        return candidates
+    if rec.direction == Direction.ABSTAIN and rec.abstain_reason:
+        return f"先关闭 abstain 原因：{rec.abstain_reason}"
+    if rec.direction == Direction.AVOID:
+        return "除非出现新的公开证据推翻负面判断，否则不重启"
+    if rec.direction == Direction.LONG:
+        return "等待 Nepha 人工确认研究结论、风险触发器和执行窗口"
+    return "等待未关闭问题、下一份 Perplexity 回填或新的财报/监管/资金证据"
+
+
+def extract_risk_trigger(rec: Recommendation) -> str:
+    extra = rec.model_extra or {}
+    criteria = first_non_empty_list_item(extra.get("thesis_kill_criteria"))
+    if criteria:
+        return criteria
+    if rec.direction == Direction.AVOID:
+        return "负面 thesis 被证伪前维持回避"
+    if rec.direction == Direction.ABSTAIN:
+        return "关键证据继续缺失或互相矛盾"
+    return "价格异动被证明只是指数/期权/短期流动性驱动，或核心催化剂无法被公开来源验证"
+
+
+def first_non_empty_list_item(value: Any) -> str:
+    if not isinstance(value, list):
+        return ""
+    for item in value:
+        if isinstance(item, dict):
+            text = item.get("gap") or item.get("reason") or item.get("condition") or item.get("text")
+            if text:
+                return str(text)
+        elif item:
+            return str(item)
+    return ""
+
+
+def compact_cell(value: Any, *, fallback: str, limit: int = 130) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return fallback
+    return text if len(text) <= limit else f"{text[:limit - 1]}…"
 
 
 def build_nepha_action_hint(disagreement: DisagreementAnalysis) -> dict[str, Any]:

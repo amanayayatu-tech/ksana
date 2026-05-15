@@ -176,6 +176,15 @@ def stock_pool_page(request: Request) -> Any:
     )
 
 
+@app.get("/guide")
+def guide_page(request: Request) -> Any:
+    return templates.TemplateResponse(
+        request,
+        "guide.html",
+        {"active_page": "guide"},
+    )
+
+
 @app.get("/env")
 def env_page(request: Request) -> Any:
     return templates.TemplateResponse(
@@ -1362,25 +1371,37 @@ def read_markdown_result(
 def humanize_investment_report(content: str) -> str:
     """Convert internal direction/verdict labels into user-facing advice labels."""
 
-    replacements = {
-        "三方一致 long": "三方一致买入候选",
-        "三方一致 avoid": "三方一致回避",
-        "多数 long": "多数买入候选",
-        "多数 avoid": "多数回避",
-        "多数 abstain": "多数暂不判断",
-        "全员 abstain": "全员暂不判断",
-        "long / avoid 分歧": "买入候选 / 回避分歧",
-        "long / watch 混合": "买入候选 / 观察混合",
-        "| Agent | direction |": "| Agent | 投资建议 |",
-        "**final_verdict**": "**CIO 裁决**",
-        "final_verdict": "CIO 裁决",
-        "试运行期禁用 long": "证据闭环不足，暂不升级为买入候选",
-        "第一阶段禁止输出 long/short/leverage/put/hedge": "当前不展示杠杆、衍生品或内部方向标签",
-        "第一阶段禁止 long/short/leverage/put/hedge": "当前不展示杠杆、衍生品或内部方向标签",
-        "first_phase_long_disabled": "证据未闭环降级",
-    }
+    replacements = [
+        ("第一阶段禁止输出 long/short/leverage/put/hedge", "当前不展示杠杆、衍生品或内部方向标签"),
+        ("第一阶段禁止 long/short/leverage/put/hedge", "当前不展示杠杆、衍生品或内部方向标签"),
+        ("三方一致 long", "三方一致买入候选"),
+        ("三方一致 avoid", "三方一致回避"),
+        ("多数 abstain", "多数暂不判断"),
+        ("多数 avoid", "多数回避"),
+        ("多数 long", "多数买入候选"),
+        ("全员 abstain", "全员暂不判断"),
+        ("long / avoid 分歧", "买入候选 / 回避分歧"),
+        ("long / watch 混合", "买入候选 / 观察混合"),
+        ("| Agent | direction |", "| Agent | 投资建议 |"),
+        ("**final_verdict**", "**CIO 裁决**"),
+        ("first_phase_long_disabled", "证据未闭环降级"),
+        ("final_verdict", "CIO 裁决"),
+        ("试运行期禁用 long", "证据闭环不足，暂不升级为买入候选"),
+        ("long/short/leverage/put/hedge", "买入候选/反向风险/杠杆/期权/对冲"),
+        ("第一阶段 long 禁用", "证据闭环不足，暂不升级为买入候选"),
+        ("第一阶段禁止 long", "证据闭环不足，暂不升级为买入候选"),
+        ("禁止 long", "禁止直接给出买入候选"),
+        ("不能升级为 long", "不能升级为买入候选"),
+        ("输出 long", "输出买入候选"),
+        ("只能保守 watch", "只能保守观察"),
+        ("只能输出 watch", "只能输出观察"),
+        ("只能 watch", "只能观察"),
+        ("更保守的 abstain", "更保守的暂不判断"),
+        ("维持 watch 或 abstain", "维持观察或暂不判断"),
+        ("watch 或 abstain", "观察或暂不判断"),
+    ]
     rendered = content
-    for old, new in replacements.items():
+    for old, new in replacements:
         rendered = rendered.replace(old, new)
     direction_labels = {
         "long": "买入候选",
@@ -1425,6 +1446,12 @@ def humanize_investment_report(content: str) -> str:
     rendered = re.sub(
         r"\b只能 (long|short|watch|avoid|abstain)\b",
         lambda match: f"只能 {direction_labels[match.group(1)]}",
+        rendered,
+    )
+    rendered = re.sub(
+        r"\b(direction|selected_direction|final_direction|action)=("
+        r"long|short|watch|avoid|abstain)\b",
+        lambda match: f"{match.group(1)}={direction_labels[match.group(2)]}",
         rendered,
     )
     return rendered
@@ -2444,7 +2471,7 @@ def get_trial_status() -> dict[str, Any]:
         "mode": "AI Native 投委会",
         "long_disabled": False,
         "allowed_directions": "投资建议 / 观察 / 回避 / 暂不判断",
-        "recommendation_output": "直接输出投资建议，不展示 long/short 标签",
+        "recommendation_output": "直接输出操作建议，不展示内部方向标签",
         "data_scope": "公开价量/成交额初筛 + 手动 Perplexity 回填",
         "total_perplexity": len(prompts),
         "pending_perplexity": len(pending),

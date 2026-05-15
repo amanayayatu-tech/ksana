@@ -73,6 +73,14 @@ def test_deep_research_fill_and_skip_round_trip(tmp_path, monkeypatch):
     assert count == 0
 
 
+def test_guide_page_is_available():
+    response = TestClient(webui.app).get("/guide")
+
+    assert response.status_code == 200
+    assert "使用指南" in response.text
+    assert "操作建议汇总" in response.text
+
+
 def test_history_marks_schema_repair_from_recommendation_yaml(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     rec_dir = data_dir / "recommendations" / "20260513" / "f_partner"
@@ -418,7 +426,7 @@ def test_trial_status_uses_investment_advice_language(tmp_path, monkeypatch):
 
     assert status["long_disabled"] is False
     assert "投资建议" in status["allowed_directions"]
-    assert "不展示 long/short 标签" in status["recommendation_output"]
+    assert "不展示内部方向标签" in status["recommendation_output"]
 
 
 def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch):
@@ -434,6 +442,7 @@ def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch
                 "| f_partner | **watch** | 60 |",
                 "- **final_verdict**：`research_more`",
                 "- 三位 Agent 当前分布为 f_partner:watch, g_partner:abstain，只能 watch。",
+                "- 第一阶段禁止输出 long/short/leverage/put/hedge",
                 "- English sanity: long-term growth and short-term pressure; watch for cash flow.",
             ]
         ),
@@ -449,7 +458,9 @@ def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch
     assert "CIO 裁决" in result["content"]
     assert "f_partner:观察" in result["content"]
     assert "g_partner:暂不判断" in result["content"]
-    assert "只能 观察" in result["content"]
+    assert "只能观察" in result["content"]
+    assert "当前不展示杠杆、衍生品或内部方向标签" in result["content"]
+    assert "第一阶段禁止输出 买入候选/反向风险" not in result["content"]
     assert "long-term growth" in result["content"]
     assert "short-term pressure" in result["content"]
     assert "watch for cash flow" in result["content"]

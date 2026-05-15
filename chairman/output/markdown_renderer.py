@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -24,6 +25,8 @@ def render_markdown(brief: ChairmanBrief, template_name: str | None = None) -> s
     )
     env.filters["trans"] = trans
     env.filters["advice_label"] = advice_label
+    env.filters["advice_text"] = advice_text
+    env.filters["table_cell"] = table_cell
     env.filters["to_yaml"] = to_yaml
     selected = template_name or (
         "evening_brief.md.j2" if brief.brief_type.value == "evening" else "morning_brief.md.j2"
@@ -64,6 +67,11 @@ def trans(value: Any) -> str:
         "wait": "等待观察",
         "reject": "否决",
         "research_more": "补充研究",
+        "watchlist_monitor": "观察名单跟踪",
+        "drop_or_require_new_signal": "移出或等待新信号",
+        "run_or_update_perplexity_research": "补充/更新 Perplexity 研究",
+        "trial_position_candidate_after_nepha_review": "Nepha 复核后的行动候选",
+        "send_to_red_team_before_action": "行动前先交 Red Team",
         "methodology_dna": "方法论 DNA 差异",
         "data_input_difference": "数据输入差异",
         "upstream_signal_consumption": "上游信号采纳差异",
@@ -87,6 +95,46 @@ def advice_label(value: Any) -> str:
         "abstain": "暂不判断",
     }
     return mapping.get(str(value), str(value))
+
+
+def advice_text(value: Any) -> str:
+    """Translate internal direction terms inside free-form report text."""
+
+    text = str(value or "")
+    replacements = [
+        ("第一阶段禁止输出 long/short/leverage/put/hedge", "当前不展示杠杆、衍生品或内部方向标签"),
+        ("第一阶段禁止 long/short/leverage/put/hedge", "当前不展示杠杆、衍生品或内部方向标签"),
+        ("long/short/leverage/put/hedge", "买入候选/反向风险/杠杆/期权/对冲"),
+        ("第一阶段 long 禁用", "证据闭环不足，暂不升级为买入候选"),
+        ("第一阶段禁止 long", "证据闭环不足，暂不升级为买入候选"),
+        ("禁止 long", "禁止直接给出买入候选"),
+        ("不能升级为 long", "不能升级为买入候选"),
+        ("输出 long", "输出买入候选"),
+        ("只能保守 watch", "只能保守观察"),
+        ("只能输出 watch", "只能输出观察"),
+        ("只能 watch", "只能观察"),
+        ("更保守的 abstain", "更保守的暂不判断"),
+        ("维持 watch 或 abstain", "维持观察或暂不判断"),
+        ("watch 或 abstain", "观察或暂不判断"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+    direction_labels = {"long": "买入候选", "short": "反向风险", "watch": "观察", "avoid": "回避", "abstain": "暂不判断"}
+    text = re.sub(
+        r"\b(direction|selected_direction|final_direction|action)=("
+        r"long|short|watch|avoid|abstain)\b",
+        lambda match: f"{match.group(1)}={direction_labels[match.group(2)]}",
+        text,
+    )
+    return text
+
+
+def table_cell(value: Any) -> str:
+    """Escape Markdown table separators inside generated cell text."""
+
+    text = str(value or "")
+    text = " ".join(text.split())
+    return text.replace("|", r"\|")
 
 
 def to_yaml(value: Any) -> str:

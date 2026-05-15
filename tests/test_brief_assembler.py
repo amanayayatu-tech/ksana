@@ -87,6 +87,9 @@ def test_render_markdown_and_json_metadata():
 
     assert "投研委员会简报" in markdown
     assert "Chairman 不替你做决策" in markdown
+    assert "操作建议汇总" in markdown
+    assert "建议动作" in markdown
+    assert "仓位建议汇总" not in markdown
     assert '"brief_id": "BRIEF-20260513-AM"' in metadata
     assert build_individual_view(make_w_partner("long"))["collaborative_validation_summary"]
 
@@ -256,3 +259,33 @@ def test_brief_includes_chairman_final_verdict_navigation():
     assert "Chairman 裁决导航" in markdown
     assert "Red Team 后二次裁决规则" in markdown
     assert '"final_verdicts"' in render_json_metadata(brief)
+
+
+def test_brief_operation_summary_uses_nepha_decision_language():
+    brief = assemble_brief(
+        research_signals=[make_signal()],
+        recommendations=[
+            make_f_partner(
+                "watch",
+                thesis="事件催化成立但还需要等待机构资金验证",
+                analysis_gaps=["机构净买入 | 尚未验证"],
+                thesis_kill_criteria=["若后续披露显示只是期权 Gamma 推动，则降级"],
+            ),
+            make_w_partner("avoid", thesis="赔率不足且关键问题未关闭"),
+            make_g_partner("abstain", thesis="缺少估值证据", abstain_reason="valuation_missing"),
+        ],
+        brief_type="morning",
+        date="2026-05-13",
+        use_llm=False,
+    )
+
+    summary = brief.per_recommendation_summary[0]["operation_summary"]
+    markdown = render_markdown(brief)
+
+    assert summary["rows"][0]["suggested_action"] == "继续观察，等待证据闭环"
+    assert summary["rows"][0]["waiting_condition"] == "机构净买入 | 尚未验证"
+    assert summary["rows"][0]["risk_trigger"] == "若后续披露显示只是期权 Gamma 推动，则降级"
+    assert summary["rows"][2]["nepha_decision_label"] == "是，确认补资料后是否重跑"
+    assert "仓位分歧度" not in markdown
+    assert "机构净买入 \\| 尚未验证" in markdown
+    assert "Nepha 是否需要人工拍板" in markdown

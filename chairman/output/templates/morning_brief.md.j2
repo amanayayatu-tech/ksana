@@ -14,7 +14,7 @@
 - ❌ 三方一致回避：{{ full_consensus_avoid | join(', ') }}
 - ⚠️ 分歧建议：{{ split_decisions | length }} 条
 - 🔍 高优先级 Red Team 待审：**{{ red_team_high_priority }}** 条
-- 💭 全员 abstain 但 K deep 信号优先级高的：{{ abstain_with_high_signals | length }} 条
+- 💭 全员暂不判断但 K deep 信号优先级高的：{{ abstain_with_high_signals | length }} 条
 {% if perplexity_prompts_pending > 0 %}
 - 🧠 待 Nepha 手动跑的 Perplexity prompt：**{{ perplexity_prompts_pending }}** 条
 {% endif %}
@@ -34,16 +34,16 @@
 | Agent | 投资建议 | confidence | 权重 | 一句话 thesis |
 |---|---|---:|---:|---|
 {% for view in rec_summary.individual_views %}
-| {{ view.agent_id }} | **{{ view.direction | advice_label }}**{% if view.abstain_reason %} ({{ view.abstain_reason }}){% endif %} | {{ view.confidence }} | × {{ view.chairman_weight_multiplier }} | {{ view.one_liner_thesis }} |
+| {{ view.agent_id }} | **{{ view.direction | advice_label }}**{% if view.abstain_reason %} ({{ view.abstain_reason | advice_text }}){% endif %} | {{ view.confidence }} | × {{ view.chairman_weight_multiplier }} | {{ view.one_liner_thesis | advice_text }} |
 {% endfor %}
 
 {% if rec_summary.disagreement_analysis.primary_type %}
 #### 分歧分析（{{ rec_summary.disagreement_analysis.primary_type | trans }}）
 
-> {{ rec_summary.disagreement_analysis.narrative }}
+> {{ rec_summary.disagreement_analysis.narrative | advice_text }}
 
 {% if rec_summary.disagreement_analysis.red_team_escalation_required %}
-**已升级到 Red Team**：{{ rec_summary.disagreement_analysis.escalation_reason }}
+**已升级到 Red Team**：{{ rec_summary.disagreement_analysis.escalation_reason | advice_text }}
 {% endif %}
 {% endif %}
 
@@ -89,35 +89,35 @@
 - **暂时更信任**：{{ rec_summary.chairman_verdict.lead_agent.agent_id }} / {{ rec_summary.chairman_verdict.lead_agent.direction | advice_label }}（方法论权重 ×{{ rec_summary.chairman_verdict.lead_agent.chairman_weight_multiplier }}，历史表现权重 ×{{ rec_summary.chairman_verdict.lead_agent.performance_weight_multiplier }}）
 
 {% for step in rec_summary.chairman_verdict.decision_chain %}
-- {{ step }}
+- {{ step | advice_text }}
 {% endfor %}
 
-**关键反对摘要**：{{ rec_summary.chairman_verdict.dissent_summary }}
+**关键反对摘要**：{{ rec_summary.chairman_verdict.dissent_summary | advice_text }}
 
-**Red Team 后二次裁决规则**：block → reject；challenge → research_more；monitor → wait/research_more。
+**Red Team 后二次裁决规则**：阻断 → 否决；挑战 → 补充研究；监控 → 等待/补充研究。
 
 {% endif %}
 
-#### 仓位建议汇总（不替代 Nepha 决策）
+#### 操作建议汇总（不替代 Nepha 决策）
 
-| Agent | 建议仓位 | 入场区 | 目标价 | 止损 |
-|---|---:|---|---|---|
-{% for view in rec_summary.individual_views %}
-| {{ view.agent_id }} | {{ view.position_size_pct if view.position_size_pct is not none else 'n/a' }}% | {{ view.entry_zone or 'n/a' }} | {{ view.target_price or 'n/a' }} | {{ view.stop_loss or 'n/a' }} |
+| Agent | 建议动作 | 理由 | 等待条件 | 风险触发器 | Nepha 是否需要人工拍板 |
+|---|---|---|---|---|---|
+{% for row in rec_summary.operation_summary.rows %}
+| {{ row.agent_id }} | {{ row.suggested_action | advice_text | table_cell }} | {{ row.reason | advice_text | table_cell }} | {{ row.waiting_condition | advice_text | table_cell }} | {{ row.risk_trigger | advice_text | table_cell }} | {{ row.nepha_decision_label | advice_text | table_cell }} |
 {% endfor %}
 
-仓位分歧度：**{{ rec_summary.position_aggregation.range_pct }}%**
-部署层合规：{{ rec_summary.position_aggregation.deployment_layer_compliance_aggregate | trans }}
+CIO 路由：{{ rec_summary.operation_summary.action_route | trans }}
+部署层合规：{{ rec_summary.operation_summary.deployment_layer_compliance_aggregate | trans }}
 
 {% if rec_summary.nepha_action_hint.primary_attention_point %}
 #### Chairman 给 Nepha 的导航
 
-**主要看点**：{{ rec_summary.nepha_action_hint.primary_attention_point }}
+**主要看点**：{{ rec_summary.nepha_action_hint.primary_attention_point | advice_text }}
 
 {% if rec_summary.nepha_action_hint.suggested_followup_questions %}
 **建议你追问 Red Team 或 Agent**：
 {% for q in rec_summary.nepha_action_hint.suggested_followup_questions %}
-- {{ q }}
+- {{ q | advice_text }}
 {% endfor %}
 {% endif %}
 {% endif %}
