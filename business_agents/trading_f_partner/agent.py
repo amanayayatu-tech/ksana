@@ -1,4 +1,4 @@
-"""Fengliu trading agent."""
+"""FPartner trading agent."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from business_agents._common.perplexity_results import PerplexityContext
 from business_agents._common.trading_agent import TradingAgent, extract_signal_features
 
 
-class FengliuTradingAgent(TradingAgent):
-    agent_name = "trading_fengliu"
-    methodology_id = "fengliu_reverse_odds"
-    agent_id = "fengliu_reverse_odds"
-    output_dir_name = "fengliu"
-    recommendation_prefix = "R-FL"
+class FPartnerTradingAgent(TradingAgent):
+    agent_name = "trading_f_partner"
+    methodology_id = "f_partner"
+    agent_id = "f_partner"
+    output_dir_name = "f_partner"
+    recommendation_prefix = "R-FP"
 
     def add_method_specific_fields(
         self,
@@ -53,8 +53,8 @@ class FengliuTradingAgent(TradingAgent):
                     "deep_research_eligible": not context.has_filled_results,
                 },
                 "perplexity_deep_research_requests": [],
-                "fengliu_specific_framework": {
-                    "note": "冯柳 Agent 不使用通用四重安全边际框架。",
+                "f_partner_specific_framework": {
+                    "note": "F partner Agent 不使用通用四重安全边际框架。",
                     "odds_score": odds_score,
                     "probability_score": probability_score,
                     "dislocation_score": dislocation_score,

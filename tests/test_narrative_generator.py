@@ -7,7 +7,7 @@ import pytest
 import chairman.llm.narrative_generator as narrative_generator
 from chairman.llm.narrative_generator import LLMClient, LLMError, generate_disagreement_narrative
 from chairman.models import DisagreementAnalysis, DisagreementType
-from tests.conftest import make_fengliu, make_wanmu
+from tests.conftest import make_f_partner, make_w_partner
 
 
 class FailingClient(LLMClient):
@@ -16,7 +16,7 @@ class FailingClient(LLMClient):
 
 
 def test_fallback_when_llm_fails():
-    recs = [make_fengliu("long"), make_wanmu("avoid")]
+    recs = [make_f_partner("long"), make_w_partner("avoid")]
     disagreement = DisagreementAnalysis(
         primary_type=DisagreementType.METHODOLOGY_DNA,
         narrative="llm would rewrite this",

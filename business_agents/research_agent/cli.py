@@ -1,4 +1,4 @@
-"""CLI for 4.1 research agent."""
+"""CLI for K deep research agent."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from business_agents.research_agent.agent import ResearchAgent
 
 @click.group()
 def cli() -> None:
-    """4.1 research upstream agent."""
+    """K deep research upstream agent."""
 
 
 @cli.command("run")

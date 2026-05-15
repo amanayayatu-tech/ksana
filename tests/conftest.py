@@ -8,12 +8,12 @@ import yaml
 from chairman.models import (
     DeploymentCompliance,
     Direction,
-    FengliuRecommendation,
+    FPartnerRecommendation,
     HardRulesPassed,
-    LiguofeiRecommendation,
+    GPartnerRecommendation,
     ResearchSignal,
     UpstreamSignalRef,
-    WanmuRecommendation,
+    WPartnerRecommendation,
 )
 
 
@@ -126,19 +126,19 @@ def deployment(
     )
 
 
-def make_fengliu(
+def make_f_partner(
     direction: str = "long",
     *,
     confidence: int = 80,
     evidence_unverified: bool = False,
     data_date: str | None = None,
     **overrides: Any,
-) -> FengliuRecommendation:
+) -> FPartnerRecommendation:
     abstain_reason = overrides.pop("abstain_reason", None)
     if direction == "abstain" and not abstain_reason:
         abstain_reason = "insufficient_data"
-    return FengliuRecommendation(
-        recommendation_id=overrides.pop("recommendation_id", "R-FL-20260513-001"),
+    return FPartnerRecommendation(
+        recommendation_id=overrides.pop("recommendation_id", "R-FP-20260513-001"),
         ticker=overrides.pop("ticker", "MOCK"),
         market=overrides.pop("market", "US"),
         direction=Direction(direction),
@@ -149,27 +149,27 @@ def make_fengliu(
             upstream_ref(evidence_unverified=evidence_unverified)
         ],
         data_points=overrides.pop("data_points", [{"date": data_date or "2026-05-01"}]),
-        fengliu_specific_framework=overrides.pop(
-            "fengliu_specific_framework",
+        f_partner_specific_framework=overrides.pop(
+            "f_partner_specific_framework",
             {"odds_score": 80, "probability_score": 70, "dislocation_score": 75},
         ),
         **overrides,
     )
 
 
-def make_wanmu(
+def make_w_partner(
     direction: str = "long",
     *,
     confidence: int = 75,
     evidence_unverified: bool = False,
     data_date: str | None = None,
     **overrides: Any,
-) -> WanmuRecommendation:
+) -> WPartnerRecommendation:
     abstain_reason = overrides.pop("abstain_reason", None)
     if direction == "abstain" and not abstain_reason:
         abstain_reason = "insufficient_data"
-    return WanmuRecommendation(
-        recommendation_id=overrides.pop("recommendation_id", "R-WM-20260513-001"),
+    return WPartnerRecommendation(
+        recommendation_id=overrides.pop("recommendation_id", "R-WP-20260513-001"),
         ticker=overrides.pop("ticker", "MOCK"),
         market=overrides.pop("market", "US"),
         direction=Direction(direction),
@@ -185,7 +185,7 @@ def make_wanmu(
             {
                 "independent_validators_count": 2,
                 "validators_breakdown": {
-                    "upstream_4_1_signals_counted": 1,
+                    "upstream_k_deep_signals_counted": 1,
                     "nepha_manual_validation_entries": [],
                 },
             },
@@ -194,7 +194,7 @@ def make_wanmu(
     )
 
 
-def make_liguofei(
+def make_g_partner(
     direction: str = "long",
     *,
     confidence: int = 90,
@@ -202,12 +202,12 @@ def make_liguofei(
     data_date: str | None = None,
     dual_gate: str | None = None,
     **overrides: Any,
-) -> LiguofeiRecommendation:
+) -> GPartnerRecommendation:
     abstain_reason = overrides.pop("abstain_reason", None)
     if direction == "abstain" and not abstain_reason:
         abstain_reason = "win_rate_below_95"
-    return LiguofeiRecommendation(
-        recommendation_id=overrides.pop("recommendation_id", "R-LF-20260513-001"),
+    return GPartnerRecommendation(
+        recommendation_id=overrides.pop("recommendation_id", "R-GP-20260513-001"),
         ticker=overrides.pop("ticker", "MOCK"),
         market=overrides.pop("market", "US"),
         direction=Direction(direction),
@@ -270,4 +270,4 @@ def write_stock_pool(data_dir):
 
 @pytest.fixture
 def three_long_recommendations():
-    return [make_fengliu("long"), make_wanmu("long"), make_liguofei("long")]
+    return [make_f_partner("long"), make_w_partner("long"), make_g_partner("long")]

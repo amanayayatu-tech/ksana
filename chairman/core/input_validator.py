@@ -10,26 +10,26 @@ from pydantic import ValidationError
 
 from chairman.models import (
     AgentId,
-    FengliuRecommendation,
-    LiguofeiRecommendation,
+    FPartnerRecommendation,
+    GPartnerRecommendation,
     Recommendation,
     ResearchSignal,
     ValidationResult,
-    WanmuRecommendation,
+    WPartnerRecommendation,
     format_validation_error,
 )
 from business_agents._common.perplexity_results import sync_signal_perplexity_status
 
 AGENT_CLASS_BY_ID = {
-    AgentId.FENGLIU.value: FengliuRecommendation,
-    AgentId.WANMU.value: WanmuRecommendation,
-    AgentId.LIGUOFEI.value: LiguofeiRecommendation,
+    AgentId.F_PARTNER.value: FPartnerRecommendation,
+    AgentId.W_PARTNER.value: WPartnerRecommendation,
+    AgentId.G_PARTNER.value: GPartnerRecommendation,
 }
 
 AGENT_ID_BY_PATH_PART = {
-    "fengliu": AgentId.FENGLIU.value,
-    "wanmu": AgentId.WANMU.value,
-    "liguofei": AgentId.LIGUOFEI.value,
+    "f_partner": AgentId.F_PARTNER.value,
+    "w_partner": AgentId.W_PARTNER.value,
+    "g_partner": AgentId.G_PARTNER.value,
 }
 
 
@@ -76,7 +76,7 @@ def infer_agent_id(path: str | Path | None = None, data: dict[str, Any] | None =
 
 
 def validate_research_signal(data: dict[str, Any], source_path: str | Path | None = None) -> ResearchSignal:
-    """Validate a 4.1 research_signal payload."""
+    """Validate a K deep research_signal payload."""
 
     payload = unwrap_payload(data, "research_signal")
     if "research_signal_id" not in payload and source_path:

@@ -1,6 +1,6 @@
 ---
-methodology_id: fengliu_reverse_odds
-display_name: "冯柳式逆向赔率选择法"
+methodology_id: f_partner
+display_name: "F partner式逆向赔率选择法"
 version: 0.5.1
 created_at: 2026-05-12
 updated_at: 2026-05-13
@@ -13,17 +13,17 @@ run_cadence: daily
 deployment_layer_ref: deployment_layer.md v0.1
 agent_role: trading_agent
 downstream_of:
-  - research_system_event_bayesian (4.1 研究体系 v0.3)
+  - k_deep (K deep v0.3)
 peers:
-  - wanmu_single_sided (v0.3.1)
-  - liguofei_zen_value (v0.5.1)
+  - w_partner (v0.3.1)
+  - g_partner (v0.5.1)
 changelog:
   - "v0.4: 新增分层权威、赔率/概率公式、杀跌类型初判"
-  - "v0.5: 引用 deployment_layer.md v0.1；Output Schema 新增 3 个字段块（deployment_compliance / authority_resolution 增强 / upstream_research_signals）；Layered Authority 新增 R8（不自行调用 Perplexity）；明确冯柳作为非确定性派的特殊保留。"
+  - "v0.5: 引用 deployment_layer.md v0.1；Output Schema 新增 3 个字段块（deployment_compliance / authority_resolution 增强 / upstream_research_signals）；Layered Authority 新增 R8（不自行调用 Perplexity）；明确F partner作为非确定性派的特殊保留。"
   - "v0.5.1: 跨 Agent 微补丁。落地 DEC-003 (abstain_reason) / DEC-004 (evidence_unverified 双重处理) / DEC-005 (direction 枚举统一 / 删除 deployment_controls / Section 4 改重定向)。"
 ---
 
-# 冯柳式逆向赔率选择法
+# F partner式逆向赔率选择法
 
 ## 0. Layered Authority（分层权威）
 
@@ -32,9 +32,9 @@ authority_priority:
   - level: deployment_hard_rules
     source: deployment_layer.md v0.1
     items_reference: 见 deployment_layer.md Section 1-7
-    fengliu_specific_supplements:
-      - "本 Agent 不使用 deployment_layer Section 8.1 的通用四重安全边际框架，而是使用冯柳特有的 odds_score / probability_score / dislocation_score 三套指标"
-      - "Output Schema 中的 deployment_compliance 字段照常填充；safety_margin 相关字段可填 null 但必须在 fengliu_specific_framework 中填充上述三套指标"
+    f_partner_specific_supplements:
+      - "本 Agent 不使用 deployment_layer Section 8.1 的通用四重安全边际框架，而是使用F partner特有的 odds_score / probability_score / dislocation_score 三套指标"
+      - "Output Schema 中的 deployment_compliance 字段照常填充；safety_margin 相关字段可填 null 但必须在 f_partner_specific_framework 中填充上述三套指标"
   - level: methodology_decision_rules
     items: [Gate 1 ~ Gate 6, Thesis Kill Criteria, Position Sizing rules]
   - level: methodology_philosophy
@@ -46,14 +46,14 @@ authority_priority:
       - 用复杂去化解复杂
 ```
 
-- **R1**：deployment_hard_rules 与 methodology_decision_rules 冲突时，前者优先。Agent 必须在 `recommendation` 输出中显式标注 `overridden_by_deployment: true` 并说明覆盖了哪条方法论原则。<推断: 来源于工程化部署需要，非冯柳原文>
-- **R2**：methodology_decision_rules 与 methodology_philosophy 冲突时，前者优先。Agent 输出中标注 `philosophy_deferred: true`。<推断: 来源于工程化部署需要，非冯柳原文>
+- **R1**：deployment_hard_rules 与 methodology_decision_rules 冲突时，前者优先。Agent 必须在 `recommendation` 输出中显式标注 `overridden_by_deployment: true` 并说明覆盖了哪条方法论原则。<推断: 来源于工程化部署需要，非F partner原文>
+- **R2**：methodology_decision_rules 与 methodology_philosophy 冲突时，前者优先。Agent 输出中标注 `philosophy_deferred: true`。<推断: 来源于工程化部署需要，非F partner原文>
 - **R3**：当一只票按方法论应该加仓、但触发 -7% 部署层止损时，清仓优先，但必须在 `kill_log` 中记录"此次清仓违反原教旨方法论，原因：部署层硬约束"。这样未来复盘可以评估是部署层规则过严，还是方法论本身错误。<工程化妥协，可能偏离原意>
-- **R4**：Agent 在任何输出中，若发现自身建议同时违反 deployment_hard_rules，必须直接 abstain，不允许发出建议。<推断: 来源于工程化部署需要，非冯柳原文>
-- **R8（v0.5 新增，所有交易 Agent 通用）**：本 Agent 不自行调用任何外部 API，包括但不限于 Perplexity API、Perplexity 网页、其他搜索引擎、数据 API。所有需要外部研究的需求，必须以 pull_request 形式提交给 4.1 研究体系（研究上游 Agent），由其转译为 `perplexity_prompt_brief` 中的一条 prompt，最终由 Nepha 手动在 Perplexity Max 网页端操作并回填结果。
+- **R4**：Agent 在任何输出中，若发现自身建议同时违反 deployment_hard_rules，必须直接 abstain，不允许发出建议。<推断: 来源于工程化部署需要，非F partner原文>
+- **R8（v0.5 新增，所有交易 Agent 通用）**：本 Agent 不自行调用任何外部 API，包括但不限于 Perplexity API、Perplexity 网页、其他搜索引擎、数据 API。所有需要外部研究的需求，必须以 pull_request 形式提交给 K deep（研究上游 Agent），由其转译为 `perplexity_prompt_brief` 中的一条 prompt，最终由 Nepha 手动在 Perplexity Max 网页端操作并回填结果。
 
-  pull_request 提交格式（参考 4.1 研究体系 v0.3 Section 8.6）：
-  - requesting_agent: fengliu_reverse_odds
+  pull_request 提交格式（参考 K deep v0.3 Section 8.6）：
+  - requesting_agent: f_partner
   - requesting_recommendation_id: <本 recommendation 的 ID>
   - question_raw: <用自然语言提的问题>
   - why_needed: <为什么本次研究关键，关联到方法论的哪个 Gate>
@@ -65,18 +65,18 @@ authority_priority:
 本节假设来源：
 - authority_priority 三层结构：工程推断，来源于多 Agent 系统协同的工程需要
 - 引用 deployment_layer.md：来源于 deployment_layer.md v0.1 的工程决策
-- fengliu_specific_supplements：来源于 deployment_layer.md Section 8.1 关于冯柳特殊处理的说明，以及 v0.4 中冯柳不使用四重安全边际框架的事实
+- f_partner_specific_supplements：来源于 deployment_layer.md Section 8.1 关于F partner特殊处理的说明，以及 v0.4 中F partner不使用四重安全边际框架的事实
 - methodology_philosophy 条目：直接引用 v0.3 第 10 节 Quotes
 - 冲突解决规则 R1~R4：工程推断，<待用户复核>
 
 R8 假设来源：
 - 直接来源于 Nepha Day 1 原话"Perplexity 调用，是给我提示词，我手动搜索后返回答案的"
-- 与 4.1 研究体系 v0.3 R6（人在回路硬约束）对齐
+- 与 K deep v0.3 R6（人在回路硬约束）对齐
 - v0.5 三套交易 Agent 通用
 
 ## Initial Extraction Draft
 
-本稿基于四份冯柳原始材料整理，当前进入 **模式 A：材料丰富**。材料已足够抽取核心人格、能力圈、决策树、研究输入、卖出逻辑和自我审视点；另根据 `/Users/peachy/Downloads/交易Agent参数配置_4.1体系.md` 补入港美股交易 Agent 的部署层参数。
+本稿基于四份F partner原始材料整理，当前进入 **模式 A：材料丰富**。材料已足够抽取核心人格、能力圈、决策树、研究输入、卖出逻辑和自我审视点；另根据 `/Users/peachy/Downloads/交易Agent参数配置_K deep体系.md` 补入港美股交易 Agent 的部署层参数。
 
 已能填充的章节：Persona、Investment Universe 的方向性边界、Decision Tree 主干、Position Sizing、Data Sources、Catalysts & Kill Criteria、Output Cadence、Self-Critique Hooks、Quotes。
 
@@ -92,7 +92,7 @@ R8 假设来源：
 
 ## 2. Investment Universe
 
-- **市场范围**：部署市场为港股 + 美股；冯柳原始案例来自 A 股，只作为方法论来源与案例库，不直接限定交易市场。
+- **市场范围**：部署市场为港股 + 美股；F partner原始案例来自 A 股，只作为方法论来源与案例库，不直接限定交易市场。
 - **行业白名单**：
   - 身边可接触、可观察、信息劣势相对较低的行业：消费品、医药、零售。
   - 传统模式中优势可识别、可延续的公司。
@@ -354,7 +354,7 @@ odds_first_rule:
 
 > **部署层规则统一引用 deployment_layer.md v0.1，详见第 0 节 Layered Authority。**
 >
-> 本节仅保留冯柳方法论 DNA 部分（加仓/减仓/清仓的方法论触发条件），删除与部署层重复的具体仓位/止损/现金/换手率数值。
+> 本节仅保留F partner方法论 DNA 部分（加仓/减仓/清仓的方法论触发条件），删除与部署层重复的具体仓位/止损/现金/换手率数值。
 
 ### 部署层规则（仅引用）
 
@@ -434,7 +434,7 @@ odds_first_rule:
   - 市场已体现中逻辑，长逻辑仍未体现。
   - 极限位置上的黑天鹅反转。
   - 高关注度低购买度转为购买度提升。
-- **催化剂等待上限**：冯柳原文强调时间不值钱，不设置硬性等待上限；部署层以日度风控、周度扫描、财报季重估和事件触发复检替代固定到期日。
+- **催化剂等待上限**：F partner原文强调时间不值钱，不设置硬性等待上限；部署层以日度风控、周度扫描、财报季重估和事件触发复检替代固定到期日。
 - **Thesis Kill Criteria（逻辑破坏触发卖出）**：
   - 下跌从杀估值/杀业绩演变为杀逻辑。
   - 基本面与预想完全不同，且不是短暂偶发因素。
@@ -458,11 +458,11 @@ recommendation:
   direction: long | short | watch | avoid | abstain
   # v0.5.1 新增 abstain：
   # - long: 建议买入
-  # - short: 冯柳方法论不实际使用（保留枚举值以兼容部署层 Layered Authority R4）
+  # - short: F partner方法论不实际使用（保留枚举值以兼容部署层 Layered Authority R4）
   # - watch: 看好但时机未到
   # - avoid: 看了不值得（明确反对，计入辩论反对票）
   # - abstain: 看不懂或部署层硬约束未过，本方法论拒绝表态（不计入辩论投票）
-  fengliu_supported_subset: [long, watch, avoid, abstain]
+  f_partner_supported_subset: [long, watch, avoid, abstain]
   strategy_layer: long_core | medium_reversion | short_event | tracking
   circle_status: insider | semi_insider | outsider
   entry_zone: [low, high]
@@ -516,7 +516,7 @@ recommendation:
         - cash_floor_violated
         - cooldown_active
         - forbidden_action_required
-        # 冯柳方法论决策类（冯柳特有）
+        # F partner方法论决策类（F partner特有）
         - circle_status_outsider
         - kill_type_logic_kill
         # 上游信号类
@@ -548,8 +548,8 @@ recommendation:
       confidence_ceiling_applied: 0-100
       red_team_priority_flag: low | medium | high
       chairman_weight_multiplier: 0.0-1.0
-  fengliu_specific_framework:
-    note: "冯柳 Agent 不使用通用四重安全边际框架。本字段记录冯柳特有的三套核心指标。"
+  f_partner_specific_framework:
+    note: "F partner Agent 不使用通用四重安全边际框架。本字段记录F partner特有的三套核心指标。"
     odds_score: 0-100
     probability_score: 0-100
     dislocation_score: 0-100
@@ -582,13 +582,13 @@ recommendation:
 
 #### upstream_research_signals
 
-- 引用 4.1 研究体系发出的 `research_signal_id`。
+- 引用 K deep发出的 `research_signal_id`。
 - 即便本 Agent 不接受上游路由（`verdict: rejected`），仍必须记录引用，这是 1+3 系统辩论协议的关键。
 - `evidence_unverified_inherited: true` 表示上游信号有 Perplexity 未回填部分，本 Agent 据此降低 confidence。
 
 #### evidence_unverified_inherited 的双重处理规则（v0.5.1 新增 - DEC-004）
 
-当 `upstream_research_signals[].evidence_unverified_inherited: true` 时（即上游 4.1 研究体系的关键证据未被 Nepha 手动 Perplexity 回填），本 Agent 必须执行以下三项处理：
+当 `upstream_research_signals[].evidence_unverified_inherited: true` 时（即上游 K deep的关键证据未被 Nepha 手动 Perplexity 回填），本 Agent 必须执行以下三项处理：
 
 ```yaml
 when_evidence_unverified_inherited_is_true:
@@ -598,7 +598,7 @@ when_evidence_unverified_inherited_is_true:
 ```
 
 三项含义：
-- **confidence_ceiling: 70**：与 4.1 研究体系 v0.3 的 P1 prompt skipped 规则对齐，证据未被人工验证时，Agent 不可声称高置信度。
+- **confidence_ceiling: 70**：与 K deep v0.3 的 P1 prompt skipped 规则对齐，证据未被人工验证时，Agent 不可声称高置信度。
 - **red_team_priority: high**：让 Red Team 优先审查这类建议。
 - **chairman_weight_discount: 0.7**：Chairman 加权汇总时，这类建议的投票权重打 7 折。
 
@@ -608,17 +608,17 @@ when_evidence_unverified_inherited_is_true:
 - DEC-004：evidence_unverified_inherited 的双重处理（confidence_ceiling + red_team_priority + chairman_weight_discount）
 - 数值（70 / high / 0.7）来源于 system_decisions_log.md DEC-004
 
-#### fengliu_specific_framework
+#### f_partner_specific_framework
 
-- **本字段是冯柳 Agent 独有**，万木和李国飞 Agent 不输出此字段。
-- 当 Chairman 汇总三套 Agent 输出时，需要对照 deployment_layer.md Section 8.1 的说明，把冯柳的三套指标与万木/李国飞的四重安全边际做语义映射。
+- **本字段是F partner Agent 独有**，W partner和G partner Agent 不输出此字段。
+- 当 Chairman 汇总三套 Agent 输出时，需要对照 deployment_layer.md Section 8.1 的说明，把F partner的三套指标与W partner/G partner的四重安全边际做语义映射。
 
 本节假设来源：
 - deployment_compliance 字段：来源于 deployment_layer.md Section 10.1
 - authority_resolution v0.5 增强：来源于 v0.5 三套交易 Agent 共同补丁需求
-- upstream_research_signals 字段：来源于 deployment_layer.md Section 10.3 + 4.1 研究体系 v0.3 的下游接口契约
-- fengliu_specific_framework 字段：来源于 deployment_layer.md Section 8.1 关于冯柳特殊处理的说明
-- evidence_unverified_inherited 子字段：来源于 4.1 研究体系 v0.3 的 evidence_unverified 字段
+- upstream_research_signals 字段：来源于 deployment_layer.md Section 10.3 + K deep v0.3 的下游接口契约
+- f_partner_specific_framework 字段：来源于 deployment_layer.md Section 8.1 关于F partner特殊处理的说明
+- evidence_unverified_inherited 子字段：来源于 K deep v0.3 的 evidence_unverified 字段
 - DEC-005a：direction 枚举跨 Agent 统一为 [long, short, watch, avoid, abstain]
 - 各 Agent 通过 supported_subset 标注实际可输出的子集，保留方法论 DNA
 - DEC-005b：删除冗余的 deployment_controls 字段块，建立单一真源原则
@@ -706,22 +706,22 @@ when_evidence_unverified_inherited_is_true:
 - [ ] `worst_case_anchor_window`：worst_case_anchor 的"行业极限 PB"具体取哪个时间窗口？10 年最低？20 年最低？
 - [ ] `probability_score_industry_weights`：probability_score 的 4 个输入权重是否需要因行业差异化？（消费品 vs 医药 vs 周期）
 - [ ] `kill_type_confidence_calibration`：kill_type_heuristic 中各分类的 confidence 默认值，如何用历史数据校准？
-- [ ] R8 pull_request 频率上限：本 Agent 每周最多发起多少 pull_request？默认无上限，但 4.1 研究体系的 `max_prompts_per_signal: 5` 会形成天然约束，是否需要本 Agent 内部也加节流？
-- [ ] fengliu_specific_framework 与通用四重安全边际的 Chairman 映射：当 Chairman 汇总投票时，`odds_score >= 70` 是否相当于"过了 FCF/EV 门槛"？需要 Chairman 设计时定义。
+- [ ] R8 pull_request 频率上限：本 Agent 每周最多发起多少 pull_request？默认无上限，但 K deep的 `max_prompts_per_signal: 5` 会形成天然约束，是否需要本 Agent 内部也加节流？
+- [ ] f_partner_specific_framework 与通用四重安全边际的 Chairman 映射：当 Chairman 汇总投票时，`odds_score >= 70` 是否相当于"过了 FCF/EV 门槛"？需要 Chairman 设计时定义。
 - [x] deployment_compliance 自检失败时的 thesis 字段处理：DEC-003 已确认 abstain 状态下 thesis 必须填，并必须标注 `abstain_reason`。
 
 ## 12. Quality Self-Check
 
 - [ ] v0.5 新增字段 deployment_compliance 的实际自检逻辑未经实盘验证（如 liquidity_three_locks 怎么算"未过"还需明确数据源）
-- [ ] upstream_research_signals 字段的 evidence_unverified_inherited 处理规则需要在第一批 4.1 信号到来后校准
+- [ ] upstream_research_signals 字段的 evidence_unverified_inherited 处理规则需要在第一批 K deep 信号到来后校准
 - [ ] DEC-004 chairman_weight_discount: 0.7 的数值需在 Chairman 设计实测后调整（三套通用）
-- [ ] fengliu_specific_framework 与万木/李国飞框架的 Chairman 映射规则尚未定义（明日 Chairman 设计时处理）
-- [~] R8 pull_request 的实际发送频率未知（依赖 4.1 研究体系上线后实测）
+- [ ] f_partner_specific_framework 与W partner/G partner框架的 Chairman 映射规则尚未定义（明日 Chairman 设计时处理）
+- [~] R8 pull_request 的实际发送频率未知（依赖 K deep上线后实测）
 - [x] 通用 G1-G5 已实施
 - [x] frontmatter 已更新（version、deployment_layer_ref、agent_role、downstream_of、peers）
 - [x] Layered Authority 第一层已改为引用 deployment_layer.md
 - [x] R8 已新增（不自行调用 Perplexity）
-- [x] Output Schema 已新增四个字段块（deployment_compliance / authority_resolution v0.5 / upstream_research_signals / fengliu_specific_framework）
+- [x] Output Schema 已新增四个字段块（deployment_compliance / authority_resolution v0.5 / upstream_research_signals / f_partner_specific_framework）
 - [x] v0.4 的赔率/概率/错配公式未被触碰
 - [x] v0.4 的 Decision Tree Gate 1-6 未被触碰
 - [x] v0.4 的 Persona / Research Universe / Quotes 等章节未被触碰
@@ -734,7 +734,7 @@ when_evidence_unverified_inherited_is_true:
 - [x] Output Schema 包含 `perplexity_deep_research_requests` 字段，并给出样例。
 - [x] Self-Critique Hooks 至少列出 2 个翻车场景。
 - [x] Quotes 至少 5 条，且只保留短句。
-- [x] 仓位比例、流动性下限、关注度量化口径已根据 4.1 参数配置补齐。
+- [x] 仓位比例、流动性下限、关注度量化口径已根据 K deep 参数配置补齐。
 - [x] 杠杆权限、对冲权限、持仓周期偏好已确认。
 
 本节假设来源：

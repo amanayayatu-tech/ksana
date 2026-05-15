@@ -28,9 +28,9 @@ class Direction(str, Enum):
 class AgentId(str, Enum):
     """Trading agent identifiers."""
 
-    FENGLIU = "fengliu_reverse_odds"
-    WANMU = "wanmu_single_sided"
-    LIGUOFEI = "liguofei_zen_value"
+    F_PARTNER = "f_partner"
+    W_PARTNER = "w_partner"
+    G_PARTNER = "g_partner"
 
 
 class ConsensusLevel(str, Enum):
@@ -112,7 +112,7 @@ class AuthorityResolution(ChairmanModel):
 
 
 class UpstreamSignalRef(ChairmanModel):
-    """Reference from a trading recommendation to a 4.1 research signal."""
+    """Reference from a trading recommendation to a K deep research signal."""
 
     research_signal_id: str
     signal_summary: str | None = None
@@ -165,33 +165,33 @@ class BaseRecommendation(ChairmanModel):
         return self
 
 
-class FengliuRecommendation(BaseRecommendation):
-    """Fengliu-specific recommendation fields."""
+class FPartnerRecommendation(BaseRecommendation):
+    """FPartner-specific recommendation fields."""
 
-    agent_id: Literal[AgentId.FENGLIU] = AgentId.FENGLIU
-    fengliu_specific_framework: dict[str, Any] = Field(default_factory=dict)
+    agent_id: Literal[AgentId.F_PARTNER] = AgentId.F_PARTNER
+    f_partner_specific_framework: dict[str, Any] = Field(default_factory=dict)
     kill_type_heuristic: dict[str, Any] | None = None
     circle_status: str | None = None
     kill_type: str | None = None
 
 
-class WanmuRecommendation(BaseRecommendation):
-    """Wanmu-specific recommendation fields."""
+class WPartnerRecommendation(BaseRecommendation):
+    """WPartner-specific recommendation fields."""
 
-    agent_id: Literal[AgentId.WANMU] = AgentId.WANMU
+    agent_id: Literal[AgentId.W_PARTNER] = AgentId.W_PARTNER
     three_selection: dict[str, Any] = Field(default_factory=dict)
     three_models: dict[str, Any] = Field(default_factory=dict)
     three_cuts: dict[str, Any] = Field(default_factory=dict)
     three_rates: dict[str, Any] = Field(default_factory=dict)
-    wanmu_rating: dict[str, Any] = Field(default_factory=dict)
+    w_partner_rating: dict[str, Any] = Field(default_factory=dict)
     collaborative_validation: dict[str, Any] = Field(default_factory=dict)
     safety_margin: dict[str, Any] = Field(default_factory=dict)
 
 
-class LiguofeiRecommendation(BaseRecommendation):
-    """Liguofei-specific recommendation fields."""
+class GPartnerRecommendation(BaseRecommendation):
+    """GPartner-specific recommendation fields."""
 
-    agent_id: Literal[AgentId.LIGUOFEI] = AgentId.LIGUOFEI
+    agent_id: Literal[AgentId.G_PARTNER] = AgentId.G_PARTNER
     moat_assessment: dict[str, Any] = Field(default_factory=dict)
     evolution_power: dict[str, Any] = Field(default_factory=dict)
     entropy_reduction: dict[str, Any] = Field(default_factory=dict)
@@ -214,11 +214,11 @@ class CandidateTarget(ChairmanModel):
 
 
 class ResearchSignal(ChairmanModel):
-    """4.1 research upstream signal. Only Chairman-used fields are strict."""
+    """K deep research upstream signal. Only Chairman-used fields are strict."""
 
     research_signal_id: str
     emitted_at: datetime | str | None = None
-    emitter: str = "4.1_research_system"
+    emitter: str = "K deep_research_system"
     signal_status: Literal["active", "superseded", "invalidated", "resolved"] = "active"
     signal_type: Literal["discontinuity", "event", "mispricing", "bayesian_shift", "abstain"]
     research_stage: Literal["daily_scan", "special_attention", "deep_research", "trade_ready"]
@@ -294,6 +294,9 @@ class ChairmanBrief(ChairmanModel):
     per_recommendation_summary: list[dict[str, Any]]
     upstream_coverage_status: dict[str, Any]
     red_team_queue: dict[str, Any]
+    knowledge_memory: dict[str, Any] = Field(default_factory=dict)
+    final_verdicts: dict[str, Any] = Field(default_factory=dict)
+    partner_performance_context: dict[str, Any] = Field(default_factory=dict)
     chairman_observations: list[dict[str, Any]] = Field(default_factory=list)
     chairman_version: str = "0.1"
     decisions_applied: list[str] = Field(default_factory=list)
@@ -312,7 +315,7 @@ class ValidationResult(ChairmanModel):
     errors: list[str] = Field(default_factory=list)
 
 
-Recommendation = FengliuRecommendation | WanmuRecommendation | LiguofeiRecommendation
+Recommendation = FPartnerRecommendation | WPartnerRecommendation | GPartnerRecommendation
 
 
 def format_validation_error(error: ValidationError) -> list[str]:

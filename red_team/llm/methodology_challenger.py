@@ -97,8 +97,8 @@ def fallback_challenges(
     """Template challenge library for --no-llm and LLM failures."""
 
     agent_id = recommendation.agent_id
-    if agent_id == AgentId.FENGLIU:
-        confidence = _field(recommendation, "fengliu_specific_framework", {}).get(
+    if agent_id == AgentId.F_PARTNER:
+        confidence = _field(recommendation, "f_partner_specific_framework", {}).get(
             "kill_type_confidence", "未填"
         )
         questions = [
@@ -106,7 +106,7 @@ def fallback_challenges(
             "关注度/购买度错配的购买度分位反向计算，是否考虑了资金流结构扭曲？",
             f"kill_type 判定的 confidence 是 {confidence}，距离 DEC-014 阈值 0.65 还有多远？",
         ]
-    elif agent_id == AgentId.WANMU:
+    elif agent_id == AgentId.W_PARTNER:
         three_models = _field(recommendation, "three_models", {})
         hit_count = sum(1 for value in three_models.values() if value is True)
         questions = [
@@ -114,7 +114,7 @@ def fallback_challenges(
             "核心问题压缩到 ≤3 个，被压缩掉的问题清单在哪？是否可审计？",
             "三率（概率/赔率/斜率）是否同时通过？任一未通过的话理由是什么？",
         ]
-    elif agent_id == AgentId.LIGUOFEI:
+    elif agent_id == AgentId.G_PARTNER:
         moat = _field(recommendation, "moat_assessment", {})
         time_box = _field(recommendation, "time_box", {})
         questions = [

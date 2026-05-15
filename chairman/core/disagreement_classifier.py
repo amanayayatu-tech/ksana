@@ -33,9 +33,9 @@ def classify_disagreement(
     if _check_dual_gate_anomaly(recommendations):
         return DisagreementAnalysis(
             primary_type=DisagreementType.POTENTIAL_AGENT_ERROR,
-            narrative="李国飞 dual_gate_consistency 触发 anomaly_review_required。",
+            narrative="G partner dual_gate_consistency 触发 anomaly_review_required。",
             red_team_escalation_required=True,
-            escalation_reason="李国飞 dual_gate_consistency 触发 anomaly_review_required",
+            escalation_reason="G partner dual_gate_consistency 触发 anomaly_review_required",
         )
 
     if _check_evidence_unverified_split(recommendations):
@@ -47,7 +47,7 @@ def classify_disagreement(
     if _check_upstream_signal_split(recommendations, research_signal):
         return DisagreementAnalysis(
             primary_type=DisagreementType.UPSTREAM_SIGNAL_CONSUMPTION,
-            narrative="Agent 对同一 4.1 研究信号的采纳结论不同。",
+            narrative="Agent 对同一 K deep 研究信号的采纳结论不同。",
         )
 
     if _check_data_input_difference(recommendations):
@@ -69,7 +69,7 @@ def _check_dual_gate_anomaly(recommendations: list[Recommendation]) -> bool:
 
     for rec in recommendations:
         if (
-            rec.agent_id == AgentId.LIGUOFEI
+            rec.agent_id == AgentId.G_PARTNER
             and rec.deployment_compliance.dual_gate_consistency == "anomaly_review_required"
         ):
             return True

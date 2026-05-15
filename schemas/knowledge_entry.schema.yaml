@@ -1,0 +1,114 @@
+schema_id: worldpay77.knowledge_entry.v2
+description: >
+  Minimum durable memory unit extracted from one manually filled Perplexity Deep Research report.
+  This schema is the contract between Web UI fill, SQLite storage, Markdown cards,
+  Trading Agent prompt injection, Chairman history context, and Red Team objections.
+trigger:
+  event: save_perplexity_filled_result
+  source_path_pattern: data/perplexity_results/PR-*_filled.yaml
+  writer: business_agents._common.knowledge_store.ingest_filled_result
+  delete_on_skip: true
+retention:
+  default_expires_after_days: 90
+  refresh_rule: Same source_pr_id upserts the existing entry; newer reports create new entries.
+fields:
+  entry_id:
+    type: string
+    required: true
+    example: KE-20260514-BABA
+  stock_code:
+    type: string
+    required: true
+    example: BABA
+  sector_tags:
+    type: array[string]
+    required: true
+    example: [china_internet, ai_cloud, ecommerce]
+  narrative_tags:
+    type: array[string]
+    required: true
+    example: [earnings, cloud, geopolitics, dividend]
+  source_pr_id:
+    type: string
+    required: true
+    example: PR-20260514-BABA
+  related_signal_id:
+    type: string
+    required: false
+    example: RS-20260514-BABA
+  company_conclusions:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 5
+  industry_conclusions:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 3
+  unverified_claims:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 5
+  open_questions:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 8
+  closed_questions:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 6
+    description: Questions that the latest report explicitly closes or verifies.
+  historical_conflicts:
+    type: array[string]
+    required: true
+    max_items_for_prompt: 6
+    description: Conflicts with earlier research, historical analogies that failed, or explicit counterexamples.
+  evidence_quality:
+    type: object
+    required: true
+    fields:
+      confidence_label: string
+      source_url_count: integer
+      counter_evidence_count: integer
+      open_question_count: integer
+      score: integer
+  confidence_label:
+    type: string
+    required: false
+  source_urls:
+    type: array[string]
+    required: false
+  raw_result_path:
+    type: string
+    required: true
+  created_at:
+    type: datetime
+    required: true
+  expires_at:
+    type: date
+    required: true
+prompt_injection_policy:
+  same_ticker_window_days: 90
+  max_entries: 3
+  selection_order:
+    - Most recent unexpired same-ticker entries
+    - Most recent conclusion-changing entry when available
+    - Current open questions
+  always_include:
+    - open_questions
+    - unverified_claims
+    - historical_conflicts
+  never_include:
+    - full raw Perplexity answer text
+research_planning_policy:
+  consumer: business_agents.research_agent.agent
+  purpose: >
+    Before generating a new Perplexity prompt, Research Agent retrieves same-ticker memory,
+    similar tag cases, closed questions, open questions, expired entries, and conflicts.
+  output_fields:
+    - research_planning_context
+    - research_task_plan
+  rules:
+    - Reuse existing conclusions before asking new questions.
+    - Do not repeat closed questions unless the entry expired or a new trigger contradicts it.
+    - Always reopen unresolved questions and historical conflicts.
+    - Similar cases are analogies only; Chairman and Red Team must state why the analogy holds or fails.

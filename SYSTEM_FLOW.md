@@ -16,7 +16,7 @@ flowchart TD
     CliRun --> Orchestrator
 
     Orchestrator --> Clean["清理同日期旧输入\nresearch_signals / pull_requests / recommendations"]
-    Clean --> Research["Research Agent 4.1\n公开价量扫描"]
+    Clean --> Research["Research Agent K deep\n公开价量扫描"]
 
     StockPool["data/stock_pool/master_pool.yaml\nHK/US main 股池"] --> Research
     MarketData["公开价量数据\nYahoo Finance public chart endpoint"] --> Research
@@ -25,7 +25,7 @@ flowchart TD
     Research -->|"需要人工解释原因"| Prompts["data/pull_requests/\nPR-YYYYMMDD-TICKER.yaml"]
     Research -->|"无触发"| ResearchSummary["data/research_runs/\nRESEARCH-*.yaml"]
 
-    Signals --> TradingParallel["三位交易 Agent 并行\n冯柳 / 万木 / 李国飞"]
+    Signals --> TradingParallel["三位交易 Agent 并行\nF partner / W partner / G partner"]
     Prompts --> PerplexityUI["深度研究页\n人工复制 prompt 到 Perplexity"]
     PerplexityUI --> Fill["保存回填 / 标记跳过"]
     Fill --> Results["data/perplexity_results/\nPR-*_filled.yaml 或 PR-*_skipped.yaml"]
@@ -33,7 +33,7 @@ flowchart TD
     SyncSignal --> Signals
 
     Results --> TradingParallel
-    TradingParallel --> Recs["data/recommendations/YYYYMMDD/\nfengliu / wanmu / liguofei/*.yaml"]
+    TradingParallel --> Recs["data/recommendations/YYYYMMDD/\nf_partner / w_partner / g_partner/*.yaml"]
 
     Recs --> Chairman["Chairman\n共识、分歧、升级队列、报告摘要"]
     Signals --> Chairman
@@ -94,13 +94,13 @@ flowchart TD
     Skipped --> Context
     RS --> Context
 
-    Context --> Fengliu["冯柳 Agent"]
-    Context --> Wanmu["万木 Agent"]
-    Context --> Liguofei["李国飞 Agent"]
+    Context --> FPartner["F partner Agent"]
+    Context --> WPartner["W partner Agent"]
+    Context --> GPartner["G partner Agent"]
 
-    Fengliu --> R1["recommendation YAML"]
-    Wanmu --> R2["recommendation YAML"]
-    Liguofei --> R3["recommendation YAML"]
+    FPartner --> R1["recommendation YAML"]
+    WPartner --> R2["recommendation YAML"]
+    GPartner --> R3["recommendation YAML"]
 
     R1 --> Brief["Chairman Brief"]
     R2 --> Brief
@@ -118,7 +118,7 @@ flowchart TD
 
 - Research Agent 只负责发现“值得研究的异常”，不负责交易判断。
 - Perplexity 只通过人工回填进入系统，系统不自动联网问 Perplexity。
-- Trading Agent 必须引用 4.1 信号和 Perplexity 状态。
+- Trading Agent 必须引用 K deep 信号和 Perplexity 状态。
 - Chairman 汇总分歧，不替 Nepha 做最终交易决策。
 - Red Team 做风险和规则审计，不负责给买卖建议。
 
@@ -172,7 +172,7 @@ sequenceDiagram
 LLM 在系统里的职责分工：
 
 - Research Agent：当前主要是 deterministic 价量扫描；会加载方法论 prompt 并记录上下文，但不依赖 LLM 生成信号。
-- 三位交易 Agent：可调用 LLM，根据各自方法论解释 4.1 信号、价量证据和 Perplexity 回填；输出必须通过 schema 校验。
+- 三位交易 Agent：可调用 LLM，根据各自方法论解释 K deep 信号、价量证据和 Perplexity 回填；输出必须通过 schema 校验。
 - Chairman：可调用 LLM 写分歧叙事；核心共识计算、权重和升级路由仍是 deterministic。
 - Red Team：可调用 LLM 做方法论挑刺；硬规则审计 deterministic，LLM 失败时走 rules-only fallback。
 
@@ -235,7 +235,7 @@ sequenceDiagram
     UI->>File: 保存 PR-*_filled.yaml 或 PR-*_skipped.yaml
     File->>Signal: 同步 prompts_filled_back / prompts_pending / coverage_ratio
     UI->>History: 创建 deep_research_rerun 运行记录
-    UI->>Agents: 重跑冯柳、万木、李国飞
+    UI->>Agents: 重跑F partner、W partner、G partner
     Agents->>File: 读取 research_signal + PerplexityContext
     Agents->>File: 写新的 recommendation YAML
     Agents->>Chairman: 交给 Chairman 汇总
@@ -256,10 +256,10 @@ sequenceDiagram
 | 阶段 | 输入 | 输出 |
 | --- | --- | --- |
 | 股池 | Web UI 股池管理 / `master_pool.yaml` | `data/stock_pool/master_pool.yaml` |
-| 4.1 扫描 | 股池 + 公开价量 | `data/research_signals/RS-*.yaml` |
-| Perplexity prompt | 触发的 4.1 信号 | `data/pull_requests/PR-*.yaml` |
+| K deep 扫描 | 股池 + 公开价量 | `data/research_signals/RS-*.yaml` |
+| Perplexity prompt | 触发的 K deep 信号 | `data/pull_requests/PR-*.yaml` |
 | 人工回填 | Perplexity 答案或跳过原因 | `data/perplexity_results/PR-*_filled.yaml` / `PR-*_skipped.yaml` |
-| 三位交易 Agent | 4.1 信号 + 回填状态 + 方法论 + LLM | `data/recommendations/YYYYMMDD/{fengliu,wanmu,liguofei}/*.yaml` |
+| 三位交易 Agent | K deep 信号 + 回填状态 + 方法论 + LLM | `data/recommendations/YYYYMMDD/{f_partner,w_partner,g_partner}/*.yaml` |
 | Chairman | recommendations + research_signals | `data/briefs/YYYYMMDD/BRIEF-*.md` + `.json` |
 | Red Team | brief + recommendations + research_signals | `data/red_team_audits/YYYYMMDD/AUDIT-*.md` + `.json` |
 | 运行历史 | Orchestrator run log + step log | `data/orchestrator/runs.db`、`data/orchestrator/logs/*` |

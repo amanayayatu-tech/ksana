@@ -31,7 +31,7 @@ def audit_rules(
                 *_ar_008_data_points_without_source_url(rec),
                 *_ar_009_long_without_catalysts(rec),
                 *_ar_010_long_without_thesis_kill_criteria(rec),
-                *_ar_011_fengliu_logic_kill_not_avoid(rec),
+                *_ar_011_f_partner_logic_kill_not_avoid(rec),
                 *_ar_012_trial_long_disabled_violation(rec),
                 *_ar_013_schema_validation_failure(rec),
                 *_ar_014_methodology_gaps(rec),
@@ -63,7 +63,7 @@ def _finding(
 
 def _ar_001_dual_gate_anomaly(rec: Recommendation) -> list[RuleAuditFinding]:
     if (
-        rec.agent_id == AgentId.LIGUOFEI
+        rec.agent_id == AgentId.G_PARTNER
         and rec.deployment_compliance.dual_gate_consistency == "anomaly_review_required"
     ):
         r7 = getattr(rec.authority_resolution, "r7_dual_gate_status", {}) or {}
@@ -72,7 +72,7 @@ def _ar_001_dual_gate_anomaly(rec: Recommendation) -> list[RuleAuditFinding]:
                 "AR-001",
                 "critical",
                 rec,
-                f"李国飞 Agent 在 {rec.ticker} 上触发 dual_gate anomaly。",
+                f"G partner Agent 在 {rec.ticker} 上触发 dual_gate anomaly。",
                 {"dual_gate_consistency": rec.deployment_compliance.dual_gate_consistency, "r7": r7},
                 ["DEC-011"],
             )
@@ -122,7 +122,7 @@ def _ar_004_evidence_unverified_high_confidence(rec: Recommendation) -> list[Rul
                 "AR-004",
                 "high",
                 rec,
-                f"{rec.agent_id.value} 在 {rec.ticker} 引用未验证的 4.1 证据但 confidence={rec.confidence}（超过 DEC-004 上限 70）。",
+                f"{rec.agent_id.value} 在 {rec.ticker} 引用未验证的 K deep 证据但 confidence={rec.confidence}（超过 DEC-004 上限 70）。",
                 {
                     "confidence": rec.confidence,
                     "unverified_signals": [
@@ -169,7 +169,7 @@ def _ar_006_unverified_signal_skipped_twice(
                     rule_id="AR-006",
                     severity="medium",
                     finding_text=(
-                        f"4.1 信号 {signal.research_signal_id} 的关键 prompt 已连续被 Nepha 跳过 2 次。"
+                        f"K deep 信号 {signal.research_signal_id} 的关键 prompt 已连续被 Nepha 跳过 2 次。"
                     ),
                     evidence={"research_signal_id": signal.research_signal_id, "skipped": skipped},
                     referenced_decisions=["DEC-002"],
@@ -241,8 +241,8 @@ def _ar_010_long_without_thesis_kill_criteria(rec: Recommendation) -> list[RuleA
     return []
 
 
-def _ar_011_fengliu_logic_kill_not_avoid(rec: Recommendation) -> list[RuleAuditFinding]:
-    if rec.agent_id != AgentId.FENGLIU:
+def _ar_011_f_partner_logic_kill_not_avoid(rec: Recommendation) -> list[RuleAuditFinding]:
+    if rec.agent_id != AgentId.F_PARTNER:
         return []
     confidence = extract_logic_kill_confidence(rec)
     if confidence is not None and confidence >= 0.65 and rec.direction != Direction.AVOID:
@@ -251,7 +251,7 @@ def _ar_011_fengliu_logic_kill_not_avoid(rec: Recommendation) -> list[RuleAuditF
                 "AR-011",
                 "high",
                 rec,
-                f"冯柳 Agent 在 {rec.ticker} 识别 logic_kill（confidence={confidence}）但 direction != avoid。",
+                f"F partner Agent 在 {rec.ticker} 识别 logic_kill（confidence={confidence}）但 direction != avoid。",
                 {"logic_kill_confidence": confidence, "direction": rec.direction.value},
                 ["DEC-014"],
             )
@@ -323,7 +323,7 @@ def _ar_014_methodology_gaps(rec: Recommendation) -> list[RuleAuditFinding]:
 
 
 def extract_logic_kill_confidence(rec: Recommendation) -> float | None:
-    """Extract Fengliu logic_kill confidence as 0-1."""
+    """Extract FPartner logic_kill confidence as 0-1."""
 
     heuristic = getattr(rec, "kill_type_heuristic", None) or {}
     if isinstance(heuristic, dict):
@@ -331,7 +331,7 @@ def extract_logic_kill_confidence(rec: Recommendation) -> float | None:
         if isinstance(logic_kill, dict) and logic_kill.get("confidence") is not None:
             value = float(logic_kill["confidence"])
             return value / 100 if value > 1 else value
-    framework = getattr(rec, "fengliu_specific_framework", {}) or {}
+    framework = getattr(rec, "f_partner_specific_framework", {}) or {}
     if framework.get("kill_type_heuristic_verdict") == "logic_kill":
         value = framework.get("kill_type_confidence")
         if value is not None:

@@ -1,44 +1,81 @@
 {% extends "base.html" %}
-{% block title %}主页 · Agent Trading System{% endblock %}
+{% block title %}投委会 · Nepha AI IC{% endblock %}
 
 {% block content %}
-<div class="grid">
-  <section class="panel">
-    <div class="panel-head">
-      <h1 class="panel-title">本地运行</h1>
+<div class="ops-board">
+  <section class="command-banner">
+    <div>
       <div class="row">
+        <span class="pill ok">{{ trial_status.mode }}</span>
         <span class="pill">Provider：{{ env_status.llm_provider }}</span>
         <span id="runStatus" class="pill">待命</span>
       </div>
-    </div>
-    <div class="panel-body">
-      <div class="status-grid">
-        <span class="pill ok">{{ trial_status.mode }}</span>
-        <span class="pill warn">long 已禁用</span>
-        <span class="pill">允许：{{ trial_status.allowed_directions }}</span>
-        <span class="pill">数据源：{{ trial_status.data_scope }}</span>
-        <span id="pendingPerplexityPill" class="pill">Perplexity 待回填：{{ trial_status.pending_perplexity }}</span>
-        <span id="filledPerplexityPill" class="pill ok">Perplexity 已回填：{{ trial_status.filled_perplexity }}</span>
+      <h1 class="command-title mt">AI Native 投资公司</h1>
+      <p class="command-subtitle">K deep 研究总监、Perplexity 首席研究员、三位投资合伙人、Chairman CIO、Red Team 反对派合伙人。</p>
+      <div class="metric-strip mt">
+        <div class="metric-cell">
+          <div class="metric-label">Perplexity 待回填</div>
+          <div id="pendingMetric" class="metric-value">{{ trial_status.pending_perplexity }}</div>
+          <div class="metric-caption">研究质量门</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">Perplexity 已回填</div>
+          <div id="filledMetric" class="metric-value">{{ trial_status.filled_perplexity }}</div>
+          <div class="metric-caption">进入投委会</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">知识库条目</div>
+          <div id="knowledgeMetric" class="metric-value">-</div>
+          <div class="metric-caption">永久记忆</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">股票池</div>
+          <div id="stockMetric" class="metric-value">-</div>
+          <div class="metric-caption">Nepha 管理</div>
+        </div>
       </div>
-      <div class="surface-split">
-        <div class="compact-stack">
+    </div>
+    <div id="companyFlow" class="company-rail"></div>
+  </section>
+
+  <div class="ops-layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">本轮调度</h2>
+        <span class="pill warn">long 已禁用</span>
+      </div>
+      <div class="panel-body execution-panel">
+        <div class="run-selector">
           <label>
             日期
             <input id="runDate" type="date" value="{{ today }}">
           </label>
           <div class="grid two">
-            <button class="primary big-action" data-run="morning">运行早间报告</button>
-            <button class="primary big-action" data-run="evening">运行晚间报告</button>
+            <button class="primary big-action" data-run="morning">早间投委会</button>
+            <button class="primary big-action" data-run="evening">晚间投委会</button>
           </div>
         </div>
         <pre id="logBox" class="terminal"></pre>
       </div>
-    </div>
-  </section>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">公司记忆</h2>
+        <div class="row">
+          <span id="latestRunStatus" class="pill">运行档案</span>
+          <span id="verificationStatus" class="pill">复盘队列</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="memoryLedger" class="memory-ledger"></div>
+      </div>
+    </section>
+  </div>
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">报告阅读器</h2>
+      <h2 class="panel-title">CIO 裁决 / Red Team 反对</h2>
       <div class="row">
         <input id="reportDate" type="date" value="{{ today }}">
         <div class="tabs">
@@ -49,15 +86,15 @@
       </div>
     </div>
     <div class="panel-body">
-      <div class="grid two">
-        <div>
+      <div class="report-grid">
+        <div class="report-column">
           <div class="split-title">
-            <strong>Brief</strong>
+            <strong>Chairman Brief</strong>
             <span id="briefPath" class="pill">未读取</span>
           </div>
           <article id="briefView" class="markdown mt"></article>
         </div>
-        <div>
+        <div class="report-column">
           <div class="split-title">
             <strong>Red Team Audit</strong>
             <span id="auditPath" class="pill">未读取</span>
@@ -70,19 +107,19 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">单 Agent</h2>
+      <h2 class="panel-title">合伙人单步调度</h2>
       <span id="agentStatus" class="pill">待命</span>
     </div>
     <div class="panel-body">
       <div class="agent-control-grid">
         <label>
-          Agent
+          角色
           <select id="agentName">
-            <option value="research">Research Agent</option>
-            <option value="fengliu">冯柳 Agent</option>
-            <option value="wanmu">万木 Agent</option>
-            <option value="liguofei">李国飞 Agent</option>
-            <option value="chairman">Chairman</option>
+            <option value="research">K deep 研究总监</option>
+            <option value="f_partner">F partner合伙人</option>
+            <option value="w_partner">W partner合伙人</option>
+            <option value="g_partner">G partner合伙人</option>
+            <option value="chairman">Chairman CIO</option>
             <option value="red-team">Red Team</option>
           </select>
         </label>
@@ -104,8 +141,8 @@
             <option value="true">--no-llm</option>
           </select>
         </label>
-        <button id="runAgent">运行 Agent</button>
-        <button id="cleanupToday" class="danger">清除所选日期运行结果</button>
+        <button id="runAgent">运行角色</button>
+        <button id="cleanupToday" class="danger">清除所选日期</button>
       </div>
     </div>
   </section>
@@ -157,17 +194,18 @@
       if (data.status === "running") {
         setPill(statusNode, "后台运行中", "warn");
         if (data.run_id) {
-          appendLog(`已转入后台运行，运行历史：${data.run_id}`);
-          appendLog("可以离开本页；完成后到“运行历史”查看 Brief 和 Red Team 产物。");
+          appendLog(`已转入后台运行，运行档案：${data.run_id}`);
         } else {
-          appendLog("已转入后台运行；稍后刷新“运行历史”查看状态。");
+          appendLog("已转入后台运行；稍后刷新运行档案。");
         }
         source.close();
+        loadOpsDashboard();
         return;
       }
       const ok = data.return_code === 0 && data.status !== "failed";
       setPill(statusNode, data.status, ok ? "ok" : "error");
       source.close();
+      loadOpsDashboard();
       if (afterDone) afterDone(data);
     });
   }
@@ -200,7 +238,7 @@
     const date = document.getElementById("reportDate").value;
     const res = await fetch(`/api/report?date=${encodeURIComponent(date)}&brief_type=${reportType}`);
     const data = await res.json();
-    renderMarkdown("briefView", "briefPath", data.brief, "Brief 暂无内容");
+    renderMarkdown("briefView", "briefPath", data.brief, "Chairman Brief 暂无内容");
     renderMarkdown("auditView", "auditPath", data.audit, "Red Team Audit 暂无内容");
   }
 
@@ -235,23 +273,90 @@
 
   document.getElementById("cleanupToday").addEventListener("click", async () => {
     const date = document.getElementById("agentDate").value;
-    if (!confirm(`确认清除 ${date} 的运行结果？股池不会删除，其他日期不会清除。`)) return;
+    if (!confirm(`确认清除 ${date} 的运行结果？股池和知识库不会删除。`)) return;
     const res = await fetch(`/api/cleanup?date=${encodeURIComponent(date)}`, { method: "POST" });
     const data = await res.json();
     appendLog(data.message);
     if (data.removed.length) appendLog(`已删除：${data.removed.join(", ")}`);
+    loadOpsDashboard();
   });
 
-  async function loadTrialStatus() {
-    const res = await fetch("/api/trial-status");
+  async function loadOpsDashboard() {
+    const res = await fetch("/api/ops-dashboard");
     const data = await res.json();
     if (!data.ok) return;
-    const status = data.trial_status || {};
-    document.getElementById("pendingPerplexityPill").textContent = `Perplexity 待回填：${status.pending_perplexity ?? 0}`;
-    document.getElementById("filledPerplexityPill").textContent = `Perplexity 已回填：${status.filled_perplexity ?? 0}`;
+    renderOpsDashboard(data.dashboard || {});
   }
 
-  loadTrialStatus();
+  function renderOpsDashboard(dashboard) {
+    const trial = dashboard.trial_status || {};
+    const knowledge = dashboard.knowledge || {};
+    const stockPool = dashboard.stock_pool || {};
+    const verification = dashboard.verification || {};
+    document.getElementById("pendingMetric").textContent = trial.pending_perplexity ?? 0;
+    document.getElementById("filledMetric").textContent = trial.filled_perplexity ?? 0;
+    document.getElementById("knowledgeMetric").textContent = knowledge.entries ?? 0;
+    document.getElementById("stockMetric").textContent = stockPool.total ?? 0;
+    renderCompanyFlow(dashboard.company_flow || []);
+    renderMemoryLedger(knowledge.recent_entries || []);
+    renderLatestRun(dashboard.latest_run || {});
+    setPill(
+      document.getElementById("verificationStatus"),
+      `复盘 ${verification.resolved_decision_cases || 0}/${verification.decision_cases || 0}`,
+      verification.decision_cases ? "warn" : ""
+    );
+  }
+
+  function renderCompanyFlow(items) {
+    const root = document.getElementById("companyFlow");
+    root.innerHTML = items.map((item) => `
+      <div class="stage-row">
+        <div class="stage-name">${escapeHtml(item.label)}</div>
+        <div class="stage-metric">${escapeHtml(item.metric)}</div>
+        <div class="stage-state">${escapeHtml(item.state)}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderMemoryLedger(entries) {
+    const root = document.getElementById("memoryLedger");
+    if (!entries.length) {
+      root.innerHTML = '<p class="muted">知识库暂无最近条目。</p>';
+      return;
+    }
+    root.innerHTML = entries.map((entry) => `
+      <div class="memory-row">
+        <div><span class="pill ok">${escapeHtml(entry.ticker)}</span></div>
+        <div>
+          <div class="memory-title">${escapeHtml(entry.title || entry.prompt_id)}</div>
+          <div class="memory-meta">${escapeHtml(entry.prompt_id)} · ${escapeHtml(entry.confidence_label)} · ${escapeHtml((entry.tags || []).join(" / "))}</div>
+        </div>
+        <div class="memory-meta">未关闭 ${entry.open_questions_count || 0}<br>未验证 ${entry.unverified_claims_count || 0}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderLatestRun(row) {
+    if (!row.run_id) {
+      setPill(document.getElementById("latestRunStatus"), "暂无运行档案");
+      return;
+    }
+    setPill(
+      document.getElementById("latestRunStatus"),
+      `${row.status || ""} · ${row.run_id}`,
+      row.status === "completed" ? "ok" : row.status === "failed" ? "error" : "warn"
+    );
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  loadOpsDashboard();
   loadReport();
 </script>
 {% endblock %}

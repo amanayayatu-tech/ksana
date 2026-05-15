@@ -18,9 +18,9 @@ chairman = "chairman.cli:main"
 red-team = "red_team.cli:main"
 orchestrator = "orchestrator.cli:main"
 research-agent = "business_agents.research_agent.cli:main"
-trading-fengliu = "business_agents.trading_fengliu.cli:main"
-trading-wanmu = "business_agents.trading_wanmu.cli:main"
-trading-liguofei = "business_agents.trading_liguofei.cli:main"
+trading-f_partner = "business_agents.trading_f_partner.cli:main"
+trading-w_partner = "business_agents.trading_w_partner.cli:main"
+trading-g_partner = "business_agents.trading_g_partner.cli:main"
 
 [build-system]
 requires = ["hatchling"]

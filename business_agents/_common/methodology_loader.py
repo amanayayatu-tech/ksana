@@ -9,22 +9,22 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 METHODOLOGY_FILES = {
-    "fengliu_reverse_odds": "fengliu_v0.5.1.md",
-    "wanmu_single_sided": "wanmu_v0.3.1.md",
-    "liguofei_zen_value": "liguofei_v0.5.1.md",
-    "research_system_event_bayesian": "research_system_v0.3.md",
+    "f_partner": "f_partner_v0.5.1.md",
+    "w_partner": "w_partner_v0.3.1.md",
+    "g_partner": "g_partner_v0.5.1.md",
+    "k_deep": "research_system_v0.3.md",
 }
 
 DISPLAY_NAMES = {
-    "fengliu_reverse_odds": ("冯柳：逆向赔率选择法", "trading_agent"),
-    "wanmu_single_sided": ("万木：单边翻倍协同投研法", "trading_agent"),
-    "liguofei_zen_value": ("李国飞：禅式高确定性价值投资", "trading_agent"),
-    "research_system_event_bayesian": ("4.1 研究体系：事件贝叶斯研究上游", "research_upstream"),
+    "f_partner": ("F partner：逆向赔率选择法", "trading_agent"),
+    "w_partner": ("W partner：单边翻倍协同投研法", "trading_agent"),
+    "g_partner": ("G partner：禅式高确定性价值投资", "trading_agent"),
+    "k_deep": ("K deep：事件贝叶斯研究上游", "research_upstream"),
 }
 
 COMPACT_METHODOLOGY_PROMPTS = {
-    "fengliu_reverse_odds": """
-核心：冯柳逆向赔率选择法。先判断杀跌/上涨背后的市场逻辑，再看赔率、概率、关注度/购买度错配。
+    "f_partner": """
+核心：F partner逆向赔率选择法。先判断杀跌/上涨背后的市场逻辑，再看赔率、概率、关注度/购买度错配。
 硬规则：第一阶段禁止 long/short/leverage/put/hedge；即便方法论倾向买入，也只能输出 watch，并说明 first_phase_long_disabled。
 Gate：
 1. 能力圈：内行/半内行/外行；外行只允许低权重观察。
@@ -33,10 +33,10 @@ Gate：
 4. 赔率优先：odds_score / probability_score / dislocation_score 必须解释，赔率不足不能升级。
 5. 关注度与购买度：高关注低购买才可能形成错配；高关注高购买更偏 watch/avoid。
 6. 虚实结合：必须引用价量 data_points 和 Perplexity 回填状态。
-必须输出：direction、confidence、thesis、data_points、deployment_compliance、authority_resolution、upstream_research_signals、fengliu_specific_framework、odds_probability、attention_purchase_mispricing、analysis_gaps。
+必须输出：direction、confidence、thesis、data_points、deployment_compliance、authority_resolution、upstream_research_signals、f_partner_specific_framework、odds_probability、attention_purchase_mispricing、analysis_gaps。
 """,
-    "wanmu_single_sided": """
-核心：万木单边翻倍协同投研法。用三选、三型、三刀、三率判断是否值得进入候选；第一阶段只能 watch/avoid/abstain。
+    "w_partner": """
+核心：W partner单边翻倍协同投研法。用三选、三型、三刀、三率判断是否值得进入候选；第一阶段只能 watch/avoid/abstain。
 硬规则：禁止 long/short/leverage/put/hedge；缺关键证据时不要假装通过。
 Gate：
 1. 交易载体和硬约束：只处理 Nepha 股池中的 HK/US 标的。
@@ -46,10 +46,10 @@ Gate：
 5. 核心问题压缩：核心问题超过 3 个且无法压缩时 abstain。
 6. 三率：概率、赔率、斜率；缺哪一率必须明说，任一过低不得升级。
 7. 安全边际与贝叶斯否决：证据不足时 watch/abstain。
-必须输出：direction、confidence、thesis、data_points、deployment_compliance、authority_resolution、upstream_research_signals、three_models、three_cuts、three_rates、wanmu_rating、collaborative_validation、safety_margin、methodology_gaps。
+必须输出：direction、confidence、thesis、data_points、deployment_compliance、authority_resolution、upstream_research_signals、three_models、three_cuts、three_rates、w_partner_rating、collaborative_validation、safety_margin、methodology_gaps。
 """,
-    "liguofei_zen_value": """
-核心：李国飞禅式高确定性价值投资。重点是护城河、进化力、熵减力，以及 95% 主观胜率和 70% 贝叶斯置信度双门槛。
+    "g_partner": """
+核心：G partner禅式高确定性价值投资。重点是护城河、进化力、熵减力，以及 95% 主观胜率和 70% 贝叶斯置信度双门槛。
 硬规则：第一阶段禁止 long/short/leverage/put/hedge；未穿过 95%/70% 双门槛只能 watch/avoid/abstain。
 Gate：
 1. 能力圈与高确定性：主观胜率低于 95% 不能通过。
@@ -60,16 +60,17 @@ Gate：
 6. 简单决策：sharp 变量超过 2 个时倾向 abstain。
 必须输出：direction、confidence、thesis、data_points、deployment_compliance、authority_resolution、upstream_research_signals、moat_assessment、evolution_power、entropy_reduction、bayesian_update、margin_of_safety、time_box、red_team。
 """,
-    "research_system_event_bayesian": """
-核心：4.1 研究体系是事件贝叶斯研究上游，只做公开价量/成交额初筛，不输出交易建议。
-硬规则：第一阶段只扫描 Nepha 股池 HK/US main ticker；A 股只能 reference；没有真实规则触发时不得生成假信号。
+    "k_deep": """
+核心：K deep是事件贝叶斯研究上游，是压缩后的 K deep 方法论资产；权威源文件为 methodologies/research_system_v0.3.md。
+硬规则：第一阶段只扫描 Nepha 股池 HK/US main ticker；A 股只能 reference；没有真实规则触发时不得生成假信号；Perplexity 只能 human_in_the_loop，由 Nepha 手动跑并回填；K deep 不输出任何交易建议。
 Gate：
-1. 逐个扫描主池 ticker，读取近 7-10 个交易日价格、成交量、20 日均量、跳空、单日涨跌幅、连续涨跌和成交异常。
-2. 只有触发真实价量规则才输出 research_signal；否则只写 run_summary 和 no_signal_tickers。
-3. 每条 signal 必须带 triggered_rules、data_points、source_url、confidence、evidence_unverified 和 candidate_targets。
-4. 事件原因、产业因果、新闻解释不足时生成 Perplexity prompt；每日默认不超过 30 条。
-5. Perplexity 未回填时 signal 必须保持 evidence_unverified，不得伪装成已验证。
-6. 下游交易 Agent 只消费 4.1 信号和回填状态；4.1 不给 long/short 方向。
+1. 研究对象定义：必须明确主对象是 company/industry/market/change/investment_system/human_nature/special_event/arbitrage/beta_linked。
+2. Great Idea 候选：必须有事件、时间窗口、市场未定价/错定价或认知调整。
+3. 非连续变化识别：检查渗透率、成本效率、供需结构、产品替代、商业模式和竞争格局。
+4. Beta 与收益归因：拆分企业基本面、估值、宏观 beta、行业 beta、个股 alpha，不能把 beta 写成 alpha。
+5. 贝叶斯更新：区分市场先验、我方先验和事件后后验；未回填证据必须 evidence_unverified。
+6. 工作流分流：先做是非题，再做数学题；决定 daily_scan / special_attention / deep_research。
+7. Research Signal Emission：发出信号前必须有 routing_recommendation、falsification_points、Perplexity prompt 状态和证伪问题。
 必须输出：research_signals、perplexity_prompt_brief、run_summary；所有 source_url 必须可追溯到公开价量来源或本地回填文件。
 """,
 }

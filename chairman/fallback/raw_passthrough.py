@@ -78,7 +78,7 @@ def render_fallback_markdown(
         "",
         "---",
         "",
-        "## 4.1 研究信号原文",
+        "## K deep 研究信号原文",
         "",
     ]
     for signal in research_signals:

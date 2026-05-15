@@ -22,7 +22,7 @@ def test_pipeline_with_one_agent_failure(tmp_path):
     write_pipeline_inputs(data_dir)
     steps = build_full_pipeline_steps(date="2026-05-13", brief_type="morning", data_dir=data_dir)
     for step in steps:
-        if step.name == "trading_fengliu":
+        if step.name == "trading_f_partner":
             step.command = py_step("raise SystemExit(2)")
 
     result = run_full_pipeline(
@@ -33,8 +33,8 @@ def test_pipeline_with_one_agent_failure(tmp_path):
     )
 
     assert result.status == "completed"
-    assert result.step_results["trading_fengliu"].status == "failed"
-    assert result.step_results["trading_wanmu"].status == "success"
+    assert result.step_results["trading_f_partner"].status == "failed"
+    assert result.step_results["trading_w_partner"].status == "success"
 
 
 def test_pipeline_chairman_fallback(tmp_path):
@@ -62,9 +62,9 @@ def test_pipeline_research_scan_failure(tmp_path):
     data_dir = tmp_path / "data"
     steps = [
         PipelineStep(name="research_scan", command=py_step("raise SystemExit(2)"), max_retries=0),
-        PipelineStep(name="trading_fengliu", command=py_step("print('skip')"), skip_on_failure=True),
-        PipelineStep(name="trading_wanmu", command=py_step("print('skip')"), skip_on_failure=True),
-        PipelineStep(name="trading_liguofei", command=py_step("print('skip')"), skip_on_failure=True),
+        PipelineStep(name="trading_f_partner", command=py_step("print('skip')"), skip_on_failure=True),
+        PipelineStep(name="trading_w_partner", command=py_step("print('skip')"), skip_on_failure=True),
+        PipelineStep(name="trading_g_partner", command=py_step("print('skip')"), skip_on_failure=True),
         PipelineStep(name="perplexity_wait", command=py_step("print('skip')"), skip_on_failure=True),
         PipelineStep(name="chairman", command=py_step("print('skip')")),
         PipelineStep(name="red_team", command=py_step("print('skip')")),

@@ -78,6 +78,7 @@ def audit_command(
             llm_client=llm_client,
             use_llm=use_llm,
             rules_only=rules_only,
+            data_dir=data_dir,
         )
         md_path, json_path = archive_audit(audit, data_dir)
     except Exception as exc:

@@ -27,7 +27,8 @@ class RunLog:
         trigger_source: str,
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        run_id = build_run_id()
+        metadata = metadata or {}
+        run_id = build_run_id(metadata.get("date"))
         now = datetime.now().astimezone().isoformat()
         with self.connect() as conn:
             conn.execute(
@@ -35,7 +36,7 @@ class RunLog:
                 INSERT INTO pipeline_runs(run_id, pipeline_type, trigger_source, started_at, status, metadata_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (run_id, pipeline_type, trigger_source, now, "running", json.dumps(metadata or {})),
+                (run_id, pipeline_type, trigger_source, now, "running", json.dumps(metadata)),
             )
         return run_id
 
@@ -118,6 +119,22 @@ class RunLog:
             row = conn.execute("SELECT * FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
 
+    def has_history_for_date(self, date: str) -> bool:
+        compact = "".join(ch for ch in date if ch.isdigit())[:8]
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM pipeline_runs
+                WHERE run_id LIKE ?
+                   OR metadata_json LIKE ?
+                   OR metadata_json LIKE ?
+                LIMIT 1
+                """,
+                (f"RUN-{compact}-%", f'%"date": "{date}"%', f'%"date":"{date}"%'),
+            ).fetchone()
+        return row is not None
+
     def connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
@@ -127,5 +144,14 @@ class RunLog:
             conn.executescript(schema_path.read_text(encoding="utf-8"))
 
 
-def build_run_id() -> str:
-    return f"RUN-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+def build_run_id(run_date: str | None = None) -> str:
+    compact_date = normalize_run_id_date(run_date)
+    return f"RUN-{compact_date}-{uuid.uuid4().hex[:8]}"
+
+
+def normalize_run_id_date(run_date: str | None = None) -> str:
+    if run_date:
+        digits = "".join(ch for ch in run_date if ch.isdigit())
+        if len(digits) >= 8:
+            return digits[:8]
+    return datetime.now().strftime("%Y%m%d")

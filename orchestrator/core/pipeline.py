@@ -41,28 +41,28 @@ def build_full_pipeline_steps(
             skip_on_failure=False,
         ),
         PipelineStep(
-            name="trading_fengliu",
+            name="trading_f_partner",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-fengliu", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
+            else ["trading-f_partner", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
         ),
         PipelineStep(
-            name="trading_wanmu",
+            name="trading_w_partner",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-wanmu", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
+            else ["trading-w_partner", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
         ),
         PipelineStep(
-            name="trading_liguofei",
+            name="trading_g_partner",
             command=python_noop
             if include_noop_agent_steps
-            else ["trading-liguofei", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
+            else ["trading-g_partner", "run", "--date", "{date}", "--data-dir", "{data_dir}"],
             timeout_seconds=900,
             depends_on=["research_scan"],
             skip_on_failure=True,
@@ -80,7 +80,7 @@ def build_full_pipeline_steps(
                 "{data_dir}",
             ],
             timeout_seconds=1800,
-            depends_on=["trading_fengliu", "trading_wanmu", "trading_liguofei"],
+            depends_on=["trading_f_partner", "trading_w_partner", "trading_g_partner"],
             skip_on_failure=True,
         ),
         PipelineStep(
@@ -97,7 +97,7 @@ def build_full_pipeline_steps(
                 "--no-llm",
             ],
             timeout_seconds=300,
-            depends_on=["trading_fengliu", "trading_wanmu", "trading_liguofei"],
+            depends_on=["trading_f_partner", "trading_w_partner", "trading_g_partner"],
             skip_on_failure=False,
             output_files=[
                 Path(data_dir_text) / "briefs" / compact / f"BRIEF-{compact}-{_brief_suffix(brief_type)}.json"
@@ -148,15 +148,16 @@ def run_full_pipeline(
     """Run the standard pipeline and record state."""
 
     run_log = run_log or RunLog(Path(data_dir) / "orchestrator" / "runs.db")
+    using_default_steps = steps is None
+    has_prior_run_for_date = run_log.has_history_for_date(date)
     run_id = run_log.create_run(
         pipeline_type="full",
         trigger_source=trigger_source,
         metadata={"brief_type": brief_type, "date": date},
     )
     context = {"run_id": run_id, "date": date, "brief_type": brief_type, "data_dir": str(data_dir)}
-    using_default_steps = steps is None
     steps = steps or build_full_pipeline_steps(date=date, brief_type=brief_type, data_dir=data_dir)
-    if using_default_steps:
+    if using_default_steps and has_prior_run_for_date:
         clean_pipeline_inputs_for_date(data_dir, date)
     results: dict[str, StepResult] = {}
     fallback_path: Path | None = None

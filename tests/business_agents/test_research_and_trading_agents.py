@@ -9,12 +9,12 @@ from business_agents.research_agent.agent import ResearchAgent
 from business_agents._common.llm_client import LLMError
 from business_agents._common.perplexity_results import collect_perplexity_context
 from business_agents.research_agent.cli import cli as research_cli
-from business_agents.trading_fengliu.agent import FengliuTradingAgent
-from business_agents.trading_fengliu.cli import cli as fengliu_cli
-from business_agents.trading_liguofei.agent import LiguofeiTradingAgent
-from business_agents.trading_liguofei.cli import cli as liguofei_cli
-from business_agents.trading_wanmu.agent import WanmuTradingAgent
-from business_agents.trading_wanmu.cli import cli as wanmu_cli
+from business_agents.trading_f_partner.agent import FPartnerTradingAgent
+from business_agents.trading_f_partner.cli import cli as f_partner_cli
+from business_agents.trading_g_partner.agent import GPartnerTradingAgent
+from business_agents.trading_g_partner.cli import cli as g_partner_cli
+from business_agents.trading_w_partner.agent import WPartnerTradingAgent
+from business_agents.trading_w_partner.cli import cli as w_partner_cli
 from tests.conftest import QuietMarketClient, TriggerMarketClient, write_stock_pool
 
 
@@ -79,6 +79,46 @@ def test_research_prompt_ids_include_ticker_to_avoid_rerun_collisions(tmp_path):
     assert "RS-20260514-BABA.yaml" in signal_names
 
 
+def test_research_prompt_uses_k_deep_question_framework(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        run_date="2026-05-14",
+    ).run(no_llm=True)
+
+    prompt_data = yaml.safe_load((data_dir / "pull_requests" / "PR-20260514-BABA.yaml").read_text(encoding="utf-8"))
+    signal_data = yaml.safe_load((data_dir / "research_signals" / "RS-20260514-BABA.yaml").read_text(encoding="utf-8"))
+
+    question_set = prompt_data["research_question_set"]
+    assert question_set["framework"] == "k_deep_research_questions_v1"
+    assert question_set["methodology_source"] == "research_system_v0.3.md"
+    assert question_set["methodology_version"] == "0.3"
+    assert len(question_set["question_groups"]) == 7
+    assert [group["gate_id"] for group in question_set["question_groups"]] == [
+        "Gate 1",
+        "Gate 2",
+        "Gate 3",
+        "Gate 4",
+        "Gate 5",
+        "Gate 6",
+        "Gate 7",
+    ]
+    assert "K deep 研究问题组" in prompt_data["prompt_text"]
+    assert "research_system_v0.3.md" in prompt_data["prompt_text"]
+    assert "human_in_the_loop" in prompt_data["prompt_text"]
+    assert "竞争格局" in prompt_data["prompt_text"]
+    assert "可进入知识库的结构化要点" in prompt_data["prompt_text"]
+    assert signal_data["research_signal"]["k_deep_research_questions"]["question_groups"]
+    assert signal_data["research_signal"]["research_methodology_profile"]["methodology_source"] == "research_system_v0.3.md"
+    fingerprint = signal_data["research_signal"]["signal_fingerprint"]
+    assert fingerprint["fingerprint_version"] == "signal_fingerprint_v1"
+    assert fingerprint["methodology"]["methodology_source"] == "research_system_v0.3.md"
+    assert "single_day_move_ge_7pct" in fingerprint["trigger_rules"]
+
+
 def test_research_agent_no_trigger_writes_summary_only(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
@@ -93,7 +133,7 @@ def test_trading_agent_consumes_upstream_signal(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
-    result = FengliuTradingAgent(data_dir=data_dir).run(no_llm=True)
+    result = FPartnerTradingAgent(data_dir=data_dir).run(no_llm=True)
 
     assert result.output_files
     content = result.output_files[0].read_text(encoding="utf-8")
@@ -106,7 +146,7 @@ def test_trading_agent_only_consumes_selected_run_date_signals(tmp_path):
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-13").run(no_llm=True)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
 
-    signals = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14").load_research_signals()
+    signals = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14").load_research_signals()
 
     assert len(signals) == 2
     assert all(signal.research_signal_id.startswith("RS-20260514-") for signal in signals)
@@ -116,7 +156,7 @@ def test_trading_agent_evidence_unverified_propagates(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
-    result = WanmuTradingAgent(data_dir=data_dir).run(no_llm=True)
+    result = WPartnerTradingAgent(data_dir=data_dir).run(no_llm=True)
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert "evidence_unverified_inherited: true" in content
@@ -142,9 +182,9 @@ answer_text: |
         encoding="utf-8",
     )
 
-    result = FengliuTradingAgent(data_dir=data_dir).run(no_llm=True)
+    result = FPartnerTradingAgent(data_dir=data_dir).run(no_llm=True)
     content = result.output_files[0].read_text(encoding="utf-8")
-    log_content = next((data_dir / "agent_logs").glob("*/trading_fengliu/*.llm.log")).read_text(
+    log_content = next((data_dir / "agent_logs").glob("*/trading_f_partner/*.llm.log")).read_text(
         encoding="utf-8"
     )
 
@@ -175,9 +215,9 @@ answer_text: |
         encoding="utf-8",
     )
 
-    result = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14").run(no_llm=True)
+    result = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14").run(no_llm=True)
     content = result.output_files[0].read_text(encoding="utf-8")
-    log_content = next((data_dir / "agent_logs").glob("*/trading_fengliu/*.llm.log")).read_text(
+    log_content = next((data_dir / "agent_logs").glob("*/trading_f_partner/*.llm.log")).read_text(
         encoding="utf-8"
     )
 
@@ -190,7 +230,7 @@ def test_perplexity_context_truncates_long_answer_for_llm_prompt(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14")
+    agent = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14")
     signal = agent.load_research_signals()[0]
     prompt_path = data_dir / "pull_requests" / f"PR-20260514-{signal.candidate_targets[0].ticker.replace('.', '-')}.yaml"
     result_dir = data_dir / "perplexity_results"
@@ -212,7 +252,7 @@ def test_trading_agent_normalizes_data_point_url_aliases(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14")
+    agent = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14")
     signal = agent.load_research_signals()[0]
 
     payload = agent.normalize_payload_data_points(
@@ -234,7 +274,7 @@ def test_trading_agent_uses_stable_recommendation_id_and_removes_same_ticker_sta
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    stale_dir = data_dir / "recommendations" / "20260514" / "fengliu"
+    stale_dir = data_dir / "recommendations" / "20260514" / "f_partner"
     stale_dir.mkdir(parents=True)
     (stale_dir / "FRO-20260514-BABA.yaml").write_text(
         yaml.safe_dump(
@@ -244,9 +284,9 @@ def test_trading_agent_uses_stable_recommendation_id_and_removes_same_ticker_sta
         encoding="utf-8",
     )
 
-    FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14").run(no_llm=True)
+    FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14").run(no_llm=True)
 
-    assert (stale_dir / "R-FL-20260514-BABA.yaml").exists()
+    assert (stale_dir / "R-FP-20260514-BABA.yaml").exists()
     assert not (stale_dir / "FRO-20260514-BABA.yaml").exists()
 
 
@@ -255,13 +295,13 @@ def test_three_trading_agent_schema_differences(tmp_path):
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
 
-    fengliu = FengliuTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
-    wanmu = WanmuTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
-    liguofei = LiguofeiTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
+    f_partner = FPartnerTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
+    w_partner = WPartnerTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
+    g_partner = GPartnerTradingAgent(data_dir=data_dir).run(no_llm=True).output_files[0].read_text(encoding="utf-8")
 
-    assert "fengliu_specific_framework" in fengliu
-    assert "wanmu_rating" in wanmu
-    assert "dual_gate_consistency" in liguofei
+    assert "f_partner_specific_framework" in f_partner
+    assert "w_partner_rating" in w_partner
+    assert "dual_gate_consistency" in g_partner
 
 
 def test_llm_schema_failure_is_abstain_and_auditable(tmp_path):
@@ -269,7 +309,7 @@ def test_llm_schema_failure_is_abstain_and_auditable(tmp_path):
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=AlwaysInvalidTradingLLM()).run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=AlwaysInvalidTradingLLM()).run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert "direction: abstain" in content
@@ -281,14 +321,14 @@ def test_llm_repair_then_long_is_downgraded_to_watch(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir)
+    agent = FPartnerTradingAgent(data_dir=data_dir)
     signal = agent.load_research_signals()[0]
     payload = agent.build_debug_recommendation(signal, "0700.HK", 1)
     payload["direction"] = "long"
     payload["confidence"] = 88
     fake_llm = InvalidThenLongTradingLLM(payload)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm).run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm).run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert fake_llm.calls >= 2
@@ -301,14 +341,14 @@ def test_llm_long_with_non_integer_confidence_is_schema_failure(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir)
+    agent = FPartnerTradingAgent(data_dir=data_dir)
     signal = agent.load_research_signals()[0]
     payload = agent.build_debug_recommendation(signal, "0700.HK", 1)
     payload["direction"] = "long"
     payload["confidence"] = "high"
     fake_llm = InvalidThenLongTradingLLM(payload)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm).run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm).run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert fake_llm.calls >= 3
@@ -321,7 +361,7 @@ def test_llm_missing_identity_fields_are_normalized_before_schema_repair(tmp_pat
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14")
+    agent = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14")
     signal = agent.load_research_signals()[0]
     ticker = signal.candidate_targets[0].ticker
     payload = agent.build_debug_recommendation(signal, ticker, 1)
@@ -329,17 +369,17 @@ def test_llm_missing_identity_fields_are_normalized_before_schema_repair(tmp_pat
     payload.pop("agent_id")
     fake_llm = OneShotTradingLLM(payload)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
 
     assert fake_llm.calls == 2
-    assert any(path.name == "R-FL-20260514-BABA.yaml" for path in result.output_files)
+    assert any(path.name == "R-FP-20260514-BABA.yaml" for path in result.output_files)
 
 
 def test_llm_common_format_noise_is_normalized_before_schema_repair(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14")
+    agent = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14")
     signal = agent.load_research_signals()[0]
     ticker = signal.candidate_targets[0].ticker
     payload = agent.build_debug_recommendation(signal, ticker, 1)
@@ -348,7 +388,7 @@ def test_llm_common_format_noise_is_normalized_before_schema_repair(tmp_path):
     payload["entry_zone"] = [None, None]
     fake_llm = OneShotTradingLLM(payload)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert fake_llm.calls == 2
@@ -361,7 +401,7 @@ def test_llm_upstream_signal_dict_is_normalized(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient(), run_date="2026-05-14").run(no_llm=True)
-    agent = FengliuTradingAgent(data_dir=data_dir, run_date="2026-05-14")
+    agent = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14")
     signal = agent.load_research_signals()[0]
     ticker = signal.candidate_targets[0].ticker
     payload = agent.build_debug_recommendation(signal, ticker, 1)
@@ -371,7 +411,7 @@ def test_llm_upstream_signal_dict_is_normalized(tmp_path):
     }
     fake_llm = OneShotTradingLLM(payload)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert "agent_runtime_failed" not in content
@@ -390,12 +430,12 @@ def test_llm_minimal_judgment_uses_deterministic_schema_backbone(tmp_path):
         }
     )
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=fake_llm, run_date="2026-05-14").run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert fake_llm.calls == 2
     assert "LLM 只补判断" in content
-    assert "fengliu_specific_framework" in content
+    assert "f_partner_specific_framework" in content
     assert "upstream_research_signals" in content
     assert "data_points" in content
 
@@ -405,7 +445,7 @@ def test_llm_runtime_error_is_auditable_abstain_not_debug_fallback(tmp_path):
     write_stock_pool(data_dir)
     ResearchAgent(data_dir=data_dir, market_client=TriggerMarketClient()).run(no_llm=True)
 
-    result = FengliuTradingAgent(data_dir=data_dir, llm_client=FailingTradingLLM()).run()
+    result = FPartnerTradingAgent(data_dir=data_dir, llm_client=FailingTradingLLM()).run()
     content = result.output_files[0].read_text(encoding="utf-8")
 
     assert "direction: abstain" in content
@@ -421,11 +461,11 @@ def test_business_agent_clis(tmp_path):
     research_result = runner.invoke(research_cli, ["run", "--type", "scan", "--no-llm", "--data-dir", str(data_dir)])
     assert research_result.exit_code == 0, research_result.output
 
-    fengliu_result = runner.invoke(fengliu_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
-    assert fengliu_result.exit_code == 0, fengliu_result.output
+    f_partner_result = runner.invoke(f_partner_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
+    assert f_partner_result.exit_code == 0, f_partner_result.output
 
-    wanmu_result = runner.invoke(wanmu_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
-    assert wanmu_result.exit_code == 0, wanmu_result.output
+    w_partner_result = runner.invoke(w_partner_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
+    assert w_partner_result.exit_code == 0, w_partner_result.output
 
-    liguofei_result = runner.invoke(liguofei_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
-    assert liguofei_result.exit_code == 0, liguofei_result.output
+    g_partner_result = runner.invoke(g_partner_cli, ["run", "--no-llm", "--data-dir", str(data_dir)])
+    assert g_partner_result.exit_code == 0, g_partner_result.output

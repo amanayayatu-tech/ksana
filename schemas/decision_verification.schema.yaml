@@ -1,0 +1,55 @@
+schema_id: worldpay77.decision_verification_case.v1
+description: >
+  Pending verification case generated from a Chairman brief. The case verifies whether
+  the investment reasoning was validated, partially validated, invalidated, or inconclusive.
+fields:
+  case_id:
+    type: string
+    required: true
+  source_brief_id:
+    type: string
+    required: true
+  source_signal_id:
+    type: string
+    required: false
+  ticker:
+    type: string
+    required: true
+  decision_direction:
+    type: enum
+    values: [long, watch, avoid, abstain]
+    required: true
+  chairman_final_verdict:
+    type: enum
+    values: [act, wait, reject, research_more]
+    required: true
+  verification_windows_days:
+    type: array[integer]
+    required: true
+    default: [1, 7, 30, 90]
+  objective:
+    type: object
+    required: true
+  status:
+    type: enum
+    values: [pending, validated, partially_validated, invalidated, inconclusive]
+    required: true
+  evidence_url:
+    type: string
+    required_when_status_not_pending: true
+  created_at:
+    type: datetime
+    required: true
+direction_objectives:
+  long: >
+    Validate price and thesis together. A short-term drawdown can still be partially
+    validated if the core thesis is confirmed by evidence; price-only success is not enough.
+  watch: >
+    Validate whether waiting preserved optionality and the unresolved questions were
+    genuinely material. A watch followed by a price move is not automatically right or wrong.
+  avoid: >
+    Validate whether the avoided risk or thesis break was real. A temporary rally after avoid
+    is not automatically invalidation if the stated risk later materializes.
+  abstain: >
+    Validate whether insufficient evidence remained true. Abstain is invalidated only when
+    high-quality public evidence was already available and ignored.

@@ -8,13 +8,13 @@
 
 ## 📋 执行摘要（30 秒可读完）
 
-- 今日 4.1 信号数：**{{ total_signals_today }}**
+- 今日 K deep 信号数：**{{ total_signals_today }}**
 - 收到交易 Agent 建议数：**{{ total_recommendations }}**
 - ✅ 三方一致 long：{{ full_consensus_long | join(', ') }}
 - ❌ 三方一致 avoid：{{ full_consensus_avoid | join(', ') }}
 - ⚠️ 分歧建议：{{ split_decisions | length }} 条
 - 🔍 高优先级 Red Team 待审：**{{ red_team_high_priority }}** 条
-- 💭 全员 abstain 但 4.1 信号优先级高的：{{ abstain_with_high_signals | length }} 条
+- 💭 全员 abstain 但 K deep 信号优先级高的：{{ abstain_with_high_signals | length }} 条
 {% if perplexity_prompts_pending > 0 %}
 - 🧠 待 Nepha 手动跑的 Perplexity prompt：**{{ perplexity_prompts_pending }}** 条
 {% endif %}
@@ -27,7 +27,7 @@
 ### {{ loop.index }}. {{ rec_summary.ticker }} ({{ rec_summary.market }})
 
 **一致度**：{{ rec_summary.direction_consensus.consensus_level | trans }}
-**4.1 信号 ID**：`{{ rec_summary.research_signal_id }}`
+**K deep 信号 ID**：`{{ rec_summary.research_signal_id }}`
 
 #### 三方观点并列
 
@@ -45,6 +45,57 @@
 {% if rec_summary.disagreement_analysis.red_team_escalation_required %}
 **已升级到 Red Team**：{{ rec_summary.disagreement_analysis.escalation_reason }}
 {% endif %}
+{% endif %}
+
+{% if rec_summary.historical_knowledge.entries or rec_summary.historical_knowledge.similar_cases or rec_summary.historical_knowledge.open_questions or rec_summary.historical_knowledge.historical_conflicts %}
+#### 历史研究记忆
+
+{% if rec_summary.historical_knowledge.entries %}
+{% for memory in rec_summary.historical_knowledge.entries %}
+- **{{ memory.event_date }} / {{ memory.prompt_id }}**：{{ (memory.event_summary or ['未抽取摘要'])[0] }}
+  - 主要催化剂：{{ (memory.primary_catalysts or ['未抽取'])[0] }}
+  - 仍未验证：{{ (memory.unresolved_questions or ['暂无'])[0] }}
+{% endfor %}
+{% endif %}
+
+{% if rec_summary.historical_knowledge.open_questions %}
+**未关闭问题**：
+{% for question in rec_summary.historical_knowledge.open_questions[:5] %}
+- {{ question }}
+{% endfor %}
+{% endif %}
+
+{% if rec_summary.historical_knowledge.similar_cases %}
+**相似历史案例**：
+{% for memory in rec_summary.historical_knowledge.similar_cases[:5] %}
+- **{{ memory.stock_code }} / {{ memory.prompt_id }}**：{{ (memory.event_summary or memory.company_conclusions or ['未抽取摘要'])[0] }}
+{% endfor %}
+{% endif %}
+
+{% if rec_summary.historical_knowledge.historical_conflicts %}
+**历史冲突/反例**：
+{% for item in rec_summary.historical_knowledge.historical_conflicts[:5] %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if rec_summary.chairman_verdict %}
+#### Chairman 裁决导航
+
+- **final_verdict**：`{{ rec_summary.chairman_verdict.final_verdict }}`
+- **action_route**：`{{ rec_summary.chairman_verdict.action_route }}`
+- **裁决置信度**：{{ rec_summary.chairman_verdict.confidence }}
+- **暂时更信任**：{{ rec_summary.chairman_verdict.lead_agent.agent_id }} / {{ rec_summary.chairman_verdict.lead_agent.direction }}（方法论权重 ×{{ rec_summary.chairman_verdict.lead_agent.chairman_weight_multiplier }}，历史表现权重 ×{{ rec_summary.chairman_verdict.lead_agent.performance_weight_multiplier }}）
+
+{% for step in rec_summary.chairman_verdict.decision_chain %}
+- {{ step }}
+{% endfor %}
+
+**关键反对摘要**：{{ rec_summary.chairman_verdict.dissent_summary }}
+
+**Red Team 后二次裁决规则**：block → reject；challenge → research_more；monitor → wait/research_more。
+
 {% endif %}
 
 #### 仓位建议汇总（不替代 Nepha 决策）
@@ -74,9 +125,9 @@
 ---
 {% endfor %}
 
-## 🔍 4.1 研究上游覆盖状态
+## 🔍 K deep 研究上游覆盖状态
 
-- 今日 4.1 信号总数：{{ upstream_coverage_status.today_signals_emitted }}
+- 今日 K deep 信号总数：{{ upstream_coverage_status.today_signals_emitted }}
 - 完全无 Agent 响应的信号：{{ upstream_coverage_status.signals_with_zero_agent_response | length }} 条
 {% if upstream_coverage_status.signals_with_zero_agent_response %}
   - 详见：{{ upstream_coverage_status.signals_with_zero_agent_response | join(', ') }}
@@ -123,4 +174,4 @@
 - **处理耗时**：{{ processing_time_seconds }}s
 - **LLM 使用**：{% if llm_used %}是（{{ llm_model }}）{% else %}否（模板化叙事）{% endif %}
 
-> 本简报由 Chairman v0.1 自动生成。Chairman 不替你做决策——它只汇总、标注分歧、转发 4.1 prompt brief。所有最终决策权在你手上。
+> 本简报由 Chairman v0.1 自动生成。Chairman 不替你做决策——它只汇总、标注分歧、转发 K deep prompt brief。所有最终决策权在你手上。

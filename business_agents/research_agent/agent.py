@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from business_agents._common.base_agent import AgentRunResult, BaseBusinessAgent, write_yaml
 from business_agents._common.llm_client import LLMClient
+from business_agents._common.knowledge_store import build_research_planning_context
 from business_agents._common.market_data.yfinance_client import YFinanceClient
 from business_agents._common.methodology_loader import MethodologyLoader
 from business_agents._common.output_validator import (
@@ -18,13 +19,23 @@ from business_agents._common.output_validator import (
     validate_research_agent_output,
 )
 from business_agents._common.stock_pool import StockPool
+from business_agents.research_agent.methodology_profile import (
+    RESEARCH_SYSTEM_FRAMEWORK_ID,
+    RESEARCH_SYSTEM_HARD_RULES,
+    RESEARCH_SYSTEM_METHODOLOGY_ID,
+    RESEARCH_SYSTEM_SOURCE_FILE,
+    RESEARCH_SYSTEM_VERSION,
+    SELF_CRITIQUE_HOOKS,
+    build_gate_question_groups,
+    build_methodology_profile_snapshot,
+)
 
 
 class ResearchAgent(BaseBusinessAgent):
-    """4.1 research upstream agent."""
+    """K deep research upstream agent."""
 
     agent_name = "research_agent"
-    methodology_id = "research_system_event_bayesian"
+    methodology_id = "k_deep"
 
     def __init__(
         self,
@@ -142,10 +153,34 @@ class ResearchAgent(BaseBusinessAgent):
             signal_id = f"RS-{today}-{target_key}"
             prompt_id = f"PR-{today}-{target_key}" if len(prompts) < 30 else None
             data_points = build_signal_data_points(features, triggers)
+            signal_fingerprint = build_signal_fingerprint(entry.ticker, entry.market, triggers, features)
+            research_planning_context = build_research_planning_context(
+                self.data_dir,
+                entry.ticker,
+                as_of_date=self.run_date,
+                signal_fingerprint=signal_fingerprint,
+            )
+            research_task_plan = build_research_task_plan(
+                entry.ticker,
+                entry.name,
+                triggers,
+                features,
+                signal_fingerprint,
+                research_planning_context,
+            )
+            k_deep_question_set = build_k_deep_research_question_set(
+                entry.ticker,
+                entry.name,
+                triggers,
+                features,
+                research_planning_context=research_planning_context,
+                research_task_plan=research_task_plan,
+            )
+            methodology_profile = k_deep_question_set["methodology_profile"]
             signal = {
                 "research_signal_id": signal_id,
                 "emitted_at": emitted_at,
-                "emitter": "4.1_research_system",
+                "emitter": "K deep_research_system",
                 "signal_status": "active",
                 "signal_type": infer_signal_type(triggers),
                 "research_stage": "daily_scan",
@@ -161,9 +196,17 @@ class ResearchAgent(BaseBusinessAgent):
                 ],
                 "research_object": {
                     "primary": "company",
-                    "secondary": ["public_price_volume"],
-                    "why_this_object": "来自 Nepha HK/US 主股池，触发公开价量规则。",
+                    "secondary": [
+                        "public_price_volume",
+                        "k_deep_question_framework",
+                    ],
+                    "why_this_object": "来自 Nepha HK/US 主股池，触发公开价量规则；K deep 负责把异动升级为商业、产业、竞争和资本市场问题。",
                 },
+                "k_deep_research_questions": k_deep_question_set,
+                "research_methodology_profile": methodology_profile,
+                "signal_fingerprint": signal_fingerprint,
+                "research_planning_context": research_planning_context,
+                "research_task_plan": research_task_plan,
                 "event_input": {
                     "event_name": "public_price_volume_anomaly",
                     "event_date": features["latest_date"],
@@ -202,9 +245,9 @@ class ResearchAgent(BaseBusinessAgent):
                 },
                 "routing_recommendation": {
                     "suggested_for": [
-                        "fengliu_reverse_odds",
-                        "wanmu_single_sided",
-                        "liguofei_zen_value",
+                        "f_partner",
+                        "w_partner",
+                        "g_partner",
                     ],
                     "routing_reason": "公开价量异动只做初筛，需三位交易 Agent 保守评估。",
                     "not_suitable_for": [],
@@ -214,9 +257,9 @@ class ResearchAgent(BaseBusinessAgent):
                 "upstream_to_trading_agents": {
                     "chairman_route_id": f"ROUTE-{today}-{target_key}",
                     "downstream_agents_notified": [
-                        "fengliu_reverse_odds",
-                        "wanmu_single_sided",
-                        "liguofei_zen_value",
+                        "f_partner",
+                        "w_partner",
+                        "g_partner",
                     ],
                     "notification_status": "pending",
                     "delivery_notes": "file-system handoff",
@@ -233,10 +276,13 @@ class ResearchAgent(BaseBusinessAgent):
                 "red_team_questions": [
                     "价量异动是否集中依赖单一公开数据源？",
                     "是否缺少真实事件原因解释？",
+                    "Perplexity 是否验证了商业模式、竞争格局或预期差的真实变化，而不只是复述当天新闻？",
+                    "是否存在历史研究中尚未关闭的问题与本次乐观/悲观解释冲突？",
                 ],
                 "falsification_points": [
                     "如果 Perplexity 回填显示异动仅来自指数或技术性成交，则不进入交易判断。",
                     "如果数据源错误或复权异常，则该信号 invalidated。",
+                    "如果核心催化剂无法改变收入、利润率、竞争地位、监管路径或市场预期，则仅保留 watch。",
                 ],
                 "signal_kill_criteria": [
                     "公开价量数据无法复核。",
@@ -252,7 +298,18 @@ class ResearchAgent(BaseBusinessAgent):
                         "prompt_id": prompt_id,
                         "related_signal_id": signal_id,
                         "priority": "P1",
-                        "prompt_text": build_perplexity_prompt(entry.ticker, entry.name, triggers, features),
+                        "research_question_set": k_deep_question_set,
+                        "research_task_plan": research_task_plan,
+                        "research_planning_context": research_planning_context,
+                        "prompt_text": build_perplexity_prompt(
+                            entry.ticker,
+                            entry.name,
+                            triggers,
+                            features,
+                            k_deep_question_set,
+                            research_planning_context,
+                            research_task_plan,
+                        ),
                     }
                 )
 
@@ -538,21 +595,297 @@ def build_perplexity_prompt(
     name: str,
     triggers: list[dict[str, Any]],
     features: dict[str, Any],
+    k_deep_question_set: dict[str, Any] | None = None,
+    research_planning_context: dict[str, Any] | None = None,
+    research_task_plan: dict[str, Any] | None = None,
 ) -> str:
     trigger_lines = "\n".join(
         f"- {trigger['rule']}: {trigger.get('value')} ({trigger.get('date')})"
         for trigger in triggers
     )
     display_name = f"{ticker} {name}".strip()
+    planning_context = research_planning_context or {}
+    task_plan = research_task_plan or {}
+    question_set = k_deep_question_set or build_k_deep_research_question_set(
+        ticker,
+        name,
+        triggers,
+        features,
+        research_planning_context=planning_context,
+        research_task_plan=task_plan,
+    )
+    if not task_plan:
+        task_plan = question_set.get("research_task_plan") or {}
+    if not planning_context:
+        planning_context = question_set.get("research_planning_context") or {}
+    question_lines = render_k_deep_questions_for_prompt(question_set)
+    reuse_lines = render_research_planning_context_for_prompt(planning_context)
+    task_lines = render_research_task_plan_for_prompt(task_plan)
     return (
-        f"请研究 {display_name} 最近 7-10 个交易日公开价量异动背后的真实原因。\n"
-        "只需要判断是否存在新闻、财报、监管、行业、资金面或指数层面的可验证原因，不要给交易建议。\n"
-        f"触发规则：\n{trigger_lines}\n"
+        f"请作为 Worldpay77 的首席研究员，研究 {display_name} 最近 7-10 个交易日公开价量异动背后的真实原因。\n\n"
+        "研究边界：只判断是否存在新闻、财报、监管、行业、竞争、资金面、指数或预期差层面的可验证原因；不要给交易建议，不要输出买卖操作。\n\n"
+        f"触发规则：\n{trigger_lines}\n\n"
         f"最新收盘：{features.get('latest_close')}；"
         f"5 日变化：{features.get('five_day_change_pct')}%；"
-        f"10 日变化：{features.get('ten_day_change_pct')}%。\n"
-        "输出请包含来源链接、结论可信度、反证和仍未验证的地方。"
+        f"10 日变化：{features.get('ten_day_change_pct')}%。\n\n"
+        "请不要只解释“为什么涨跌”。价量只是触发器，你的核心任务是基于 K deep 框架做研究任务编排：先复用历史知识，再判断这次异动是否触及商业模式、产业结构、竞争格局、管理层动作、监管环境或资本市场预期差的真实变化。\n\n"
+        "## 历史知识复用要求\n\n"
+        f"{reuse_lines}\n\n"
+        "## 本次研究任务编排\n\n"
+        f"{task_lines}\n\n"
+        "## K deep 研究问题组\n\n"
+        f"{question_lines}\n\n"
+        "## 输出结构要求\n\n"
+        "1. 结论摘要：本次异动最可能由哪些可验证因素驱动，并给出总体可信度。\n"
+        "2. 证据链：按“财报/公司事件、行业、竞争、监管、资金面、指数、宏观”分类列证据，每条必须带来源链接。\n"
+        "3. K deep 关键判断：回答商业模式、竞争格局、渗透率/成本曲线、管理层/资本配置、市场预期差是否发生变化。\n"
+        "4. 反证：列出最能推翻主结论的公开证据或不一致数据。\n"
+        "5. 仍未验证：列出后续需要继续跟踪的 5-10 个问题，尤其是机构资金、期权、监管落地、财报后分析师调整和竞争对手动作。\n"
+        "6. 可沉淀记忆：最后单独给出“可进入知识库的结构化要点”，包括事件摘要、主要催化剂、反证、未关闭问题和可信度。\n"
     )
+
+
+def build_research_task_plan(
+    ticker: str,
+    name: str,
+    triggers: list[dict[str, Any]],
+    features: dict[str, Any],
+    signal_fingerprint: dict[str, Any],
+    planning_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Plan K deep-style research work before asking Perplexity new questions."""
+
+    display_name = f"{ticker} {name}".strip()
+    open_questions = planning_context.get("open_questions", []) or []
+    do_not_repeat = planning_context.get("do_not_repeat", []) or []
+    similar_cases = planning_context.get("similar_cases", []) or []
+    focus_tracks = [
+        "reuse_existing_knowledge",
+        "refresh_unresolved_questions" if open_questions else "establish_first_stock_memory",
+        "new_event_causality",
+        "beta_vs_alpha_attribution",
+        "falsification_and_counter_evidence",
+    ]
+    if similar_cases:
+        focus_tracks.append("historical_analogy_check")
+    if planning_context.get("historical_conflicts"):
+        focus_tracks.append("historical_conflict_resolution")
+    priority_questions = list(planning_context.get("questions_to_refresh") or [])
+    priority_questions.extend(
+        [
+            f"{display_name} 本次价量触发是否改变历史结论，还是只是旧 thesis 的短期噪音？",
+            "这次异动的主因是公司 alpha、行业 beta、宏观 beta、资金面，还是指数/期权结构？",
+            "哪些公开证据最能推翻主因判断，未来 7/30/90 天如何跟踪？",
+        ]
+    )
+    return {
+        "plan_version": "research_task_plan_v1",
+        "ticker": ticker,
+        "trigger_layer": {
+            "source": "public_price_volume",
+            "trigger_rules": [trigger["rule"] for trigger in triggers],
+            "latest_close": features.get("latest_close"),
+            "five_day_change_pct": features.get("five_day_change_pct"),
+            "ten_day_change_pct": features.get("ten_day_change_pct"),
+            "fingerprint": signal_fingerprint,
+        },
+        "k_deep_director_mode": True,
+        "focus_tracks": unique_preserve_order(focus_tracks),
+        "memory_reuse_policy": {
+            "history_found": bool(planning_context.get("history_found")),
+            "do_not_repeat": do_not_repeat[:8],
+            "must_reopen": open_questions[:8],
+            "historical_conflicts": (planning_context.get("historical_conflicts") or [])[:6],
+            "similar_case_prompt_ids": [
+                case.get("prompt_id") for case in similar_cases[:5] if case.get("prompt_id")
+            ],
+        },
+        "priority_questions": unique_preserve_order(priority_questions)[:10],
+    }
+
+
+def render_research_planning_context_for_prompt(context: dict[str, Any]) -> str:
+    if not context or not context.get("history_found"):
+        return (
+            "- 知识库没有找到同标的可复用研究；本次报告必须建立第一份可沉淀股票档案。\n"
+            "- 输出时请明确哪些事实已验证、哪些问题仍未关闭、哪些结论需要设置有效期。"
+        )
+    lines = ["- 已找到历史知识；请先复用，再提出新问题。"]
+    lines.extend(render_prompt_list("已回答/已沉淀事实", context.get("answered_facts") or [], 5))
+    lines.extend(render_prompt_list("不要重复研究", context.get("do_not_repeat") or [], 5))
+    lines.extend(render_prompt_list("必须继续追问的未关闭问题", context.get("open_questions") or [], 6))
+    lines.extend(render_prompt_list("历史冲突或反例", context.get("historical_conflicts") or [], 4))
+    similar_cases = context.get("similar_cases") or []
+    if similar_cases:
+        lines.append("相似历史案例：")
+        for case in similar_cases[:3]:
+            lines.append(
+                f"- {case.get('prompt_id')} / {case.get('stock_code')}: "
+                f"{(case.get('event_summary') or case.get('company_conclusions') or ['未抽取摘要'])[0]}"
+            )
+    lines.extend(render_prompt_list("本次优先刷新", context.get("questions_to_refresh") or [], 6))
+    return "\n".join(lines).strip()
+
+
+def render_research_task_plan_for_prompt(plan: dict[str, Any]) -> str:
+    if not plan:
+        return "- 未生成 task plan；按 K deep Gate 1-7 完成研究。"
+    lines = [
+        f"- plan_version: {plan.get('plan_version')}",
+        f"- k_deep_director_mode: {plan.get('k_deep_director_mode')}",
+        f"- focus_tracks: {', '.join(plan.get('focus_tracks') or [])}",
+    ]
+    policy = plan.get("memory_reuse_policy") or {}
+    if policy.get("similar_case_prompt_ids"):
+        lines.append(f"- similar_case_prompt_ids: {', '.join(map(str, policy['similar_case_prompt_ids']))}")
+    lines.extend(render_prompt_list("优先研究问题", plan.get("priority_questions") or [], 8))
+    return "\n".join(lines).strip()
+
+
+def render_prompt_list(title: str, items: list[Any], limit: int) -> list[str]:
+    if not items:
+        return []
+    lines = [f"{title}："]
+    lines.extend(f"- {item}" for item in items[:limit])
+    return lines
+
+
+def build_k_deep_research_question_set(
+    ticker: str,
+    name: str,
+    triggers: list[dict[str, Any]],
+    features: dict[str, Any],
+    research_planning_context: dict[str, Any] | None = None,
+    research_task_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build deterministic K deep questions from the frozen methodology profile."""
+
+    display_name = f"{ticker} {name}".strip()
+    trigger_names = [trigger["rule"] for trigger in triggers]
+    trigger_rule_text = "、".join(trigger_names)
+    event_date = features.get("latest_date") or next(
+        (trigger.get("date") for trigger in triggers if trigger.get("date")),
+        None,
+    )
+    profile_snapshot = build_methodology_profile_snapshot()
+    question_context = {
+        "ticker": ticker,
+        "name": name,
+        "display_name": display_name,
+        "trigger_rule_text": trigger_rule_text,
+        "event_date": event_date,
+        "latest_close": features.get("latest_close"),
+        "five_day_change_pct": features.get("five_day_change_pct"),
+        "ten_day_change_pct": features.get("ten_day_change_pct"),
+        "max_volume_ratio": features.get("max_volume_ratio"),
+    }
+    return {
+        "framework": RESEARCH_SYSTEM_FRAMEWORK_ID,
+        "methodology_id": RESEARCH_SYSTEM_METHODOLOGY_ID,
+        "methodology_source": RESEARCH_SYSTEM_SOURCE_FILE,
+        "methodology_version": RESEARCH_SYSTEM_VERSION,
+        "ticker": ticker,
+        "company_name": name,
+        "event_date": event_date,
+        "triggered_rules": trigger_names,
+        "methodology_profile": profile_snapshot,
+        "research_planning_context": research_planning_context or {},
+        "research_task_plan": research_task_plan or {},
+        "question_groups": build_gate_question_groups(question_context),
+        "self_critique_hooks": list(SELF_CRITIQUE_HOOKS),
+    }
+
+
+def render_k_deep_questions_for_prompt(question_set: dict[str, Any]) -> str:
+    profile = question_set.get("methodology_profile") or {}
+    hard_rules = profile.get("hard_rules") or {}
+    lines: list[str] = [
+        "### 方法论来源",
+        f"- methodology_id: {question_set.get('methodology_id')}",
+        f"- methodology_source: {question_set.get('methodology_source')}",
+        f"- methodology_version: {question_set.get('methodology_version')}",
+        f"- perplexity_integration_mode: {hard_rules.get('perplexity_integration_mode')}",
+        "- 边界：K deep 只做研究信号与问题生成，不给交易建议；Perplexity 由 Nepha 手动跑并回填。",
+        "",
+        "### K deep Gate 问题",
+    ]
+    for group in question_set.get("question_groups", []):
+        gate_id = group.get("gate_id")
+        title = f"{gate_id}: {group.get('label')}" if gate_id else str(group.get("label"))
+        lines.append(f"#### {title}")
+        check_items = group.get("check_items") or []
+        if check_items:
+            lines.append("检查项：")
+            for item in check_items:
+                lines.append(f"- {item}")
+            lines.append("研究问题：")
+        for question in group.get("questions", []):
+            lines.append(f"- {question}")
+        lines.append("")
+    self_critique_hooks = question_set.get("self_critique_hooks") or []
+    if self_critique_hooks:
+        lines.append("### 自我质疑")
+        for hook in self_critique_hooks:
+            lines.append(f"- {hook}")
+    return "\n".join(lines).strip()
+
+
+def build_signal_fingerprint(
+    ticker: str,
+    market: str,
+    triggers: list[dict[str, Any]],
+    features: dict[str, Any],
+) -> dict[str, Any]:
+    """Build comparable tags for future historical-similarity retrieval."""
+
+    trigger_rules = sorted({trigger["rule"] for trigger in triggers})
+    ten_day_change = float(features.get("ten_day_change_pct") or 0)
+    max_volume_ratio = float(features.get("max_volume_ratio") or 0)
+    return {
+        "fingerprint_version": "signal_fingerprint_v1",
+        "methodology": {
+            "methodology_id": RESEARCH_SYSTEM_METHODOLOGY_ID,
+            "methodology_source": RESEARCH_SYSTEM_SOURCE_FILE,
+            "methodology_version": RESEARCH_SYSTEM_VERSION,
+            "perplexity_integration_mode": RESEARCH_SYSTEM_HARD_RULES["perplexity_integration_mode"],
+        },
+        "ticker": ticker,
+        "market": market,
+        "signal_type": infer_signal_type(triggers),
+        "event_size": infer_event_size(triggers),
+        "trigger_rules": trigger_rules,
+        "price_direction": "up" if ten_day_change > 0 else "down" if ten_day_change < 0 else "flat",
+        "price_move_bucket": bucket_abs_value(abs(ten_day_change), [(5, "small"), (10, "medium"), (20, "large")]),
+        "volume_bucket": bucket_abs_value(max_volume_ratio, [(1.5, "normal"), (2, "elevated"), (4, "extreme")]),
+        "tags": unique_preserve_order(
+            [
+                market.lower(),
+                "k_deep",
+                RESEARCH_SYSTEM_HARD_RULES["perplexity_integration_mode"],
+                infer_signal_type(triggers),
+                infer_event_size(triggers),
+                *trigger_rules,
+            ]
+        ),
+    }
+
+
+def bucket_abs_value(value: float, thresholds: list[tuple[float, str]]) -> str:
+    label = "none"
+    for threshold, current_label in thresholds:
+        if value >= threshold:
+            label = current_label
+    return label
+
+
+def unique_preserve_order(items: list[str]) -> list[str]:
+    seen = set()
+    values = []
+    for item in items:
+        if item and item not in seen:
+            values.append(item)
+            seen.add(item)
+    return values
 
 
 def normalize_run_date(value: str | None) -> str:

@@ -3,60 +3,61 @@ from __future__ import annotations
 from chairman.core.brief_assembler import (
     assemble_brief,
     build_individual_view,
-    classify_fengliu_logic_kill_routing,
-    classify_fengliu_outsider_handling,
-    summarize_wanmu_collaborative_validation,
+    classify_f_partner_logic_kill_routing,
+    classify_f_partner_outsider_handling,
+    summarize_w_partner_collaborative_validation,
 )
 from chairman.output.json_metadata_renderer import render_json_metadata
 from chairman.output.markdown_renderer import render_markdown
-from tests.conftest import make_fengliu, make_liguofei, make_signal, make_wanmu
+from business_agents._common.knowledge_store import ingest_filled_result
+from tests.conftest import make_f_partner, make_g_partner, make_signal, make_w_partner
 
 
-def test_wanmu_4_1_counted_as_validator():
-    rec = make_wanmu("long")
+def test_w_partner_k_deep_counted_as_validator():
+    rec = make_w_partner("long")
 
-    summary = summarize_wanmu_collaborative_validation(rec)
+    summary = summarize_w_partner_collaborative_validation(rec)
 
     assert summary["four_one_counted_as_validator"] is True
-    assert summary["upstream_4_1_signals_counted"] == 1
+    assert summary["upstream_k_deep_signals_counted"] == 1
 
 
 def test_outsider_three_cases_displayed():
-    case_1 = make_fengliu("long", circle_status="outsider")
-    case_2 = make_fengliu(
+    case_1 = make_f_partner("long", circle_status="outsider")
+    case_2 = make_f_partner(
         "abstain",
         circle_status="outsider",
         abstain_reason="circle_status_outsider",
     )
-    case_3 = make_fengliu("avoid", circle_status="outsider")
+    case_3 = make_f_partner("avoid", circle_status="outsider")
 
-    assert classify_fengliu_outsider_handling(case_1)["case"] == (
+    assert classify_f_partner_outsider_handling(case_1)["case"] == (
         "case_1_outsider_with_clear_trend_signal"
     )
-    assert classify_fengliu_outsider_handling(case_2)["case"] == "case_2_outsider_no_trend_signal"
-    assert classify_fengliu_outsider_handling(case_3)["case"] == (
+    assert classify_f_partner_outsider_handling(case_2)["case"] == "case_2_outsider_no_trend_signal"
+    assert classify_f_partner_outsider_handling(case_3)["case"] == (
         "case_3_outsider_with_logic_break"
     )
 
 
 def test_logic_kill_confidence_routing_displayed():
-    rec = make_fengliu(
+    rec = make_f_partner(
         "avoid",
         kill_type_heuristic={"logic_kill": {"confidence": 0.66}},
     )
 
-    result = classify_fengliu_logic_kill_routing(rec)
+    result = classify_f_partner_logic_kill_routing(rec)
 
     assert result["route"] == "avoid_expected"
 
 
 def test_nepha_validation_requires_evidence_url():
-    rec = make_wanmu(
+    rec = make_w_partner(
         "long",
         collaborative_validation={
             "independent_validators_count": 2,
             "validators_breakdown": {
-                "upstream_4_1_signals_counted": 1,
+                "upstream_k_deep_signals_counted": 1,
                 "nepha_manual_validation_entries": [
                     {"evidence_url": "", "counts_as_validator": True},
                     {"evidence_url": "https://example.com/evidence", "counts_as_validator": True},
@@ -65,7 +66,7 @@ def test_nepha_validation_requires_evidence_url():
         },
     )
 
-    summary = summarize_wanmu_collaborative_validation(rec)
+    summary = summarize_w_partner_collaborative_validation(rec)
 
     assert summary["nepha_manual_validation_with_evidence_url"] == 1
     assert summary["nepha_manual_validation_without_evidence_url"] == 1
@@ -75,7 +76,7 @@ def test_nepha_validation_requires_evidence_url():
 def test_render_markdown_and_json_metadata():
     brief = assemble_brief(
         research_signals=[make_signal()],
-        recommendations=[make_fengliu("long"), make_wanmu("watch"), make_liguofei("watch")],
+        recommendations=[make_f_partner("long"), make_w_partner("watch"), make_g_partner("watch")],
         brief_type="morning",
         date="2026-05-13",
         use_llm=False,
@@ -87,4 +88,171 @@ def test_render_markdown_and_json_metadata():
     assert "投研委员会简报" in markdown
     assert "Chairman 不替你做决策" in markdown
     assert '"brief_id": "BRIEF-20260513-AM"' in metadata
-    assert build_individual_view(make_wanmu("long"))["collaborative_validation_summary"]
+    assert build_individual_view(make_w_partner("long"))["collaborative_validation_summary"]
+
+
+def test_brief_includes_historical_knowledge_memory(tmp_path):
+    data_dir = tmp_path / "data"
+    pull_dir = data_dir / "pull_requests"
+    result_dir = data_dir / "perplexity_results"
+    pull_dir.mkdir(parents=True)
+    result_dir.mkdir(parents=True)
+    (pull_dir / "PR-20260514-BABA.yaml").write_text(
+        """
+prompt_id: PR-20260514-BABA
+related_signal_id: RS-20260514-BABA
+priority: P1
+prompt_text: |
+  请研究 BABA Alibaba ADR 最近 7-10 个交易日公开价量异动背后的真实原因。
+  触发规则：single_day_move_ge_7pct: 8.18 (2026-05-13)
+""",
+        encoding="utf-8",
+    )
+    (result_dir / "PR-20260514-BABA_filled.yaml").write_text(
+        """
+prompt_id: PR-20260514-BABA
+related_signal_id: RS-20260514-BABA
+status: filled
+filled_at: '2026-05-14T13:05:08'
+answer_text: |
+  # BABA 异动深度研究
+
+  ## 执行摘要
+  2026年5月13日 BABA 大涨，核心催化剂为：①云/AI 数据超预期；②股息上调。结论可信度：高。
+
+  ## 仍未验证的信息
+  1. 机构资金流向需要等待 13F。
+""",
+        encoding="utf-8",
+    )
+    (pull_dir / "PR-20260513-9988.HK.yaml").write_text(
+        """
+prompt_id: PR-20260513-9988.HK
+related_signal_id: RS-20260513-9988.HK
+priority: P1
+prompt_text: |
+  请研究 9988.HK Alibaba HK 最近 7-10 个交易日公开价量异动背后的真实原因。
+""",
+        encoding="utf-8",
+    )
+    (result_dir / "PR-20260513-9988.HK_filled.yaml").write_text(
+        """
+prompt_id: PR-20260513-9988.HK
+related_signal_id: RS-20260513-9988.HK
+status: filled
+filled_at: '2026-05-13T13:05:08'
+answer_text: |
+  # 9988.HK 异动深度研究
+
+  ## 执行摘要
+  2026年5月13日 9988.HK 同样受云/AI 叙事驱动，结论可信度：中。
+
+  ## 反证
+  - 港股流动性修复可能放大了短期 beta。
+""",
+        encoding="utf-8",
+    )
+    ingest_filled_result(data_dir, "PR-20260514-BABA")
+    ingest_filled_result(data_dir, "PR-20260513-9988.HK")
+    signal = make_signal("RS-20260514-BABA")
+    signal.candidate_targets[0].ticker = "BABA"
+    recs = [
+        make_f_partner("watch", ticker="BABA", recommendation_id="R-FP-20260514-BABA"),
+        make_w_partner("watch", ticker="BABA", recommendation_id="R-WP-20260514-BABA"),
+        make_g_partner("watch", ticker="BABA", recommendation_id="R-GP-20260514-BABA"),
+    ]
+
+    brief = assemble_brief(
+        research_signals=[signal],
+        recommendations=recs,
+        brief_type="morning",
+        date="2026-05-14",
+        use_llm=False,
+        data_dir=data_dir,
+    )
+    markdown = render_markdown(brief)
+
+    assert "历史研究记忆" in markdown
+    assert "相似历史案例" in markdown
+    assert "PR-20260514-BABA" in markdown
+    assert "PR-20260513-9988.HK" in markdown
+    assert "机构资金流向需要等待 13F" in markdown
+
+
+def test_brief_keeps_similar_cases_without_same_ticker_history(tmp_path):
+    data_dir = tmp_path / "data"
+    pull_dir = data_dir / "pull_requests"
+    result_dir = data_dir / "perplexity_results"
+    pull_dir.mkdir(parents=True)
+    result_dir.mkdir(parents=True)
+    (pull_dir / "PR-20260514-BABA.yaml").write_text(
+        """
+prompt_id: PR-20260514-BABA
+related_signal_id: RS-20260514-BABA
+priority: P1
+prompt_text: |
+  请研究 BABA Alibaba ADR 最近 7-10 个交易日公开价量异动背后的真实原因。
+""",
+        encoding="utf-8",
+    )
+    (result_dir / "PR-20260514-BABA_filled.yaml").write_text(
+        """
+prompt_id: PR-20260514-BABA
+related_signal_id: RS-20260514-BABA
+status: filled
+filled_at: '2026-05-14T13:05:08'
+answer_text: |
+  # BABA 异动深度研究
+
+  ## 执行摘要
+  2026年5月13日 BABA 受云/AI 叙事驱动，结论可信度：高。
+""",
+        encoding="utf-8",
+    )
+    ingest_filled_result(data_dir, "PR-20260514-BABA")
+    signal = make_signal("RS-20260514-9988.HK")
+    signal.candidate_targets[0].ticker = "9988.HK"
+    recs = [
+        make_f_partner("watch", ticker="9988.HK", market="HK", recommendation_id="R-FP-20260514-9988"),
+        make_w_partner("watch", ticker="9988.HK", market="HK", recommendation_id="R-WP-20260514-9988"),
+        make_g_partner("watch", ticker="9988.HK", market="HK", recommendation_id="R-GP-20260514-9988"),
+    ]
+
+    brief = assemble_brief(
+        research_signals=[signal],
+        recommendations=recs,
+        brief_type="morning",
+        date="2026-05-14",
+        use_llm=False,
+        data_dir=data_dir,
+    )
+    markdown = render_markdown(brief)
+
+    assert brief.knowledge_memory["9988.HK"]["entries"] == []
+    assert brief.knowledge_memory["9988.HK"]["similar_cases"]
+    assert "相似历史案例" in markdown
+    assert "PR-20260514-BABA" in markdown
+
+
+def test_brief_includes_chairman_final_verdict_navigation():
+    brief = assemble_brief(
+        research_signals=[make_signal()],
+        recommendations=[make_f_partner("long"), make_w_partner("watch"), make_g_partner("watch")],
+        brief_type="morning",
+        date="2026-05-13",
+        use_llm=False,
+    )
+    markdown = render_markdown(brief)
+    summary = brief.per_recommendation_summary[0]
+
+    assert summary["chairman_verdict"]["final_verdict"] in {
+        "act",
+        "wait",
+        "reject",
+        "research_more",
+    }
+    assert summary["chairman_verdict"]["decision_chain"]
+    assert summary["chairman_verdict"]["red_team_rebuttal_policy"]["second_chairman_review_required"] is True
+    assert "Chairman 裁决导航" in markdown
+    assert "Red Team 后二次裁决规则" in markdown
+    assert '"final_verdicts"' in render_json_metadata(brief)

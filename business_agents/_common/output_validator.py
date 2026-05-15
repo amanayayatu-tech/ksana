@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from chairman.core.input_validator import validate_recommendation
 from chairman.models import Recommendation, ResearchSignal
@@ -13,10 +13,13 @@ from business_agents._common.stock_pool import StockPool
 
 
 class PerplexityPrompt(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     prompt_id: str
     related_signal_id: str | list[str] | None = None
     priority: str = "P1"
     prompt_text: str = ""
+    research_question_set: dict[str, Any] = Field(default_factory=dict)
 
 
 class PerplexityPromptBrief(BaseModel):
@@ -70,7 +73,7 @@ def parse_json_payload(text: str) -> dict[str, Any]:
 
 
 def validate_research_agent_output(payload: str | dict[str, Any], stock_pool: StockPool) -> ResearchAgentResult:
-    """Validate 4.1 research-agent output and stock-pool constraints."""
+    """Validate K deep research-agent output and stock-pool constraints."""
 
     data = parse_json_payload(payload) if isinstance(payload, str) else payload
     try:

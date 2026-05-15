@@ -1,4 +1,4 @@
-"""Liguofei trading agent."""
+"""GPartner trading agent."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from business_agents._common.perplexity_results import PerplexityContext
 from business_agents._common.trading_agent import TradingAgent, extract_signal_features
 
 
-class LiguofeiTradingAgent(TradingAgent):
-    agent_name = "trading_liguofei"
-    methodology_id = "liguofei_zen_value"
-    agent_id = "liguofei_zen_value"
-    output_dir_name = "liguofei"
-    recommendation_prefix = "R-LF"
+class GPartnerTradingAgent(TradingAgent):
+    agent_name = "trading_g_partner"
+    methodology_id = "g_partner"
+    agent_id = "g_partner"
+    output_dir_name = "g_partner"
+    recommendation_prefix = "R-GP"
 
     def add_method_specific_fields(
         self,
@@ -73,7 +73,7 @@ class LiguofeiTradingAgent(TradingAgent):
                 },
                 "bayesian_update": {
                     "prior_view": "unknown",
-                    "new_evidence": "4.1 public price-volume signal"
+                    "new_evidence": "K deep public price-volume signal"
                     + (" plus manual Perplexity fill" if has_causal_fill else " pending manual fill"),
                     "posterior_change": "neutral",
                     "action": "wait",

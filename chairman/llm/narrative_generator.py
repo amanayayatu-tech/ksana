@@ -365,7 +365,7 @@ def template_narrative(
     if disagreement.primary_type == DisagreementType.EVIDENCE_UNVERIFIED_PROPAGATION:
         return "部分 Agent 继承了未验证上游证据，相关权重已按 DEC-004 自动降为 0.7。"
     if disagreement.primary_type == DisagreementType.UPSTREAM_SIGNAL_CONSUMPTION:
-        return "Agent 对同一 4.1 研究信号的采纳结论不同，差异已保留给 Nepha 对照。"
+        return "Agent 对同一 K deep 研究信号的采纳结论不同，差异已保留给 Nepha 对照。"
     if disagreement.primary_type == DisagreementType.DATA_INPUT_DIFFERENCE:
         return "Agent 使用的数据时效存在明显差异，已标记给 Red Team 核实。"
     if disagreement.primary_type == DisagreementType.POTENTIAL_AGENT_ERROR:

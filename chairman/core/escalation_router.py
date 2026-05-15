@@ -29,7 +29,7 @@ def determine_escalation(
 
     for rec in recommendations:
         if (
-            rec.agent_id == AgentId.LIGUOFEI
+            rec.agent_id == AgentId.G_PARTNER
             and rec.deployment_compliance.dual_gate_consistency == "anomaly_review_required"
         ):
             escalations.append(

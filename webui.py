@@ -18,6 +18,7 @@ import yaml
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
+from business_agents._common.knowledge_store import delete_entry_for_prompt, ingest_filled_result
 from business_agents._common.llm_client import build_llm_client_from_env
 from business_agents._common.perplexity_results import sync_signal_file_perplexity_status
 from orchestrator.core.models import StepResult
@@ -32,9 +33,9 @@ STOCK_POOL_PATH = DATA_DIR / "stock_pool" / "master_pool.yaml"
 BRIEF_TYPES = {"morning": "AM", "evening": "PM"}
 AGENT_COMMANDS = {
     "research": ["uv", "run", "research-agent", "run", "--type", "scan", "--data-dir", "data"],
-    "fengliu": ["uv", "run", "trading-fengliu", "run", "--data-dir", "data"],
-    "wanmu": ["uv", "run", "trading-wanmu", "run", "--data-dir", "data"],
-    "liguofei": ["uv", "run", "trading-liguofei", "run", "--data-dir", "data"],
+    "f_partner": ["uv", "run", "trading-f_partner", "run", "--data-dir", "data"],
+    "w_partner": ["uv", "run", "trading-w_partner", "run", "--data-dir", "data"],
+    "g_partner": ["uv", "run", "trading-g_partner", "run", "--data-dir", "data"],
 }
 STOCK_CATEGORIES = (
     "hk_stocks",
@@ -47,9 +48,9 @@ LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
 RUNNING_RUN_STALE_SECONDS = 300
 RERUN_STEP_NAMES = {
-    "冯柳 Agent": "trading_fengliu",
-    "万木 Agent": "trading_wanmu",
-    "李国飞 Agent": "trading_liguofei",
+    "F partner Agent": "trading_f_partner",
+    "W partner Agent": "trading_w_partner",
+    "G partner Agent": "trading_g_partner",
     "Chairman": "chairman",
     "Red Team": "red_team",
 }
@@ -255,6 +256,11 @@ def api_trial_status() -> dict[str, Any]:
     return {"ok": True, "trial_status": get_trial_status()}
 
 
+@app.get("/api/ops-dashboard")
+def api_ops_dashboard() -> dict[str, Any]:
+    return {"ok": True, "dashboard": build_ops_dashboard()}
+
+
 @app.post("/api/env")
 def api_save_env(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     provider = str(payload.get("llm_provider") or "local").strip()
@@ -319,11 +325,13 @@ def api_fill_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     if skipped_path.exists():
         skipped_path.unlink()
     synced = sync_signal_file_perplexity_status(DATA_DIR, prompt_id)
+    knowledge_entry = ingest_filled_result(DATA_DIR, prompt_id, result_path=result_path)
     return {
         "ok": True,
         "message": "Perplexity 答案已保存",
         "prompt": shape_prompt_record(prompt["path"]),
         "synced_research_signals": [relative_path(path) for path in synced],
+        "knowledge_entry": shape_knowledge_entry(knowledge_entry),
     }
 
 
@@ -348,6 +356,7 @@ def api_skip_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     filled_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_filled.yaml"
     if filled_path.exists():
         filled_path.unlink()
+    delete_entry_for_prompt(DATA_DIR, prompt_id)
     synced = sync_signal_file_perplexity_status(DATA_DIR, prompt_id)
     return {
         "ok": True,
@@ -1103,9 +1112,9 @@ def build_deep_research_rerun_commands(
     no_llm: bool,
 ) -> list[tuple[str, list[str]]]:
     trading_commands = [
-        ("冯柳 Agent", ["uv", "run", "trading-fengliu", "run", "--date", date, "--data-dir", "data"]),
-        ("万木 Agent", ["uv", "run", "trading-wanmu", "run", "--date", date, "--data-dir", "data"]),
-        ("李国飞 Agent", ["uv", "run", "trading-liguofei", "run", "--date", date, "--data-dir", "data"]),
+        ("F partner Agent", ["uv", "run", "trading-f_partner", "run", "--date", date, "--data-dir", "data"]),
+        ("W partner Agent", ["uv", "run", "trading-w_partner", "run", "--date", date, "--data-dir", "data"]),
+        ("G partner Agent", ["uv", "run", "trading-g_partner", "run", "--date", date, "--data-dir", "data"]),
     ]
     if no_llm:
         for _, command in trading_commands:
@@ -1179,7 +1188,7 @@ def build_agent_command(agent: str, brief_type: str, date: str, no_llm: bool) ->
         command = list(AGENT_COMMANDS[agent])
         if agent == "research":
             command.extend(["--date", date])
-        elif agent in {"fengliu", "wanmu", "liguofei"}:
+        elif agent in {"f_partner", "w_partner", "g_partner"}:
             command.extend(["--date", date])
         if no_llm:
             command.append("--no-llm")
@@ -1301,6 +1310,29 @@ def shape_prompt_record(path: Path) -> dict[str, Any]:
     }
     record.update(status_payload)
     return record
+
+
+def shape_knowledge_entry(entry: Any) -> dict[str, Any] | None:
+    if entry is None:
+        return None
+    return {
+        "entry_id": entry.entry_id,
+        "source_pr_id": entry.source_pr_id,
+        "stock_code": entry.stock_code,
+        "prompt_id": entry.prompt_id,
+        "ticker": entry.ticker,
+        "related_signal_id": entry.related_signal_id,
+        "research_date": entry.research_date,
+        "event_date": entry.event_date,
+        "expires_at": entry.expires_at,
+        "cards_path": relative_path(
+            DATA_DIR / "knowledge_store" / "cards" / f"{entry.ticker}.md"
+        ),
+        "company_conclusions_count": len(entry.company_conclusions),
+        "industry_conclusions_count": len(entry.industry_conclusions),
+        "unverified_claims_count": len(entry.unverified_claims),
+        "open_questions_count": len(entry.open_questions),
+    }
 
 
 def build_prompt_markdown(
@@ -1520,9 +1552,9 @@ def parse_datetime(value: str) -> datetime | None:
 
 def has_active_rerun_process() -> bool:
     process_markers = (
-        ("trading-fengliu", "run", "--data-dir"),
-        ("trading-wanmu", "run", "--data-dir"),
-        ("trading-liguofei", "run", "--data-dir"),
+        ("trading-f_partner", "run", "--data-dir"),
+        ("trading-w_partner", "run", "--data-dir"),
+        ("trading-g_partner", "run", "--data-dir"),
         ("chairman", "generate-brief"),
         ("red-team", "audit"),
         ("Codex CLI acting as an LLM provider for worldpay77",),
@@ -1995,6 +2027,151 @@ def get_trial_status() -> dict[str, Any]:
         "filled_perplexity": len(filled),
         "skipped_perplexity": len(skipped),
     }
+
+
+def build_ops_dashboard() -> dict[str, Any]:
+    trial = get_trial_status()
+    latest_runs = load_recent_history_rows(tail=3)
+    latest_run = latest_runs[0] if latest_runs else {}
+    return {
+        "trial_status": trial,
+        "stock_pool": get_stock_pool_overview(),
+        "knowledge": get_knowledge_overview(),
+        "latest_run": latest_run,
+        "recent_runs": latest_runs,
+        "verification": get_verification_overview(),
+        "company_flow": build_company_flow(trial),
+    }
+
+
+def load_recent_history_rows(*, tail: int = 3) -> list[dict[str, Any]]:
+    run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
+    return [shape_history_row(row) for row in run_log.list_runs(tail=tail)]
+
+
+def get_stock_pool_overview() -> dict[str, Any]:
+    pool = normalize_stock_pool(load_stock_pool_yaml())
+    counts = {category: len(pool.get(category) or []) for category in STOCK_CATEGORIES}
+    return {
+        "total": sum(counts.values()),
+        "counts": counts,
+        "version": pool.get("version", 1),
+        "last_updated_by_nepha": pool.get("last_updated_by_nepha", ""),
+    }
+
+
+def get_knowledge_overview() -> dict[str, Any]:
+    db_path = DATA_DIR / "knowledge_store" / "knowledge.db"
+    empty = {
+        "entries": 0,
+        "tickers": 0,
+        "latest_created_at": "",
+        "recent_entries": [],
+        "open_questions": 0,
+        "unverified_claims": 0,
+    }
+    if not db_path.exists():
+        return empty
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            totals = conn.execute(
+                """
+                SELECT COUNT(*) AS entries,
+                       COUNT(DISTINCT ticker) AS tickers,
+                       MAX(created_at) AS latest_created_at
+                FROM knowledge_entries
+                """
+            ).fetchone()
+            rows = conn.execute(
+                """
+                SELECT ticker, prompt_id, title, confidence_label, research_date,
+                       event_date, expires_at, open_questions_json,
+                       unverified_claims_json, sector_tags_json, narrative_tags_json
+                FROM knowledge_entries
+                ORDER BY created_at DESC, research_date DESC, prompt_id DESC
+                LIMIT 5
+                """
+            ).fetchall()
+    except sqlite3.DatabaseError:
+        return empty
+
+    recent_entries = [shape_knowledge_dashboard_row(dict(row)) for row in rows]
+    return {
+        "entries": int(totals["entries"] or 0),
+        "tickers": int(totals["tickers"] or 0),
+        "latest_created_at": totals["latest_created_at"] or "",
+        "recent_entries": recent_entries,
+        "open_questions": sum(item["open_questions_count"] for item in recent_entries),
+        "unverified_claims": sum(item["unverified_claims_count"] for item in recent_entries),
+    }
+
+
+def shape_knowledge_dashboard_row(row: dict[str, Any]) -> dict[str, Any]:
+    open_questions = parse_json_list(row.get("open_questions_json"))
+    unverified_claims = parse_json_list(row.get("unverified_claims_json"))
+    sector_tags = parse_json_list(row.get("sector_tags_json"))
+    narrative_tags = parse_json_list(row.get("narrative_tags_json"))
+    return {
+        "ticker": row.get("ticker") or "",
+        "prompt_id": row.get("prompt_id") or "",
+        "title": row.get("title") or "",
+        "confidence_label": row.get("confidence_label") or "未抽取",
+        "research_date": row.get("research_date") or "",
+        "event_date": row.get("event_date") or "",
+        "expires_at": row.get("expires_at") or "",
+        "open_questions_count": len(open_questions),
+        "unverified_claims_count": len(unverified_claims),
+        "tags": [*sector_tags[:3], *narrative_tags[:3]][:5],
+    }
+
+
+def parse_json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def get_verification_overview() -> dict[str, Any]:
+    decision_cases = read_json_list(DATA_DIR / "decision_verification" / "pending_cases.json")
+    partner_snapshots = read_json_list(DATA_DIR / "partner_performance" / "recommendation_log.json")
+    return {
+        "decision_cases": len(decision_cases),
+        "partner_snapshots": len(partner_snapshots),
+        "resolved_decision_cases": sum(1 for case in decision_cases if case.get("status") != "pending"),
+        "resolved_partner_snapshots": sum(
+            1 for item in partner_snapshots if item.get("verification_status") != "pending"
+        ),
+    }
+
+
+def read_json_list(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8") or "[]")
+    except (OSError, json.JSONDecodeError):
+        return []
+    return data if isinstance(data, list) else []
+
+
+def build_company_flow(trial: dict[str, Any]) -> list[dict[str, Any]]:
+    pending = int(trial.get("pending_perplexity") or 0)
+    filled = int(trial.get("filled_perplexity") or 0)
+    return [
+        {"label": "K deep 研究总监", "metric": "Gate 1-7", "state": "框架追问"},
+        {"label": "Perplexity 研究员", "metric": f"{pending} 待回填", "state": "质量门"},
+        {"label": "知识库", "metric": f"{filled} 已回填", "state": "永久沉淀"},
+        {"label": "三位投资合伙人", "metric": "F partner / W partner / G partner", "state": "并行分析"},
+        {"label": "Chairman CIO", "metric": "final_verdict", "state": "裁决"},
+        {"label": "Red Team", "metric": "反对意见", "state": "审计"},
+    ]
 
 
 def load_stock_pool_yaml() -> dict[str, Any]:

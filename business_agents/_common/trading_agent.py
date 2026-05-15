@@ -14,6 +14,7 @@ from jinja2 import Environment, FileSystemLoader
 from chairman.models import ResearchSignal
 from business_agents._common.base_agent import AgentRunResult, BaseBusinessAgent, write_yaml
 from business_agents._common.llm_client import LLMClient, LLMError, build_llm_client_from_env
+from business_agents._common.knowledge_store import get_recent_knowledge_context
 from business_agents._common.market_data.financial_data import compact_financial_snapshot
 from business_agents._common.methodology_loader import MethodologyLoader
 from business_agents._common.output_validator import (
@@ -185,6 +186,11 @@ class TradingAgent(BaseBusinessAgent):
             signal_summary=signal.signal_summary,
             market_data_yaml=compact_financial_snapshot(ticker),
             perplexity_results_yaml=context.yaml_text,
+            historical_knowledge_yaml=get_recent_knowledge_context(
+                self.data_dir,
+                ticker,
+                as_of_date=self.run_date,
+            ),
             upstream_signal_full_yaml=signal.model_dump(mode="json"),
             schema_name=self.agent_id,
         )
@@ -218,10 +224,10 @@ class TradingAgent(BaseBusinessAgent):
             "stop_loss": None,
             "position_size_pct": 0,
             "thesis": (
-                f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，已读取 Perplexity 回填，"
+                f"{ticker} 由 K deep 信号 {signal.research_signal_id} 触发，已读取 Perplexity 回填，"
                 "但第一阶段 long 禁用，只能保守 watch。"
                 if used_perplexity
-                else f"{ticker} 由 4.1 信号 {signal.research_signal_id} 触发，"
+                else f"{ticker} 由 K deep 信号 {signal.research_signal_id} 触发，"
                 "当前只有公开价量初筛证据，缺少事件原因解释，先 watch。"
             ),
             "deployment_compliance": _deployment_compliance(),
@@ -243,7 +249,7 @@ class TradingAgent(BaseBusinessAgent):
                 }
             ],
             "data_points": build_data_points(signal, context),
-            "catalysts": ["4.1 research signal"],
+            "catalysts": ["K deep research signal"],
             "thesis_kill_criteria": ["Nepha 手动研究回填后若证据不足则维持 watch 或 abstain。"],
             "trial_run_policy": {
                 "trial_run_mode": True,
@@ -521,7 +527,7 @@ def _authority_resolution() -> dict[str, Any]:
 def build_data_points(signal: ResearchSignal, context: PerplexityContext) -> list[dict[str, Any]]:
     data_points = [
         {
-            "label": "4.1 signal",
+            "label": "K deep signal",
             "value": signal.signal_summary,
             "date": datetime.now().date().isoformat(),
             "source_url": f"file://data/research_signals/{signal.research_signal_id}.yaml",
@@ -698,7 +704,7 @@ def build_analysis_gaps(signal: ResearchSignal, context: PerplexityContext) -> l
     if not signal.data_points:
         gaps.append("缺公开价量 data_points")
     if signal.discontinuity_assessment.get("evidence_unverified"):
-        gaps.append("4.1 证据仍标记为 evidence_unverified")
+        gaps.append("K deep 证据仍标记为 evidence_unverified")
     return gaps
 
 

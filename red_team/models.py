@@ -60,6 +60,22 @@ class ChairmanAlignment(RedTeamModel):
     additions: list[str] = Field(default_factory=list)
 
 
+class SubstantiveObjection(RedTeamModel):
+    """Investment-level objection against a Chairman decision."""
+
+    ticker: str
+    red_team_verdict: Literal["block", "challenge", "monitor", "no_major_objection"]
+    strongest_objection: str
+    evidence_chain_risk: str
+    missed_counter_evidence: list[str] = Field(default_factory=list)
+    historical_failure_pattern: str | None = None
+    similar_case_risks: list[str] = Field(default_factory=list)
+    what_must_be_true_for_chairman_to_be_right: str
+    what_would_invalidate_this_decision: list[str] = Field(default_factory=list)
+    chairman_second_review: dict[str, Any] = Field(default_factory=dict)
+    referenced_knowledge_entries: list[str] = Field(default_factory=list)
+
+
 class RedTeamAudit(RedTeamModel):
     """Structured Red Team audit output."""
 
@@ -71,6 +87,7 @@ class RedTeamAudit(RedTeamModel):
     rule_audit_findings: list[RuleAuditFinding]
     methodology_challenges: list[MethodologyChallenge]
     risk_completeness_findings: list[RiskCompletenessFinding]
+    substantive_objections: list[SubstantiveObjection] = Field(default_factory=list)
     chairman_alignment: ChairmanAlignment
     red_team_version: str = "0.1"
     decisions_applied: list[str] = Field(default_factory=list)

@@ -9,9 +9,9 @@
 它的工作方式是：
 
 1. `research-agent` 先从你的股池里挑出研究对象，生成研究信号。
-2. `trading-fengliu` 按冯柳方法论输出一份交易建议。
-3. `trading-wanmu` 按万木方法论输出一份交易建议。
-4. `trading-liguofei` 按李国飞方法论输出一份交易建议。
+2. `trading-f_partner` 按F partner方法论输出一份交易建议。
+3. `trading-w_partner` 按W partner方法论输出一份交易建议。
+4. `trading-g_partner` 按G partner方法论输出一份交易建议。
 5. `chairman` 汇总三份建议，生成 Morning Brief 或 Evening Brief。
 6. `red-team` 对 Chairman 的结论做风险审计。
 7. `orchestrator` 是总开关，一次性把上面所有步骤跑完。
@@ -234,16 +234,16 @@ data/red_team_audits/YYYYMMDD/AUDIT-YYYYMMDD-AM.md
 位置：
 
 ```text
-data/recommendations/YYYYMMDD/fengliu/
-data/recommendations/YYYYMMDD/wanmu/
-data/recommendations/YYYYMMDD/liguofei/
+data/recommendations/YYYYMMDD/f_partner/
+data/recommendations/YYYYMMDD/w_partner/
+data/recommendations/YYYYMMDD/g_partner/
 ```
 
 分别对应：
 
-- 冯柳方法论
-- 万木方法论
-- 李国飞方法论
+- F partner方法论
+- W partner方法论
+- G partner方法论
 
 ### 6.4 研究信号
 
@@ -253,7 +253,7 @@ data/recommendations/YYYYMMDD/liguofei/
 data/research_signals/
 ```
 
-这是 4.1 研究上游生成的输入。
+这是 K deep 研究上游生成的输入。
 
 ### 6.5 需要手动补充 Perplexity 研究的问题
 
@@ -442,7 +442,7 @@ Codex 的登录信息由 `~/.codex/` 管理，Web UI 只启动登录流程和显
 
 ## 10. 如果你只想单独跑某一个 Agent
 
-一般不需要这么做，除非排查问题。Web UI 的「单 Agent」区域已经支持单独触发 research-agent、冯柳、万木、李国飞、Chairman、Red Team，并且可以选择 `--no-llm`。
+一般不需要这么做，除非排查问题。Web UI 的「单 Agent」区域已经支持单独触发 research-agent、F partner、W partner、G partner、Chairman、Red Team，并且可以选择 `--no-llm`。
 
 ### 10.1 只跑研究 Agent
 
@@ -458,42 +458,42 @@ data/pull_requests/
 data/perplexity_results/
 ```
 
-### 10.2 只跑冯柳 Agent
+### 10.2 只跑F partner Agent
 
 必须先有 research signal。
 
 ```bash
-uv run trading-fengliu run --no-llm
+uv run trading-f_partner run --no-llm
 ```
 
 输出：
 
 ```text
-data/recommendations/YYYYMMDD/fengliu/
+data/recommendations/YYYYMMDD/f_partner/
 ```
 
-### 10.3 只跑万木 Agent
+### 10.3 只跑W partner Agent
 
 ```bash
-uv run trading-wanmu run --no-llm
+uv run trading-w_partner run --no-llm
 ```
 
 输出：
 
 ```text
-data/recommendations/YYYYMMDD/wanmu/
+data/recommendations/YYYYMMDD/w_partner/
 ```
 
-### 10.4 只跑李国飞 Agent
+### 10.4 只跑G partner Agent
 
 ```bash
-uv run trading-liguofei run --no-llm
+uv run trading-g_partner run --no-llm
 ```
 
 输出：
 
 ```text
-data/recommendations/YYYYMMDD/liguofei/
+data/recommendations/YYYYMMDD/g_partner/
 ```
 
 ### 10.5 只跑 Chairman
@@ -685,7 +685,7 @@ Codex CLI provider 已做过冒烟验证：
 
 ```text
 LLM_PROVIDER=codex_cli research-agent run --type scan
-LLM_PROVIDER=codex_cli trading-fengliu run
+LLM_PROVIDER=codex_cli trading-f_partner run
 LLM_PROVIDER=codex_cli chairman generate-brief
 ```
 

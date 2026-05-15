@@ -2,18 +2,18 @@ pipelines:
   full_pipeline:
     steps:
       - research_scan
-      - trading_fengliu
-      - trading_wanmu
-      - trading_liguofei
+      - trading_f_partner
+      - trading_w_partner
+      - trading_g_partner
       - perplexity_wait
       - chairman
       - red_team
       - notify
   ad_hoc_pipeline:
     steps:
-      - trading_fengliu
-      - trading_wanmu
-      - trading_liguofei
+      - trading_f_partner
+      - trading_w_partner
+      - trading_g_partner
       - chairman
       - red_team
       - notify

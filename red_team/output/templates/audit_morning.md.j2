@@ -13,8 +13,54 @@
 - 🟡 有保留：{{ with_reservations | join(', ') if with_reservations else '无' }}
 - 🟢 未发现严重问题：{{ no_major_issues | join(', ') if no_major_issues else '无' }}
 - ⚠️ 系统级风险：{{ systemic_risks_count }} 条
+- 🧨 实质反对：{{ substantive_objections_count }} 条
 
 ---
+
+## 🧨 实质性反对意见
+
+{% for objection in substantive_objections %}
+### {{ objection.ticker }} — {{ objection.red_team_verdict }}
+
+**最强反对**：{{ objection.strongest_objection }}
+
+**证据链风险**：{{ objection.evidence_chain_risk }}
+
+**Chairman 要成立必须为真**：{{ objection.what_must_be_true_for_chairman_to_be_right }}
+
+{% if objection.missed_counter_evidence %}
+**可能漏掉的反证**：
+{% for item in objection.missed_counter_evidence %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+{% if objection.historical_failure_pattern %}
+**历史失败模式/纵向风险**：{{ objection.historical_failure_pattern }}
+{% endif %}
+
+{% if objection.similar_case_risks %}
+**相似案例风险**：
+{% for item in objection.similar_case_risks %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+**推翻本次裁决的条件**：
+{% for item in objection.what_would_invalidate_this_decision %}
+- {{ item }}
+{% endfor %}
+
+{% if objection.chairman_second_review %}
+**建议 Chairman 二次裁决**：{{ objection.chairman_second_review.recommended_revised_verdict }}（required={{ objection.chairman_second_review.second_review_required }}）
+{% endif %}
+
+{% if objection.referenced_knowledge_entries %}
+参考知识条目：{{ objection.referenced_knowledge_entries | join(', ') }}
+{% endif %}
+
+---
+{% endfor %}
 
 ## 🚨 规则审计发现（共 {{ rule_audit_findings | length }} 条）
 

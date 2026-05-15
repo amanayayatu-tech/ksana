@@ -13,12 +13,12 @@ from business_agents._common.output_validator import (
 )
 from business_agents._common.stock_pool import StockPool
 from business_agents.research_agent.agent import ResearchAgent
-from tests.conftest import QuietMarketClient, TriggerMarketClient, make_fengliu, write_stock_pool
+from tests.conftest import QuietMarketClient, TriggerMarketClient, make_f_partner, write_stock_pool
 
 
 def test_methodology_loader():
-    prompt = MethodologyLoader(".").load("research_system_event_bayesian")
-    assert "4.1 研究体系" in prompt
+    prompt = MethodologyLoader(".").load("k_deep")
+    assert "K deep" in prompt
     assert "你的工作约束" in prompt
     assert "公开价量" in prompt
     assert "research_signals" in prompt
@@ -89,12 +89,12 @@ def test_max_retries_falls_back_to_abstain(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    fallback = make_fengliu("abstain", ticker="0700.HK", market="HK", abstain_reason="insufficient_data").model_dump(mode="json")
+    fallback = make_f_partner("abstain", ticker="0700.HK", market="HK", abstain_reason="insufficient_data").model_dump(mode="json")
     validator = OutputValidator(max_retries=1)
 
     result = validator.validate_with_retry(
         lambda: {"bad": "payload"},
-        lambda value: validate_trading_recommendation_output(value, agent_id="fengliu_reverse_odds", stock_pool=stock_pool),
+        lambda value: validate_trading_recommendation_output(value, agent_id="f_partner", stock_pool=stock_pool),
         lambda errors: {"recommendation": fallback},
     )
 
@@ -128,21 +128,21 @@ def test_watchlist_ticker_only_watch_or_abstain(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    rec = make_fengliu("long", ticker="3690.HK", market="HK").model_dump(mode="json")
+    rec = make_f_partner("long", ticker="3690.HK", market="HK").model_dump(mode="json")
 
     with pytest.raises(OutputValidationError):
-        validate_trading_recommendation_output({"recommendation": rec}, agent_id="fengliu_reverse_odds", stock_pool=stock_pool)
+        validate_trading_recommendation_output({"recommendation": rec}, agent_id="f_partner", stock_pool=stock_pool)
 
 
 def test_any_failure_must_abstain_enforced(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
     stock_pool = StockPool.load(data_dir)
-    rec = make_fengliu("long", ticker="0700.HK", market="HK").model_dump(mode="json")
+    rec = make_f_partner("long", ticker="0700.HK", market="HK").model_dump(mode="json")
     rec["deployment_compliance"]["any_failure_must_abstain"] = True
 
     with pytest.raises(OutputValidationError):
-        validate_trading_recommendation_output({"recommendation": rec}, agent_id="fengliu_reverse_odds", stock_pool=stock_pool)
+        validate_trading_recommendation_output({"recommendation": rec}, agent_id="f_partner", stock_pool=stock_pool)
 
 
 def test_research_agent_routing_recommendation_required(tmp_path):

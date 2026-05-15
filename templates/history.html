@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}运行历史 · Agent Trading System{% endblock %}
+{% block title %}运行档案 · Nepha AI IC{% endblock %}
 
 {% block content %}
 <section class="panel">
   <div class="panel-head">
-    <h1 class="panel-title">运行历史</h1>
+    <h1 class="panel-title">运行档案</h1>
     <div class="row">
       <span id="historyStatus" class="pill">待刷新</span>
       <button id="refreshHistory">刷新</button>
@@ -17,11 +17,11 @@
           <tr>
             <th>run_id</th>
             <th>日期</th>
-            <th>brief-type</th>
+            <th>投委会类型</th>
             <th>status</th>
             <th>失败步骤</th>
             <th>产物</th>
-            <th>修复/fallback</th>
+            <th>修复 / fallback</th>
             <th>started_at</th>
           </tr>
         </thead>

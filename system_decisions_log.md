@@ -4,17 +4,17 @@
 
 ---
 
-## DEC-001：fengliu_specific_framework 与四重安全边际的 Chairman 映射
+## DEC-001：f_partner_specific_framework 与四重安全边际的 Chairman 映射
 
-- **触发**：冯柳 v0.5 验收，Codex 反向追问 Q1
+- **触发**：F partner v0.5 验收，Codex 反向追问 Q1
 - **决定**：Chairman **不做语义映射，分两路独立汇总**
 - **理由**：
-  - 冯柳 odds_score 测的是"赔率"
-  - 万木/李国飞四重门槛测的是"绝对估值合理性"
+  - F partner odds_score 测的是"赔率"
+  - W partner/G partner四重门槛测的是"绝对估值合理性"
   - 两者数学上不等价，强行映射会产生误导
 - **Chairman 输出格式**：
-  - 赔率维度：冯柳 odds_score / 万木 odds_score / 李国飞（无独立 odds_score，隐含在 margin_of_safety）
-  - 绝对估值维度：冯柳豁免 / 万木 4 门槛 / 李国飞 4 门槛
+  - 赔率维度：F partner odds_score / W partner odds_score / G partner（无独立 odds_score，隐含在 margin_of_safety）
+  - 绝对估值维度：F partner豁免 / W partner 4 门槛 / G partner 4 门槛
   - 不允许做加权平均或映射等价
 - **影响范围**：Chairman Agent 设计（阶段 3.3）
 - **决策时间**：2026-05-13 10:15
@@ -23,20 +23,20 @@
 
 ## DEC-002：R8 pull_request 不在交易 Agent 端节流
 
-- **触发**：冯柳 v0.5 验收，Codex 反向追问 Q2
-- **决定**：交易 Agent 端**不加节流**，全部由 4.1 研究体系的 system_hard_rules 兜底
+- **触发**：F partner v0.5 验收，Codex 反向追问 Q2
+- **决定**：交易 Agent 端**不加节流**，全部由 K deep的 system_hard_rules 兜底
 - **理由**：
-  - 4.1 研究体系已有 `max_prompts_per_signal: 5` + `max_prompts_per_daily_brief: 30` 形成天然约束
+  - K deep已有 `max_prompts_per_signal: 5` + `max_prompts_per_daily_brief: 30` 形成天然约束
   - Agent 端再加节流是过度设计
-  - 如果某 Agent pull 过多，由 Nepha 在 4.1 端降级该 Agent 的优先级
-- **影响范围**：三套交易 Agent v0.5 / v0.3 / v0.5 + 4.1 研究体系 v0.3（无改动需求，已经覆盖）
+  - 如果某 Agent pull 过多，由 Nepha 在 K deep 端降级该 Agent 的优先级
+- **影响范围**：三套交易 Agent v0.5 / v0.3 / v0.5 + K deep v0.3（无改动需求，已经覆盖）
 - **决策时间**：2026-05-13 10:15
 
 ---
 
 ## DEC-003：abstain 状态下 thesis 必须填 + 新增 abstain_reason 字段
 
-- **触发**：冯柳 v0.5 验收，Codex 反向追问 Q3
+- **触发**：F partner v0.5 验收，Codex 反向追问 Q3
 - **决定**：
   1. `direction: abstain` 时 thesis 字段必须填（解释为什么决定不发建议）
   2. **所有三套交易 Agent 的 deployment_compliance 字段块新增 `abstain_reason` 子字段**
@@ -53,14 +53,14 @@
     - forbidden_action_required     # 建议涉及融资/做空/Put/对冲/衍生品
     
     # 方法论决策类
-    - circle_status_outsider        # 冯柳：外行且非顺势短线
-    - kill_type_logic_kill          # 冯柳：判定为杀逻辑
-    - core_questions_exceed_3       # 万木：核心问题 > 3 个（R5）
-    - win_rate_below_95             # 李国飞：胜率 < 95%
-    - sharp_variables_exceed_2      # 李国飞：sharp 变量 > 2 个
+    - circle_status_outsider        # F partner：外行且非顺势短线
+    - kill_type_logic_kill          # F partner：判定为杀逻辑
+    - core_questions_exceed_3       # W partner：核心问题 > 3 个（R5）
+    - win_rate_below_95             # G partner：胜率 < 95%
+    - sharp_variables_exceed_2      # G partner：sharp 变量 > 2 个
     
     # 上游信号类
-    - upstream_signal_evidence_unverified  # 4.1 信号有 P0 prompt 未回填
+    - upstream_signal_evidence_unverified  # K deep 信号有 P0 prompt 未回填
     - upstream_signal_not_applicable        # 上游信号不适合本方法论
     
     # 通用类
@@ -68,21 +68,21 @@
     - methodology_specific_other     # 方法论特有原因，详见 thesis
   ```
 - **影响范围**：
-  - 冯柳 v0.5 → 需在 v0.5.1 微补丁补 abstain_reason
-  - 万木 v0.3 → 在本轮补丁直接加（明日验收时检查）
-  - 李国飞 v0.5 → 在本轮补丁直接加（明日验收时检查）
+  - F partner v0.5 → 需在 v0.5.1 微补丁补 abstain_reason
+  - W partner v0.3 → 在本轮补丁直接加（明日验收时检查）
+  - G partner v0.5 → 在本轮补丁直接加（明日验收时检查）
 - **决策时间**：2026-05-13 10:15
 
 ---
 
 ## DEC-004：evidence_unverified_inherited 的双重处理
 
-- **触发**：冯柳 v0.5 验收，Codex 反向追问 Q4
+- **触发**：F partner v0.5 验收，Codex 反向追问 Q4
 - **决定**：固定扣分 + Red Team 标记**并存**
 - **具体规则**：
   ```yaml
   when_evidence_unverified_inherited_is_true:
-    - confidence_ceiling: 70   # confidence 上限不超过 70，与 4.1 v0.3 的 P1 prompt skipped 规则对齐
+    - confidence_ceiling: 70   # confidence 上限不超过 70，与 K deep v0.3 的 P1 prompt skipped 规则对齐
     - red_team_priority: high  # 同时打 high 优先级 Red Team 标记
     - chairman_weight_discount: 0.7  # Chairman 汇总时该建议的投票权重 × 0.7
   ```
@@ -98,18 +98,18 @@
 
 ---
 
-## DEC-005：冯柳 v0.5 待统一议程（v0.5.1 微补丁）
+## DEC-005：F partner v0.5 待统一议程（v0.5.1 微补丁）
 
-记录冯柳 v0.5 验收时发现但按"最小补丁"原则未改的 3 项遗留问题。**在 3 套交易 Agent 全部 v0.5 frozen 后，做一次跨 Agent 统一微补丁**。
+记录F partner v0.5 验收时发现但按"最小补丁"原则未改的 3 项遗留问题。**在 3 套交易 Agent 全部 v0.5 frozen 后，做一次跨 Agent 统一微补丁**。
 
 1. **direction 枚举统一为 `[long, short, watch, avoid, abstain]`**
-   - 冯柳：缺 abstain，必须加
-   - 万木：缺 short（如有 short 需求）
-   - 李国飞：缺 short
+   - F partner：缺 abstain，必须加
+   - W partner：缺 short（如有 short 需求）
+   - G partner：缺 short
    - 统一后各 Agent 可标注自己实际可输出的子集
-2. **删除 v0.4 Output Schema 中的 `deployment_controls` 字段**（冯柳特有）
+2. **删除 v0.4 Output Schema 中的 `deployment_controls` 字段**（F partner特有）
    - 已被 deployment_layer.md 替代，留着违反"单一真源"原则
-3. **Section 4 Position Sizing & Risk Rules 改为重定向说明**（冯柳/万木/李国飞共同）
+3. **Section 4 Position Sizing & Risk Rules 改为重定向说明**（F partner/W partner/G partner共同）
    - 部署层规则全部由 deployment_layer.md 管
    - 仅保留方法论 DNA 部分（加仓/减仓/清仓的方法论触发条件）
 - **决策时间**：2026-05-13 10:15
@@ -117,11 +117,11 @@
 
 ---
 
-## DEC-006：万木 mapped_to_three_models.subjective_cognition_gap 的映射规则
+## DEC-006：W partner mapped_to_three_models.subjective_cognition_gap 的映射规则
 
-- **触发**：万木 v0.3 验收，Codex 反向追问 Q3
-- **背景**：4.1 研究体系不输出"主观认知差"判断，但万木需要把上游信号映射到三型之一
-- **决定**：使用 4.1 的 `bayesian_update.posterior_minus_market_prior` 作为映射依据
+- **触发**：W partner v0.3 验收，Codex 反向追问 Q3
+- **背景**：K deep不输出"主观认知差"判断，但W partner需要把上游信号映射到三型之一
+- **决定**：使用 K deep 的 `bayesian_update.posterior_minus_market_prior` 作为映射依据
   ```yaml
   mapping_rule:
     if abs(posterior_minus_market_prior) > 20%:
@@ -130,39 +130,39 @@
       subjective_cognition_gap: false
   ```
 - **理由**：
-  - posterior_minus_market_prior 是 4.1 对"市场认知差"的量化表达
-  - 万木的主观认知差概念本质上就是"我看到的概率 vs 市场看到的概率"
-  - 用这个数值作为映射 trigger 既保留了万木方法论 DNA，又利用了上游已有信息
+  - posterior_minus_market_prior 是 K deep 对"市场认知差"的量化表达
+  - W partner的主观认知差概念本质上就是"我看到的概率 vs 市场看到的概率"
+  - 用这个数值作为映射 trigger 既保留了W partner方法论 DNA，又利用了上游已有信息
 - **阈值**：20% 是工程推断，需要前 3 个月真实数据校准
-- **影响范围**：万木 v0.3 / v0.3.1 微补丁
+- **影响范围**：W partner v0.3 / v0.3.1 微补丁
 - **决策时间**：2026-05-13 10:24
 
 ---
 
-## DEC-007：万木 collaborative_validation 中 4.1 计为 +1 validator
+## DEC-007：W partner collaborative_validation 中 K deep 计为 +1 validator
 
-- **触发**：万木 v0.3 验收，Codex 反向追问 Q1
+- **触发**：W partner v0.3 验收，Codex 反向追问 Q1
 - **决定**：
-  1. 4.1 研究体系信号计为 collaborative_validation 的 1 个独立验证源
+  1. K deep信号计为 collaborative_validation 的 1 个独立验证源
   2. 最低门槛保持 v0.2 的 ≥ 2 个，不提高到 3 个
-  3. **例外**：当 4.1 信号的 `evidence_unverified_inherited: true` 时，该验证源不计入 independent_validators_count
+  3. **例外**：当 K deep 信号的 `evidence_unverified_inherited: true` 时，该验证源不计入 independent_validators_count
 - **理由**：
-  - 4.1 是经过 Nepha 手动 Perplexity 验证的高质量来源
+  - K deep 是经过 Nepha 手动 Perplexity 验证的高质量来源
   - 5 万 HKD 小账户、5-8 只持仓场景下，3 个验证源过严
   - evidence_unverified 状态下不计入是为了避免污染
-- **影响范围**：万木 v0.3 / v0.3.1 微补丁 + Chairman Agent 设计
+- **影响范围**：W partner v0.3 / v0.3.1 微补丁 + Chairman Agent 设计
 - **决策时间**：2026-05-13 10:24
 
 ---
 
 ## DEC-008：R5/R6/R7 字段在 Chairman 汇总中只做审计，不参与横向投票
 
-- **触发**：李国飞 v0.5 验收，Codex 反向追问 Q5
-- **决定**：李国飞特有的 r5_time_box_resolution / r6_false_stop_loss_review_triggered / r7_dual_gate_status 字段在 Chairman 设计中 **只做审计，不参与横向投票权重**
+- **触发**：G partner v0.5 验收，Codex 反向追问 Q5
+- **决定**：G partner特有的 r5_time_box_resolution / r6_false_stop_loss_review_triggered / r7_dual_gate_status 字段在 Chairman 设计中 **只做审计，不参与横向投票权重**
 - **设计考量**：
-  - 这些字段是"李国飞 Agent 内部冲突解决的过程记录"，不是"对标的的判断"
+  - 这些字段是"G partner Agent 内部冲突解决的过程记录"，不是"对标的的判断"
   - 让这些字段参与投票会污染 Chairman 的横向比较
-- **例外**：Red Team 必须读这些字段，它们是评估李国飞 Agent 是否自洽的关键数据
+- **例外**：Red Team 必须读这些字段，它们是评估G partner Agent 是否自洽的关键数据
 - **影响范围**：Chairman / Red Team Agent 设计
 - **决策时间**：2026-05-13 10:30
 
@@ -170,7 +170,7 @@
 
 ## DEC-009：r5_time_box_resolution.reduce 比例按置信度动态决定
 
-- **触发**：李国飞 v0.5 验收，Codex 反向追问 Q1
+- **触发**：G partner v0.5 验收，Codex 反向追问 Q1
 - **决定**：不固定减半，按 posterior_confidence_at_review 动态决定
   ```yaml
   reduce_action_rules:
@@ -182,16 +182,16 @@
   - 5 万 HKD 小账户下固定减半会出现 7.5% → 3.75% 碎片仓位
   - 不符合 deployment_layer 5-7% 首次建仓的颞粒度
   - 按置信度分档更符合"贝叶斯全程驱动"哲学
-- **影响范围**：李国飞 v0.5 / v0.5.1 微补丁
+- **影响范围**：G partner v0.5 / v0.5.1 微补丁
 - **决策时间**：2026-05-13 10:30
 
 ---
 
 ## DEC-010：mapped_to_three_powers 使用 discontinuity_assessment.type 做映射
 
-- **触发**：李国飞 v0.5 验收，Codex 反向追问 Q2
-- **背景**：4.1 研究体系输出 discontinuity_assessment.type 枚举，但不输出护城河/进化力/熵减力判断
-- **决定**：建立如下映射规则（由李国飞 Agent 在接收上游信号后应用）
+- **触发**：G partner v0.5 验收，Codex 反向追问 Q2
+- **背景**：K deep输出 discontinuity_assessment.type 枚举，但不输出护城河/进化力/熵减力判断
+- **决定**：建立如下映射规则（由G partner Agent 在接收上游信号后应用）
   ```yaml
   mapping_rules:
     discontinuity_assessment.type == business_model:
@@ -211,17 +211,17 @@
       requires_agent_judgment: true
   entropy_reduction_change:
     # 熵减力判断几乎不可能从上游信号机械映射获得
-    # 需李国飞 Agent 独立评估管理层类例/资源集中度/组织活力
+    # 需G partner Agent 独立评估管理层类例/资源集中度/组织活力
     typically_set_by_agent_only: true
   ```
-- **影响范围**：李国飞 v0.5 / v0.5.1 微补丁
+- **影响范围**：G partner v0.5 / v0.5.1 微补丁
 - **决策时间**：2026-05-13 10:30
 
 ---
 
 ## DEC-011：dual_gate_consistency 机器判定规则
 
-- **触发**：李国飞 v0.5 验收，Codex 反向追问 Q3
+- **触发**：G partner v0.5 验收，Codex 反向追问 Q3
 - **背景**：R7 要求 95% 胜率门槛与 70% 贝叶斯门槛数学独立，但未定义"独立"的机器判定标准
 - **决定**：4 种组合明确对应 4 种决策
   ```yaml
@@ -245,35 +245,35 @@
       consistency: both_failed
       action: avoid
   ```
-- **影响范围**：李国飞 v0.5 / v0.5.1 微补丁 + Red Team Agent 设计（case_3 是 Red Team 高优先级输入）
+- **影响范围**：G partner v0.5 / v0.5.1 微补丁 + Red Team Agent 设计（case_3 是 Red Team 高优先级输入）
 - **决策时间**：2026-05-13 10:30
 
 ---
 
-## DEC-012（否决提案）：不推广 bayesian_update / time_box / red_team 到冯柳/万木
+## DEC-012（否决提案）：不推广 bayesian_update / time_box / red_team 到F partner/W partner
 
-- **触发**：李国飞 v0.4 Schema 字段分类表中，Codex 建议"推广这三个字段到其他方法论 v0.5"
+- **触发**：G partner v0.4 Schema 字段分类表中，Codex 建议"推广这三个字段到其他方法论 v0.5"
 - **决定**：不推广
 - **理由**：
-  - 万木的 collaborative_validation 等价于 red_team 的某些功能（更精英协同导向）
-  - 冯柳的 confidence 单值是其方法论 DNA，强加 bayesian_update 子字段会扭曲
-  - 时间盒是李国飞 R5 的独特设计，硬塞到万木/冯柳会破坏它们各自的 Layered Authority 一致性
+  - W partner的 collaborative_validation 等价于 red_team 的某些功能（更精英协同导向）
+  - F partner的 confidence 单值是其方法论 DNA，强加 bayesian_update 子字段会扭曲
+  - 时间盒是G partner R5 的独特设计，硬塞到W partner/F partner会破坏它们各自的 Layered Authority 一致性
   - **保持差异比统一更有价值**——4 Agent 辩论张力的来源
-- **影响范围**：冯柳 v0.5.1 / 万木 v0.3.1 不需加这三个字段
+- **影响范围**：F partner v0.5.1 / W partner v0.3.1 不需加这三个字段
 - **决策时间**：2026-05-13 10:30
 
 ---
 
-## DEC-013：冯柳 circle_status_outsider 分层处理
+## DEC-013：F partner circle_status_outsider 分层处理
 
-- **触发**：冯柳 v0.5.1 反向追问 Q1
+- **触发**：F partner v0.5.1 反向追问 Q1
 - **决定**：外行状态下不是统一 abstain，三档处理：
   ```yaml
   outsider_handling:
     case_1_outsider_with_clear_trend_signal:
       action: long
       position_size: < 主仓水平
-      rationale: 冯柳原文"外行只允许顺势中短线、仓位应低于主仓"
+      rationale: F partner原文"外行只允许顺势中短线、仓位应低于主仓"
     case_2_outsider_no_trend_signal:
       action: abstain
       abstain_reason: circle_status_outsider
@@ -287,9 +287,9 @@
 
 ---
 
-## DEC-014：冯柳 kill_type_logic_kill 按 confidence 分流
+## DEC-014：F partner kill_type_logic_kill 按 confidence 分流
 
-- **触发**：冯柳 v0.5.1 反向追问 Q2
+- **触发**：F partner v0.5.1 反向追问 Q2
 - **决定**：使用 v0.4 已定义的 kill_type_heuristic.logic_kill.confidence 作为分流阈值
   ```yaml
   logic_kill_routing:
@@ -305,28 +305,28 @@
       # 走 valuation_kill / earnings_kill / mixed 其他分支
   ```
 - **阈值来源**：0.65 是 v0.4 kill_type_heuristic 已定义的 logic_kill 默认 confidence
-- **影响范围**：冯柳 Agent 运行逻辑 + Chairman 处理 abstain_reason: kill_type_logic_kill 时的预期
+- **影响范围**：F partner Agent 运行逻辑 + Chairman 处理 abstain_reason: kill_type_logic_kill 时的预期
 - **决策时间**：2026-05-13 11:08
 
 ---
 
-## DEC-015：万木 posterior_minus_market_prior 阈值第一版不分层
+## DEC-015：W partner posterior_minus_market_prior 阈值第一版不分层
 
-- **触发**：万木 v0.3.1 反向追问 Q1
+- **触发**：W partner v0.3.1 反向追问 Q1
 - **决定**：第一版统一 20% 阈值，不按行业/市值分层
 - **理由**：
   - 现在分层是"假精确"，基于零样本数据拍脑袋
   - 统一 20% 跑 3 个月，记录每次触发的真实市值/行业分布
   - 数据驱动决定要不要分层
-- **后续动作**：加入万木 v0.3.1 Open Questions："M4 （3 个月后）评估 20% 阈值在大/中/小市值、消费/医药/科技 不同下的触发分布。"
-- **影响范围**：万木 v0.3.1 不动代码，仅加一条 Open Question
+- **后续动作**：加入W partner v0.3.1 Open Questions："M4 （3 个月后）评估 20% 阈值在大/中/小市值、消费/医药/科技 不同下的触发分布。"
+- **影响范围**：W partner v0.3.1 不动代码，仅加一条 Open Question
 - **决策时间**：2026-05-13 11:08
 
 ---
 
-## DEC-016：万木 nepha_manual_validation 必须有证据链才计入
+## DEC-016：W partner nepha_manual_validation 必须有证据链才计入
 
-- **触发**：万木 v0.3.1 反向追问 Q2
+- **触发**：W partner v0.3.1 反向追问 Q2
 - **决定**：Nepha 手动验证只在留下证据链接时计入 collaborative_validation
   ```yaml
   nepha_manual_validation_entries:
@@ -336,15 +336,15 @@
       counts_as_validator: true | false  # 仅在 evidence_url 非空时为 true
   ```
 - **理由**：避免"我验证过了"的自欺，强制可审计
-- **实施方式**：需万木 v0.3.1 文档加一个子字段。由 Computer 直接小补丁，不走 Codex
-- **影响范围**：万木 v0.3.1 + Chairman validators 计数逻辑
+- **实施方式**：需W partner v0.3.1 文档加一个子字段。由 Computer 直接小补丁，不走 Codex
+- **影响范围**：W partner v0.3.1 + Chairman validators 计数逻辑
 - **决策时间**：2026-05-13 11:08
 
 ---
 
-## DEC-017：李国飞 DEC-011 case_2 按证据类型自动路由
+## DEC-017：G partner DEC-011 case_2 按证据类型自动路由
 
-- **触发**：李国飞 v0.5.1 反向追问 Q1
+- **触发**：G partner v0.5.1 反向追问 Q1
 - **决定**：case_2（win_rate 过、bayesian 未过）的 watch vs pull_request 选择由证据缺口类型决定
   ```yaml
   case_2_routing:
@@ -355,18 +355,18 @@
         - quality_assessment        # 需 Agent 独立评估：管理层判断、护城河演化
     
     if bayesian_gap_type == perplexity_obtainable:
-      action: 发起 pull_request 给 4.1 研究体系
+      action: 发起 pull_request 给 K deep
     else:
       action: watch（进观察池）
   ```
-- **影响范围**：李国飞 Agent 运行逻辑（不需改文档 schema，是代码实现级逻辑）+ Chairman 预期 case_2 不同路径
+- **影响范围**：G partner Agent 运行逻辑（不需改文档 schema，是代码实现级逻辑）+ Chairman 预期 case_2 不同路径
 - **决策时间**：2026-05-13 11:08
 
 ---
 
 ## DEC-018：deployment_layer 加 Open Question：账户规模变化时的 reduce 档位重算
 
-- **触发**：李国飞 v0.5.1 反向追问 Q2
+- **触发**：G partner v0.5.1 反向追问 Q2
 - **决定**：v0.5.1 不动，但在 deployment_layer.md 加一条 Open Question
 - **待加 Open Question 内容**：
   > 账户规模从 5 万 HKD 扩大后，DEC-009 的 8% / 5% reduce 档位是否需要重算？
@@ -384,11 +384,11 @@
 
 | Agent | DEC-001 → DEC-012 状态 | DEC-013 | DEC-014 | DEC-015 | DEC-016 | DEC-017 | DEC-018 |
 |---|---|---|---|---|---|---|---|
-| 冯柳 v0.5.1 | ✅ frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a |
-| 万木 v0.3.1 | ✅ frozen | n/a | n/a | 加 Open Q | **本轮小补丁** | n/a | n/a |
-| 李国飞 v0.5.1 | ✅ frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a |
+| F partner v0.5.1 | ✅ frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a |
+| W partner v0.3.1 | ✅ frozen | n/a | n/a | 加 Open Q | **本轮小补丁** | n/a | n/a |
+| G partner v0.5.1 | ✅ frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a |
 | deployment_layer v0.1 | ✅ frozen | n/a | n/a | n/a | n/a | n/a | **本轮小补丁** |
-| 4.1 研究体系 v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a |
+| K deep v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a |
 | Chairman （待设计）| DEC-001/004/007/008 实施主体 | 需处理 | 需处理 | n/a | 需处理 | 需处理 | n/a |
 | Red Team （待设计）| DEC-004/011 实施主体 | n/a | n/a | n/a | n/a | n/a | n/a |
 
@@ -396,7 +396,7 @@
 
 在 3 套交易 Agent 全部 v0.5 frozen 后，做一次统一微补丁。涉及：
 
-| 决策 | 冯柳 v0.5.1 | 万木 v0.3.1 | 李国飞 v0.5.1 |
+| 决策 | F partner v0.5.1 | W partner v0.3.1 | G partner v0.5.1 |
 |---|---|---|---|
 | DEC-003 abstain_reason | 加 | 加 | 加 |
 | DEC-004 evidence_unverified 双重处理 | 加 | 加 | 加 |

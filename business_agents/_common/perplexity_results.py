@@ -10,7 +10,8 @@ import yaml
 
 from chairman.models import ResearchSignal
 
-MAX_PERPLEXITY_ANSWER_CHARS = 3200
+MAX_PERPLEXITY_ANSWER_CHARS = 2600
+MAX_PERPLEXITY_PROMPT_CHARS = 900
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,7 @@ def collect_perplexity_context(data_dir: str | Path, signal: ResearchSignal) -> 
         else:
             pending_ids.append(str(record["prompt_id"]))
 
-    payload = {"perplexity_research": prompt_records}
+    payload = {"perplexity_research": [shape_record_for_prompt(record) for record in prompt_records]}
     yaml_text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False).strip()
     return PerplexityContext(
         yaml_text=yaml_text,
@@ -132,7 +133,8 @@ def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, An
                 "prompt_id": prompt_id,
                 "related_signal_id": related_signal_id or signal.research_signal_id,
                 "priority": prompt.get("priority") or "",
-                "prompt_text": prompt.get("prompt_text") or "",
+                **compact_prompt_text(str(prompt.get("prompt_text") or "")),
+                "prompt_text_for_match": str(prompt.get("prompt_text") or ""),
                 "prompt_path": str(path),
             }
 
@@ -143,7 +145,8 @@ def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, An
                 "prompt_id": prompt_id,
                 "related_signal_id": signal.research_signal_id,
                 "priority": "",
-                "prompt_text": "",
+                **compact_prompt_text(""),
+                "prompt_text_for_match": "",
                 "prompt_path": "",
             },
         )
@@ -236,7 +239,7 @@ def result_mismatch_reason(data: Any, record: dict[str, Any]) -> str:
     if actual_signal_id and expected_signal_id and actual_signal_id != expected_signal_id:
         return f"related_signal_id mismatch: expected {expected_signal_id}, got {actual_signal_id}"
 
-    expected_text = normalize_prompt_text(str(record.get("prompt_text") or ""))
+    expected_text = normalize_prompt_text(str(record.get("prompt_text_for_match") or record.get("prompt_text") or ""))
     actual_text = normalize_prompt_text(str(data.get("prompt_text") or ""))
     if actual_text and expected_text and actual_text != expected_text:
         return "prompt_text mismatch; ignored stale Perplexity result from an older rerun"
@@ -273,6 +276,31 @@ def compact_answer_text(text: str) -> dict[str, Any]:
         + "\n\n[已截断：完整回填内容请查看 result_path 指向的本地文件]",
         "answer_text_truncated": True,
         "answer_text_original_chars": len(text),
+    }
+
+
+def compact_prompt_text(text: str) -> dict[str, Any]:
+    """Keep generated K deep prompts from crowding out the filled research answer."""
+
+    if len(text) <= MAX_PERPLEXITY_PROMPT_CHARS:
+        return {
+            "prompt_text": text,
+            "prompt_text_truncated": False,
+            "prompt_text_original_chars": len(text),
+        }
+    return {
+        "prompt_text": text[:MAX_PERPLEXITY_PROMPT_CHARS].rstrip()
+        + "\n\n[已截断：完整 prompt 请查看 prompt_path 指向的本地文件]",
+        "prompt_text_truncated": True,
+        "prompt_text_original_chars": len(text),
+    }
+
+
+def shape_record_for_prompt(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in record.items()
+        if key not in {"prompt_text_for_match"}
     }
 
 

@@ -1,88 +1,143 @@
 {% extends "base.html" %}
-{% block title %}深度研究 · Agent Trading System{% endblock %}
+{% block title %}研究中枢 · Nepha AI IC{% endblock %}
 
 {% block content %}
-<div class="grid">
-  <section class="panel">
-    <div class="panel-head">
-      <h1 class="panel-title">深度研究</h1>
+<div class="ops-board">
+  <section class="command-banner">
+    <div>
       <div class="row">
         <span id="promptStatus" class="pill">待加载</span>
-        <button id="refreshPrompts">刷新</button>
-      </div>
-    </div>
-    <div class="panel-body">
-      <div class="toolbar">
-        <div class="toolbar-main">
-          <label>
-            日期
-            <input id="promptDate" type="date" value="{{ today }}">
-          </label>
-          <label>
-            状态
-            <select id="statusFilter">
-              <option value="all">全部</option>
-              <option value="pending">待回填</option>
-              <option value="filled">已回填</option>
-              <option value="skipped">已跳过</option>
-            </select>
-          </label>
-        </div>
-        <div class="toolbar-actions">
-          <button id="showAllDates">显示全部日期</button>
-        </div>
-      </div>
-      <div class="data-shell mt">
-        <table class="prompt-table">
-          <thead>
-            <tr>
-              <th style="width: 180px;">prompt_id</th>
-              <th style="width: 170px;">research_signal</th>
-              <th style="width: 90px;">优先级</th>
-              <th style="width: 100px;">状态</th>
-              <th class="wrap">问题</th>
-            </tr>
-          </thead>
-          <tbody id="promptBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h2 id="detailTitle" class="panel-title">Prompt 详情</h2>
-      <div class="row">
         <span id="detailStatus" class="pill">未选择</span>
-        <button id="copyPrompt">复制 Prompt</button>
+      </div>
+      <h1 class="command-title mt">研究任务编排台</h1>
+      <p class="command-subtitle">先看历史，再问新问题；Perplexity 回填后自动沉淀为公司记忆。</p>
+      <div class="metric-strip mt">
+        <div class="metric-cell">
+          <div class="metric-label">当前任务</div>
+          <div id="selectedMetric" class="metric-value">-</div>
+          <div class="metric-caption">Prompt</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">队列状态</div>
+          <div id="queueMetric" class="metric-value">-</div>
+          <div class="metric-caption">待回填 / 已回填</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">知识入库</div>
+          <div id="receiptMetric" class="metric-value">待命</div>
+          <div class="metric-caption">自动抽取</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">重跑链路</div>
+          <div id="rerunMetric" class="metric-value">Agent</div>
+          <div class="metric-caption">Trading / CIO / Red Team</div>
+        </div>
       </div>
     </div>
-    <div class="panel-body">
-      <div class="surface-split">
-        <label>
-          Perplexity Prompt
-          <textarea id="promptText" class="textarea-large" readonly></textarea>
-        </label>
-        <label>
-          Perplexity 答案
-          <textarea id="answerText" class="textarea-large" placeholder="把 Perplexity 深入研究的答案粘贴到这里"></textarea>
-        </label>
+    <div class="company-rail">
+      <div class="stage-row">
+        <div class="stage-name">历史检索</div>
+        <div class="stage-metric">同票 + 相似主题</div>
+        <div class="stage-state">先读</div>
       </div>
-      <div class="row mt">
-        <button id="saveAnswer" class="primary">保存回填</button>
-        <button id="skipPrompt">标记跳过</button>
-        <span id="resultPath" class="pill">未保存</span>
+      <div class="stage-row">
+        <div class="stage-name">K deep Gate 1-7</div>
+        <div class="stage-metric">研究任务编排</div>
+        <div class="stage-state">再问</div>
+      </div>
+      <div class="stage-row">
+        <div class="stage-name">Perplexity</div>
+        <div class="stage-metric">Deep Research</div>
+        <div class="stage-state">人工质量门</div>
+      </div>
+      <div class="stage-row">
+        <div class="stage-name">Knowledge Store</div>
+        <div class="stage-metric">结论 / 反证 / 未关闭问题</div>
+        <div class="stage-state">沉淀</div>
       </div>
     </div>
   </section>
 
+  <div class="research-workbench">
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">研究任务队列</h2>
+        <div class="row">
+          <button id="refreshPrompts">刷新</button>
+          <button id="showAllDates">全部日期</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="toolbar">
+          <div class="toolbar-main">
+            <label>
+              日期
+              <input id="promptDate" type="date">
+            </label>
+            <label>
+              状态
+              <select id="statusFilter">
+                <option value="all">全部</option>
+                <option value="pending">待回填</option>
+                <option value="filled">已回填</option>
+                <option value="skipped">已跳过</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="data-shell mt">
+          <table class="prompt-table">
+            <thead>
+              <tr>
+                <th style="width: 178px;">prompt_id</th>
+                <th style="width: 150px;">signal</th>
+                <th style="width: 82px;">优先级</th>
+                <th style="width: 96px;">状态</th>
+                <th class="wrap">K deep 研究问题</th>
+              </tr>
+            </thead>
+            <tbody id="promptBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="detailTitle" class="panel-title">研究任务详情</h2>
+        <div class="row">
+          <button id="copyPrompt">复制 Prompt</button>
+          <button id="saveAnswer" class="primary">保存回填</button>
+          <button id="skipPrompt">标记跳过</button>
+        </div>
+      </div>
+      <div class="panel-body research-copy">
+        <div class="textarea-duo">
+          <label>
+            Perplexity Prompt
+            <textarea id="promptText" class="textarea-large" readonly></textarea>
+          </label>
+          <label>
+            Perplexity 答案
+            <textarea id="answerText" class="textarea-large" placeholder="把 Perplexity 深度研究报告粘贴到这里"></textarea>
+          </label>
+        </div>
+        <div id="knowledgeReceipt" class="knowledge-receipt">
+          <div class="receipt-line"><span>入库状态</span><strong>等待回填</strong></div>
+          <div class="receipt-line"><span>知识卡片</span><strong id="resultPath">未保存</strong></div>
+          <div class="receipt-line"><span>抽取字段</span><strong>公司结论 / 行业结论 / 反证 / 未关闭问题</strong></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">回填后重跑</h2>
+      <h2 class="panel-title">回填后重跑投委会</h2>
       <span id="rerunStatus" class="pill">待命</span>
     </div>
     <div class="panel-body">
-      <p id="rerunHint" class="help-text">完成后会写入“运行历史”，可在那里查看本次记录，并直接打开 Brief / Red Team 产物。</p>
+      <p id="rerunHint" class="ops-note">Trading Agents → Chairman CIO → Red Team。</p>
       <div class="control-grid mt">
         <label>
           日期
@@ -102,7 +157,7 @@
             <option value="true">--no-llm</option>
           </select>
         </label>
-        <button id="rerunAfterFill" class="primary">重跑交易 Agent + Chairman + Red Team</button>
+        <button id="rerunAfterFill" class="primary">重跑投委会链路</button>
       </div>
       <pre id="rerunLog" class="terminal mt"></pre>
     </div>
@@ -141,6 +196,7 @@
     const data = await res.json();
     prompts = data.prompts || [];
     renderPromptRows();
+    updateQueueMetric();
     setPill(promptStatus, `共 ${prompts.length} 条`, "ok");
     if (prompts.length) {
       selectPrompt(prompts.some((item) => item.prompt_id === selectedPromptId) ? selectedPromptId : prompts[0].prompt_id);
@@ -160,7 +216,7 @@
         <td>${escapeHtml(item.related_signal_id || "")}</td>
         <td>${escapeHtml(item.priority || "")}</td>
         <td><span class="pill ${statusKind(item.status)}">${escapeHtml(item.status_label)}</span></td>
-        <td class="wrap">${escapeHtml((item.prompt_text || "").slice(0, 110))}</td>
+        <td class="wrap">${escapeHtml((item.prompt_text || "").slice(0, 150))}</td>
       </tr>
     `).join("");
     promptBody.querySelectorAll("[data-select]").forEach((row) => {
@@ -177,19 +233,45 @@
       return;
     }
     document.getElementById("detailTitle").textContent = item.prompt_id;
+    document.getElementById("selectedMetric").textContent = item.prompt_id.replace("PR-", "");
     setPill(detailStatus, item.status_label, statusKind(item.status));
     document.getElementById("promptText").value = item.prompt_markdown || item.prompt_text || "";
     document.getElementById("answerText").value = item.answer_text || "";
     document.getElementById("resultPath").textContent = item.result_path || item.path_display || "未保存";
+    renderKnowledgeReceipt(item);
   }
 
   function clearDetail() {
     selectedPromptId = "";
-    document.getElementById("detailTitle").textContent = "Prompt 详情";
+    document.getElementById("detailTitle").textContent = "研究任务详情";
+    document.getElementById("selectedMetric").textContent = "-";
     setPill(detailStatus, "未选择");
     document.getElementById("promptText").value = "";
     document.getElementById("answerText").value = "";
     document.getElementById("resultPath").textContent = "未保存";
+    renderKnowledgeReceipt();
+  }
+
+  function renderKnowledgeReceipt(item = {}) {
+    const root = document.getElementById("knowledgeReceipt");
+    const status = item.status === "filled" ? "已入库" : item.status === "skipped" ? "已跳过" : "等待回填";
+    const resultPath = item.result_path || item.path_display || "未保存";
+    root.innerHTML = `
+      <div class="receipt-line"><span>入库状态</span><strong>${escapeHtml(status)}</strong></div>
+      <div class="receipt-line"><span>结果文件</span><strong>${escapeHtml(resultPath)}</strong></div>
+      <div class="receipt-line"><span>抽取字段</span><strong>结论 / 反证 / 未验证 / 未关闭</strong></div>
+    `;
+  }
+
+  function renderSavedKnowledge(entry) {
+    document.getElementById("receiptMetric").textContent = entry ? "完成" : "待复核";
+    if (!entry) return;
+    document.getElementById("knowledgeReceipt").innerHTML = `
+      <div class="receipt-line"><span>entry_id</span><strong>${escapeHtml(entry.entry_id || "")}</strong></div>
+      <div class="receipt-line"><span>stock_code</span><strong>${escapeHtml(entry.stock_code || "")}</strong></div>
+      <div class="receipt-line"><span>知识卡片</span><strong>${escapeHtml(entry.cards_path || "")}</strong></div>
+      <div class="receipt-line"><span>抽取计数</span><strong>公司 ${entry.company_conclusions_count || 0} / 行业 ${entry.industry_conclusions_count || 0} / 未关闭 ${entry.open_questions_count || 0}</strong></div>
+    `;
   }
 
   async function saveAnswer() {
@@ -205,8 +287,10 @@
       setPill(detailStatus, data.detail || "保存失败", "error");
       return;
     }
+    const savedEntry = data.knowledge_entry;
     await loadPrompts();
     selectPrompt(data.prompt.prompt_id);
+    renderSavedKnowledge(savedEntry);
   }
 
   async function skipPrompt() {
@@ -226,6 +310,12 @@
     selectPrompt(data.prompt.prompt_id);
   }
 
+  function updateQueueMetric() {
+    const pending = prompts.filter((item) => item.status === "pending").length;
+    const filled = prompts.filter((item) => item.status === "filled").length;
+    document.getElementById("queueMetric").textContent = `${pending}/${filled}`;
+  }
+
   function appendLog(line) {
     rerunLog.textContent += `${line}\n`;
     rerunLog.scrollTop = rerunLog.scrollHeight;
@@ -233,6 +323,7 @@
 
   function streamRerun(url) {
     rerunLog.textContent = "";
+    document.getElementById("rerunMetric").textContent = "运行中";
     setPill(rerunStatus, "运行中", "warn");
     const source = new EventSource(url);
     source.addEventListener("start", (event) => {
@@ -245,31 +336,34 @@
       const data = JSON.parse(event.data);
       setPill(rerunStatus, data.message || data.status, "warn");
       if (data.run_id) {
-        document.getElementById("rerunHint").innerHTML = `已创建运行历史 <code>${escapeHtml(data.run_id)}</code>，完成后到 <a href="/history">运行历史</a> 查看。`;
+        document.getElementById("rerunHint").innerHTML = `已创建运行档案 <code>${escapeHtml(data.run_id)}</code>。`;
       }
     });
     source.addEventListener("error", (event) => {
       if (event.data) appendLog(JSON.parse(event.data).message || "运行失败");
+      document.getElementById("rerunMetric").textContent = "失败";
       setPill(rerunStatus, "失败", "error");
       source.close();
     });
     source.addEventListener("done", (event) => {
       const data = JSON.parse(event.data);
       if (data.status === "running") {
+        document.getElementById("rerunMetric").textContent = "后台";
         setPill(rerunStatus, "后台运行中", "warn");
         if (data.run_id) {
-          appendLog(`已转入后台运行，运行历史：${data.run_id}`);
-          document.getElementById("rerunHint").innerHTML = `后台任务已创建。本页可以离开，稍后到 <a href="/history">运行历史</a> 查看结果：<code>${escapeHtml(data.run_id)}</code>`;
+          appendLog(`已转入后台运行，运行档案：${data.run_id}`);
+          document.getElementById("rerunHint").innerHTML = `后台任务已创建：<code>${escapeHtml(data.run_id)}</code>`;
         }
         source.close();
         return;
       }
       const ok = data.return_code === 0 && data.status !== "failed";
+      document.getElementById("rerunMetric").textContent = ok ? "完成" : "失败";
       setPill(rerunStatus, data.status, ok ? "ok" : "error");
       if (data.run_id) {
         const label = ok ? "已完成" : "已失败";
-        appendLog(`${label}，运行历史：${data.run_id}`);
-        document.getElementById("rerunHint").innerHTML = `${label}，本次记录已写入 <a href="/history">运行历史</a>：<code>${escapeHtml(data.run_id)}</code>`;
+        appendLog(`${label}，运行档案：${data.run_id}`);
+        document.getElementById("rerunHint").innerHTML = `${label}：<code>${escapeHtml(data.run_id)}</code>`;
       }
       source.close();
     });

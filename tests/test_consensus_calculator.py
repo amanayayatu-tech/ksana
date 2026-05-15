@@ -13,20 +13,20 @@ def test_full_consensus_long(three_long_recommendations):
 
 
 def test_split_long_vs_avoid():
-    from tests.conftest import make_fengliu, make_liguofei, make_wanmu
+    from tests.conftest import make_f_partner, make_g_partner, make_w_partner
 
     consensus = calculate_direction_consensus(
-        [make_fengliu("long"), make_wanmu("avoid"), make_liguofei("watch")]
+        [make_f_partner("long"), make_w_partner("avoid"), make_g_partner("watch")]
     )
 
     assert consensus.consensus_level == ConsensusLevel.SPLIT_LONG_VS_AVOID
 
 
 def test_abstain_not_counted_against():
-    from tests.conftest import make_fengliu, make_liguofei, make_wanmu
+    from tests.conftest import make_f_partner, make_g_partner, make_w_partner
 
     consensus = calculate_direction_consensus(
-        [make_fengliu("long"), make_wanmu("abstain"), make_liguofei("abstain")]
+        [make_f_partner("long"), make_w_partner("abstain"), make_g_partner("abstain")]
     )
 
     assert consensus.consensus_level == ConsensusLevel.MAJORITY_LONG
@@ -35,9 +35,9 @@ def test_abstain_not_counted_against():
 
 
 def test_evidence_unverified_weight():
-    from tests.conftest import make_fengliu
+    from tests.conftest import make_f_partner
 
-    rec = make_fengliu("long", evidence_unverified=True, confidence=80)
+    rec = make_f_partner("long", evidence_unverified=True, confidence=80)
     consensus = calculate_direction_consensus([rec])
 
     assert get_chairman_weight_multiplier(rec) == 0.7
@@ -45,9 +45,9 @@ def test_evidence_unverified_weight():
 
 
 def test_dec_008_r5r6r7_not_in_voting():
-    from tests.conftest import make_fengliu, make_liguofei, make_wanmu
+    from tests.conftest import make_f_partner, make_g_partner, make_w_partner
 
-    rec = make_liguofei(
+    rec = make_g_partner(
         "long",
         authority_resolution={
             "r5_time_box_resolution": {"decision": "exit"},
@@ -56,16 +56,16 @@ def test_dec_008_r5r6r7_not_in_voting():
         },
     )
 
-    consensus = calculate_direction_consensus([make_fengliu("long"), make_wanmu("long"), rec])
+    consensus = calculate_direction_consensus([make_f_partner("long"), make_w_partner("long"), rec])
 
     assert consensus.consensus_level == ConsensusLevel.FULL_CONSENSUS_LONG
 
 
 def test_no_cross_methodology_mapping():
-    from tests.conftest import make_fengliu, make_liguofei, make_wanmu
+    from tests.conftest import make_f_partner, make_g_partner, make_w_partner
 
-    liguofei = make_liguofei("watch", action="buy")
-    consensus = calculate_direction_consensus([make_fengliu("long"), make_wanmu("watch"), liguofei])
+    g_partner = make_g_partner("watch", action="buy")
+    consensus = calculate_direction_consensus([make_f_partner("long"), make_w_partner("watch"), g_partner])
 
     assert consensus.watch_count == 2
     assert consensus.long_count == 1

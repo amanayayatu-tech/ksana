@@ -4,14 +4,14 @@ from chairman.core.consensus_calculator import calculate_direction_consensus
 from chairman.core.disagreement_classifier import classify_disagreement
 from chairman.core.escalation_router import determine_escalation
 from chairman.models import Priority
-from tests.conftest import make_fengliu, make_liguofei, make_signal, make_wanmu
+from tests.conftest import make_f_partner, make_g_partner, make_signal, make_w_partner
 
 
 def test_dec_011_case_3_escalation():
     recs = [
-        make_fengliu("long"),
-        make_wanmu("watch"),
-        make_liguofei("avoid", dual_gate="anomaly_review_required"),
+        make_f_partner("long"),
+        make_w_partner("watch"),
+        make_g_partner("avoid", dual_gate="anomaly_review_required"),
     ]
     consensus = calculate_direction_consensus(recs)
     disagreement = classify_disagreement(recs, make_signal(), consensus)
@@ -23,9 +23,9 @@ def test_dec_011_case_3_escalation():
 
 def test_evidence_unverified_long_escalation():
     recs = [
-        make_fengliu("long", evidence_unverified=True),
-        make_wanmu("watch"),
-        make_liguofei("watch"),
+        make_f_partner("long", evidence_unverified=True),
+        make_w_partner("watch"),
+        make_g_partner("watch"),
     ]
     consensus = calculate_direction_consensus(recs)
     disagreement = classify_disagreement(recs, make_signal(), consensus)

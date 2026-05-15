@@ -1,6 +1,6 @@
 ---
-methodology_id: research_system_event_bayesian
-display_name: "4.1 研究体系：事件贝叶斯研究上游 Agent"
+methodology_id: k_deep
+display_name: "K deep：事件贝叶斯研究上游 Agent"
 agent_role: research_upstream
 version: 0.3
 created_at: 2026-05-13
@@ -13,13 +13,13 @@ markets_trading_scope: not_applicable
 languages_preferred: [zh, en]
 run_cadence: daily_scan + event_driven
 downstream_agents:
-  - fengliu_reverse_odds
-  - wanmu_single_sided
-  - liguofei_zen_value
+  - f_partner
+  - w_partner
+  - g_partner
 output_granularity: research_signal
 perplexity_integration_mode: human_in_the_loop  # 关键字段：Perplexity 由 Nepha 手动操作，Agent 只出提示词
 source_materials:
-  - "/Users/peachy/Desktop/方法论原始材料/4.1研究体系.pdf"
+  - "/Users/peachy/Desktop/方法论原始材料/K deep.pdf"
 extraction_note: "源文件是单页超宽思维导图扫描 PDF。本稿基于分块 OCR 和人工归纳，OCR 易错字较多，涉及精确阈值处均标注待复核。"
 changelog:
   - "v0.3: 修复 Perplexity 自动调度污染。把所有 Agent 自动调用 Perplexity 的设计改为'Agent 输出提示词清单 + Nepha 手动跑 + 半结构化回填'。删除 budget_pool / priority_queue / exhausted_behavior。新增 prompt_id 体系、prompt_brief 输出格式、半回填容忍机制。"
@@ -27,7 +27,7 @@ changelog:
   - "v0.1: 基于 PDF OCR 的初始提取。"
 ---
 
-# 4.1 研究体系：事件贝叶斯研究上游 Agent
+# K deep：事件贝叶斯研究上游 Agent
 
 ## Agent Role（核心定位）
 
@@ -40,7 +40,7 @@ changelog:
 - **agent_role**: `research_upstream`
 - **核心职责**: 每日扫描事件、识别非连续变化、做贝叶斯更新、把"值得进一步研究的信号"路由给下游 3 个交易 Agent
 - **输出粒度**: `research_signal`（研究信号），不是 `recommendation`（交易建议）
-- **下游消费者**: 冯柳逆向赔率 Agent、万木单边翻倍 Agent、李国飞高确定性 Agent
+- **下游消费者**: F partner逆向赔率 Agent、W partner单边翻倍 Agent、G partner高确定性 Agent
 - **上游消费者**: 无。本 Agent 是系统的起点之一
 - **Perplexity 集成模式**: `human_in_the_loop`（人在回路 - 详见 Section 8）
 
@@ -81,7 +81,7 @@ contract:
 
 本节假设来源：
 - 角色定位转变：基于用户（Nepha）2026-05-13 的明确决策，从"第四个交易 Agent"重定位为"研究上游 Agent"
-- 1+3 架构：与冯柳 v0.4 / 万木 v0.2 / 李国飞 v0.4 三套已 frozen 的交易方法论保持上下游关系
+- 1+3 架构：与F partner v0.4 / W partner v0.2 / G partner v0.4 三套已 frozen 的交易方法论保持上下游关系
 - 人在回路 Perplexity 模式：来源于 Nepha Day 1 原话"他们每天固定时间给我几十个需要深入研究的问题的完整的提示词，我给到 perplexity 手动使用深入研究，这样既合规又简单，不要上来把整个系统做的非常复杂"
 - 半结构化回填：来源于 Nepha v0.3 重写时的明确选择"Agent 输出提示词清单 → 我手动跑一批 → 我把结果并提示词 ID 一起贴回 Agent、明确哪些跑了哪些没跑"
 
@@ -319,7 +319,7 @@ authority_priority:
 
 > **本 Agent 不维护仓位和风控规则。**
 > 
-> 仓位、止损、加减仓、回撤红线、流动性规则属于下游 3 个交易 Agent（冯柳 v0.4 / 万木 v0.2 / 李国飞 v0.4）的部署层。本研究上游 Agent 输出的研究信号不带任何仓位建议，这些由下游交易 Agent 根据自己的 Layered Authority 决定。
+> 仓位、止损、加减仓、回撤红线、流动性规则属于下游 3 个交易 Agent（F partner v0.4 / W partner v0.2 / G partner v0.4）的部署层。本研究上游 Agent 输出的研究信号不带任何仓位建议，这些由下游交易 Agent 根据自己的 Layered Authority 决定。
 > 
 > 如需了解整个系统的部署层规则，参考各下游交易方法论的 `## 0. Layered Authority > deployment_hard_rules` 章节。
 
@@ -385,7 +385,7 @@ research_signal:
   # === 核心标识 ===
   research_signal_id:            # 唯一 ID，格式 RS-YYYYMMDD-NNN
   emitted_at:                    # 信号发出时间戳
-  emitter: 4.1_research_system
+  emitter: K deep_research_system
   signal_status: active | superseded | invalidated | resolved
 
   # === 信号本体 ===
@@ -517,17 +517,17 @@ research_signal:
 ### research_signal 与 recommendation 的生命周期
 
 ```text
-1. 4.1 研究体系扫描 -> 发出 research_signal RS-20260513-001
+1. K deep扫描 -> 发出 research_signal RS-20260513-001
 2. 若需要 Perplexity 研究 -> 把对应 prompts 加入今天的 perplexity_prompt_brief
 3. Nepha 收到 brief -> 手动选择跑哪些 -> 跑完贴回 + 跳过明示
-4. 4.1 研究体系根据回填结果更新 research_signal 的 confidence 和 evidence_unverified 标志
-5. Chairman 路由 -> 推荐发给 fengliu / wanmu / liguofei
-6. 三个交易 Agent 并行评估，各自输出 recommendation R-FL-001, R-WM-001, R-LF-001
+4. K deep根据回填结果更新 research_signal 的 confidence 和 evidence_unverified 标志
+5. Chairman 路由 -> 推荐发给 f_partner / w_partner / g_partner
+6. 三个交易 Agent 并行评估，各自输出 recommendation R-FP-001, R-WP-001, R-GP-001
 7. 每个 recommendation 的 upstream_research_signals[] 引用 RS-20260513-001
 8. 三个 recommendation 回写 downstream_responses[] 到 RS-20260513-001
 9. Chairman 汇总三个 recommendation 的一致度
 10. Nepha 决策
-11. 真实交易/不交易结果回写，用于 4.1 研究体系的信号质量校准
+11. 真实交易/不交易结果回写，用于 K deep的信号质量校准
 ```
 
 本节假设来源：
@@ -556,13 +556,13 @@ research_signal:
 perplexity_prompt_brief:
   brief_id:                      # 格式 BRIEF-YYYYMMDD-NN（每天编号）
   generated_at:
-  emitter: 4.1_research_system
+  emitter: K deep_research_system
   total_prompts: 0               # 本批 prompt 总数（不超过 max_prompts_per_daily_brief）
   
   prompts:
     - prompt_id:                 # 格式 PR-YYYYMMDD-NNN，唯一 ID
       related_signal_id:         # 关联的 research_signal_id（多个用数组）
-      requesting_agent: 4.1_research_system | <下游 agent_id>（若是 pull_request 转发）
+      requesting_agent: K deep_research_system | <下游 agent_id>（若是 pull_request 转发）
       
       priority: P0 | P1 | P2 | P3
       # P0: 立即跑 - 核心 thesis 依赖，不跑则信号无法发出
@@ -703,14 +703,14 @@ half_fill_handling_rules:
 - **prompt_full_text 模板**: 动态生成，必须包含：
   - 原 pull_request 的核心问题
   - 下游 Agent 想要的输出结构
-  - 与该下游 Agent 方法论的关联（如冯柳的杀跌类型、万木的三型、李国飞的护城河）
+  - 与该下游 Agent 方法论的关联（如F partner的杀跌类型、W partner的三型、G partner的护城河）
 
 ### 8.6 Pull Request 机制（下游 → 上游，仅用于把 prompt 加入 brief）
 
 ```yaml
 pull_request_schema:
   request_id:
-  requesting_agent: fengliu_reverse_odds | wanmu_single_sided | liguofei_zen_value
+  requesting_agent: f_partner | w_partner | g_partner
   requesting_recommendation_id:
   question_raw:                  # 下游 Agent 用自然语言提的问题
   why_needed:                    # 为什么本次研究关键
@@ -732,7 +732,7 @@ research_system_response_schema:
 - 半回填规则（half_fill_handling_rules）：来源于 Nepha v0.3 时的明确选择"我把结果并提示词 ID 一起贴回 Agent、明确哪些跑了哪些没跑"
 - P0/P1/P2/P3 优先级体系：工程推断，<待用户复核 - 第一批 brief 试跑后调整>
 - 4 类 prompt 模板：保留 v0.2 的 3 个 + 新增 Template 4 处理下游 pull
-- 8:30 / 05:30 brief 时间：与冯柳/万木/李国飞的 "每日必看" 时间窗口对齐
+- 8:30 / 05:30 brief 时间：与F partner/W partner/G partner的 "每日必看" 时间窗口对齐
 
 ## 9. Self-Critique Hooks（供 Red Team 使用）
 
@@ -790,7 +790,7 @@ research_system_response_schema:
 
 ## 11. Open Questions（未解决问题清单）
 
-- [ ] **方法论定位**：是否允许 4.1 研究体系在极少数情况下直接输出 `trade_ready` 信号，还是永远只到 `deep_research` 级别？
+- [ ] **方法论定位**：是否允许 K deep在极少数情况下直接输出 `trade_ready` 信号，还是永远只到 `deep_research` 级别？
 - [ ] **研究边界**：可以研究 US / HK / A 股 / Crypto；是否需要限制某些市场只做案例学习，不进入下游路由？
 - [ ] **posterior 阈值**：Gate 5 中 posterior probability 60%-80% 作为信号强度候选阈值，真正路由给下游需要多少置信度？
 - [ ] **每日 brief 上限校准**：max_prompts_per_daily_brief = 30 是否合理？Nepha 实际一天能消化多少？是否需要分早盘 brief / 收盘 brief 两批？

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from red_team.core.risk_completeness_evaluator import evaluate_risk_completeness
-from tests.conftest import make_fengliu, make_liguofei, make_wanmu
+from tests.conftest import make_f_partner, make_g_partner, make_w_partner
 
 
 def test_industry_concentration_across_agents():
     recs = [
-        make_fengliu("long", position_size_pct=15, industry="AI"),
-        make_wanmu("long", position_size_pct=15, industry="AI"),
-        make_liguofei("long", position_size_pct=15, industry="AI"),
+        make_f_partner("long", position_size_pct=15, industry="AI"),
+        make_w_partner("long", position_size_pct=15, industry="AI"),
+        make_g_partner("long", position_size_pct=15, industry="AI"),
     ]
 
     findings = evaluate_risk_completeness(recs)
@@ -17,7 +17,7 @@ def test_industry_concentration_across_agents():
 
 
 def test_three_agents_shared_upstream_signal():
-    recs = [make_fengliu("watch"), make_wanmu("watch"), make_liguofei("watch")]
+    recs = [make_f_partner("watch"), make_w_partner("watch"), make_g_partner("watch")]
 
     findings = evaluate_risk_completeness(recs)
 

@@ -1,0 +1,1 @@
+"""Executable WPartner trading agent."""

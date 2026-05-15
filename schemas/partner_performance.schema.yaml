@@ -1,0 +1,49 @@
+schema_id: worldpay77.partner_performance_snapshot.v1
+description: >
+  Recommendation-level partner performance record. This is visible to Chairman for weighting
+  and review, but is not injected into the three trading agents to avoid polluting their
+  methodology DNA with their own historical bias.
+fields:
+  snapshot_id:
+    type: string
+    required: true
+  source_brief_id:
+    type: string
+    required: true
+  recommendation_id:
+    type: string
+    required: true
+  agent_id:
+    type: string
+    required: true
+  ticker:
+    type: string
+    required: true
+  direction:
+    type: enum
+    values: [long, watch, avoid, abstain, short]
+    required: true
+  confidence:
+    type: integer
+    required: true
+  verification_status:
+    type: enum
+    values: [pending, validated, partially_validated, invalidated, inconclusive]
+    required: true
+  evidence_url:
+    type: string
+    required_when_status_not_pending: true
+  created_at:
+    type: datetime
+    required: true
+visibility_policy:
+  visible_to:
+    - Chairman
+    - Nepha
+  not_visible_to:
+    - f_partner
+    - w_partner
+    - g_partner
+  reason: >
+    Performance feedback should adjust Chairman weighting first. Feeding it directly to
+    the partner agents may cause method drift or blanket abstention in weak historical categories.

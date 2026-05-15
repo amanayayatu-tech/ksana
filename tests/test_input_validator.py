@@ -7,8 +7,8 @@ from chairman.core.input_validator import InputValidationError, validate_recomme
 
 def test_direction_enum_validation():
     payload = {
-        "recommendation_id": "R-FL-20260513-001",
-        "agent_id": "fengliu_reverse_odds",
+        "recommendation_id": "R-FP-20260513-001",
+        "agent_id": "f_partner",
         "ticker": "MOCK",
         "market": "US",
         "direction": "maybe",

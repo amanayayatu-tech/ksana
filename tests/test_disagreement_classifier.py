@@ -3,14 +3,14 @@ from __future__ import annotations
 from chairman.core.consensus_calculator import calculate_direction_consensus
 from chairman.core.disagreement_classifier import classify_disagreement
 from chairman.models import DisagreementType
-from tests.conftest import make_fengliu, make_liguofei, make_signal, make_wanmu
+from tests.conftest import make_f_partner, make_g_partner, make_signal, make_w_partner
 
 
 def test_methodology_dna_classification():
     recs = [
-        make_fengliu("long", thesis="赔率好"),
-        make_wanmu("avoid", thesis="核心问题太多"),
-        make_liguofei("watch"),
+        make_f_partner("long", thesis="赔率好"),
+        make_w_partner("avoid", thesis="核心问题太多"),
+        make_g_partner("watch"),
     ]
     consensus = calculate_direction_consensus(recs)
 
@@ -22,9 +22,9 @@ def test_methodology_dna_classification():
 
 def test_anomaly_classification():
     recs = [
-        make_fengliu("long"),
-        make_wanmu("avoid"),
-        make_liguofei("watch", dual_gate="anomaly_review_required"),
+        make_f_partner("long"),
+        make_w_partner("avoid"),
+        make_g_partner("watch", dual_gate="anomaly_review_required"),
     ]
     consensus = calculate_direction_consensus(recs)
 
@@ -36,9 +36,9 @@ def test_anomaly_classification():
 
 def test_data_freshness_classification():
     recs = [
-        make_fengliu("long", data_date="2026-01-01"),
-        make_wanmu("avoid", data_date="2026-05-10"),
-        make_liguofei("watch", data_date="2026-05-11"),
+        make_f_partner("long", data_date="2026-01-01"),
+        make_w_partner("avoid", data_date="2026-05-10"),
+        make_g_partner("watch", data_date="2026-05-11"),
     ]
     consensus = calculate_direction_consensus(recs)
 

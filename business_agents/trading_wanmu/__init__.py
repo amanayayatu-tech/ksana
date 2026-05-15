@@ -1,1 +1,0 @@
-"""Executable Wanmu trading agent."""

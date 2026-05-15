@@ -1,0 +1,1 @@
+"""Executable FPartner trading agent."""

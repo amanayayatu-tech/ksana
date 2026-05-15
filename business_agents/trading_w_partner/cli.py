@@ -1,4 +1,4 @@
-"""CLI for Fengliu trading agent."""
+"""CLI for WPartner trading agent."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import click
 
 from business_agents._common.output_validator import OutputValidationError
 from business_agents._common.stock_pool import StockPoolError
-from business_agents.trading_fengliu.agent import FengliuTradingAgent
+from business_agents.trading_w_partner.agent import WPartnerTradingAgent
 
 
 @click.group()
 def cli() -> None:
-    """Fengliu trading agent."""
+    """WPartner trading agent."""
 
 
 @cli.command("run")
@@ -22,7 +22,7 @@ def cli() -> None:
 @click.option("--data-dir", default="data", type=click.Path(path_type=Path))
 def run_command(no_llm: bool, run_date: str | None, data_dir: Path) -> None:
     try:
-        result = FengliuTradingAgent(data_dir=data_dir, run_date=run_date).run(no_llm=no_llm)
+        result = WPartnerTradingAgent(data_dir=data_dir, run_date=run_date).run(no_llm=no_llm)
     except StockPoolError as exc:
         click.echo(str(exc), err=True)
         raise click.exceptions.Exit(1) from exc
@@ -30,7 +30,7 @@ def run_command(no_llm: bool, run_date: str | None, data_dir: Path) -> None:
         click.echo(str(exc), err=True)
         raise click.exceptions.Exit(2) from exc
     except Exception as exc:
-        click.echo(f"trading-fengliu failed: {exc}", err=True)
+        click.echo(f"trading-w_partner failed: {exc}", err=True)
         raise click.exceptions.Exit(99) from exc
     for path in result.output_files:
         click.echo(f"generated: {path}")

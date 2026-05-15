@@ -49,6 +49,13 @@ def test_deep_research_fill_and_skip_round_trip(tmp_path, monkeypatch):
     filled_path = data_dir / "perplexity_results" / "PR-20260513-001_filled.yaml"
     assert filled_path.exists()
     assert "Perplexity 回填" in filled_path.read_text(encoding="utf-8")
+    assert fill_response.json()["knowledge_entry"]["prompt_id"] == "PR-20260513-001"
+    assert (data_dir / "knowledge_store" / "knowledge.db").exists()
+
+    dashboard = client.get("/api/ops-dashboard").json()["dashboard"]
+    assert dashboard["trial_status"]["filled_perplexity"] == 1
+    assert dashboard["knowledge"]["entries"] == 1
+    assert dashboard["company_flow"][0]["label"] == "K deep 研究总监"
 
     filled_response = client.get("/api/deep-research/prompts?status=filled")
     assert filled_response.json()["prompts"][0]["answer_text"].startswith("Perplexity 回填")
@@ -60,17 +67,20 @@ def test_deep_research_fill_and_skip_round_trip(tmp_path, monkeypatch):
     assert skip_response.status_code == 200
     assert not filled_path.exists()
     assert (data_dir / "perplexity_results" / "PR-20260513-001_skipped.yaml").exists()
+    with sqlite3.connect(data_dir / "knowledge_store" / "knowledge.db") as conn:
+        count = conn.execute("SELECT COUNT(*) FROM knowledge_entries").fetchone()[0]
+    assert count == 0
 
 
 def test_history_marks_schema_repair_from_recommendation_yaml(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
-    rec_dir = data_dir / "recommendations" / "20260513" / "fengliu"
+    rec_dir = data_dir / "recommendations" / "20260513" / "f_partner"
     rec_dir.mkdir(parents=True)
-    (rec_dir / "R-FL-20260513-001.yaml").write_text(
+    (rec_dir / "R-FP-20260513-001.yaml").write_text(
         yaml.safe_dump(
             {
                 "recommendation": {
-                    "recommendation_id": "R-FL-20260513-001",
+                    "recommendation_id": "R-FP-20260513-001",
                     "schema_repair": {"attempts": 1, "errors": ["bad JSON"]},
                 }
             },
@@ -96,9 +106,9 @@ def test_history_marks_schema_repair_from_recommendation_yaml(tmp_path, monkeypa
 
 def test_history_marks_fallback_from_agent_log(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
-    log_dir = data_dir / "agent_logs" / "20260513" / "trading_fengliu"
+    log_dir = data_dir / "agent_logs" / "20260513" / "trading_f_partner"
     log_dir.mkdir(parents=True)
-    (log_dir / "R-FL-20260513-001.json").write_text(
+    (log_dir / "R-FP-20260513-001.json").write_text(
         json.dumps({"event": {"fallback_reason": "schema_validation_failed"}}),
         encoding="utf-8",
     )
@@ -180,7 +190,7 @@ def test_history_does_not_reconcile_while_rerun_process_exists(tmp_path, monkeyp
 def test_active_rerun_process_detects_dated_trading_command(monkeypatch):
     class ProcessList:
         returncode = 0
-        stdout = "uv run trading-fengliu run --date 2026-05-14 --data-dir data\n"
+        stdout = "uv run trading-f_partner run --date 2026-05-14 --data-dir data\n"
 
     monkeypatch.setattr(webui.subprocess, "run", lambda *args, **kwargs: ProcessList())
 
@@ -429,7 +439,7 @@ def test_background_command_start_returns_history_run_id(tmp_path, monkeypatch):
 
 def test_deep_research_background_rerun_cleans_stale_downstream_outputs(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
-    rec_dir = data_dir / "recommendations" / "20260514" / "fengliu"
+    rec_dir = data_dir / "recommendations" / "20260514" / "f_partner"
     brief_dir = data_dir / "briefs" / "20260514"
     audit_dir = data_dir / "red_team_audits" / "20260514"
     rec_dir.mkdir(parents=True)

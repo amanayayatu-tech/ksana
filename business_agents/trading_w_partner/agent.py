@@ -1,4 +1,4 @@
-"""Wanmu trading agent."""
+"""WPartner trading agent."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from business_agents._common.perplexity_results import PerplexityContext
 from business_agents._common.trading_agent import TradingAgent, extract_signal_features
 
 
-class WanmuTradingAgent(TradingAgent):
-    agent_name = "trading_wanmu"
-    methodology_id = "wanmu_single_sided"
-    agent_id = "wanmu_single_sided"
-    output_dir_name = "wanmu"
-    recommendation_prefix = "R-WM"
+class WPartnerTradingAgent(TradingAgent):
+    agent_name = "trading_w_partner"
+    methodology_id = "w_partner"
+    agent_id = "w_partner"
+    output_dir_name = "w_partner"
+    recommendation_prefix = "R-WP"
 
     def add_method_specific_fields(
         self,
@@ -51,7 +51,7 @@ class WanmuTradingAgent(TradingAgent):
                     "short_allowed": False,
                     "hedging_allowed": False,
                 },
-                "wanmu_rating": {
+                "w_partner_rating": {
                     "star": 3 if has_causal_fill else 2,
                     "grade": "C" if has_causal_fill else "D",
                     "risk_color": "yellow" if has_causal_fill else "red",
@@ -61,8 +61,8 @@ class WanmuTradingAgent(TradingAgent):
                     "independent_validators_count": 1,
                     "consensus_level": "single_source",
                     "validators_breakdown": {
-                        "upstream_4_1_signals_counted": 1,
-                        "upstream_4_1_signals_excluded": 0,
+                        "upstream_k_deep_signals_counted": 1,
+                        "upstream_k_deep_signals_excluded": 0,
                         "coresearcher_validators": 0,
                         "independent_sellside_reports": 0,
                         "nepha_manual_validation": 0,

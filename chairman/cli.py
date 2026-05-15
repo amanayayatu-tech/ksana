@@ -110,6 +110,7 @@ def generate_brief_command(
             llm_client=llm_client,
             use_llm=use_llm,
             input_files_consumed=consumed,
+            data_dir=data_dir,
         )
         markdown_path, json_path = archive_brief(brief, data_dir)
     except Exception as exc:
