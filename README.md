@@ -1,6 +1,6 @@
 # Worldpay77 / Nepha AI IC
 
-Worldpay77 is a local AI-native investment research and decision system. It is designed as a private investment committee, not as a generic stock screener or automated trading bot.
+Worldpay77 is a local AI-native investment research and decision system. It is designed as a private investment committee, not as a generic stock screener, portfolio manager, or automated trading bot.
 
 The system combines a research director, manual Perplexity Deep Research, a persistent knowledge store, three independent partner agents, a Chairman CIO, and a Red Team review loop. It runs locally and writes auditable Markdown / JSON artifacts under `data/`.
 
@@ -9,12 +9,13 @@ The system combines a research director, manual Perplexity Deep Research, a pers
 Worldpay77 turns a daily stock pool into a structured investment committee workflow:
 
 1. `K deep` scans the stock pool and turns public price-volume anomalies into research tasks.
-2. Perplexity Deep Research is run manually by Nepha and pasted back into the system.
+2. Perplexity Deep Research is run manually by Nepha and pasted or dragged back into the system as Markdown.
 3. Filled Perplexity reports are extracted into reusable knowledge entries.
 4. `F partner`, `W partner`, and `G partner` independently analyze each signal.
 5. `Chairman` produces a CIO-style decision brief with reasoning and history context.
 6. `Red Team` challenges the evidence chain, decision logic, and missed risks.
-7. Decision verification and partner performance logs create a longer-term review loop.
+7. The final brief shows an operation summary: suggested action, reasoning, waiting conditions, risk triggers, and whether Nepha must manually decide.
+8. Decision verification and partner performance logs create a longer-term review loop.
 
 ```mermaid
 flowchart LR
@@ -44,12 +45,13 @@ Open:
 http://127.0.0.1:7777
 ```
 
-The Web UI has five main pages:
+The Web UI has six main pages:
 
 - `投委会`: AI-native operating cockpit, run controls, memory ledger, CIO brief, and Red Team audit.
-- `研究中枢`: Perplexity prompt queue, manual answer paste-back, knowledge-entry receipt, and rerun workflow.
-- `运行档案`: recent run history, statuses, and generated artifacts.
+- `研究中枢`: Perplexity prompt queue, manual answer paste-back, Markdown drag-and-drop fill-in, knowledge-entry receipt, and rerun workflow.
+- `运行档案`: recent run history, live run status, generated artifacts, and run-progress detail.
 - `股票池`: editable local stock pool.
+- `使用指南`: user-facing operating guide for the daily workflow and report-reading discipline.
 - `环境`: local LLM / OpenAI / Codex CLI provider configuration.
 
 ## Quick Start
@@ -69,13 +71,13 @@ uv run python webui.py
 Run a full morning pipeline from the CLI:
 
 ```bash
-LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --date $(date +%F)
+uv run orchestrator run --type full --brief-type morning --date $(date +%F)
 ```
 
 Run a full evening pipeline:
 
 ```bash
-LLM_PROVIDER=local uv run orchestrator run --type full --brief-type evening --date $(date +%F)
+uv run orchestrator run --type full --brief-type evening --date $(date +%F)
 ```
 
 Check recent runs:
@@ -91,8 +93,8 @@ uv run research-agent run --type scan --data-dir data
 uv run trading-f_partner run --data-dir data
 uv run trading-w_partner run --data-dir data
 uv run trading-g_partner run --data-dir data
-uv run chairman generate-brief --data-dir data --brief-type morning
-uv run red-team audit --data-dir data --brief-type morning
+uv run chairman generate-brief --data-dir data --type morning
+uv run red-team audit --data-dir data --type morning
 ```
 
 The old partner and research-system names are intentionally not used in command names, module paths, or public UI labels.
@@ -131,6 +133,18 @@ Perplexity reports are not treated as one-off inputs. On save, the system extrac
 
 Future runs retrieve recent same-ticker memory and similar historical cases before generating new prompts or committee context.
 
+## Reading the Brief
+
+The brief no longer presents a position-sizing table. The key section is `操作建议汇总`, which contains:
+
+- suggested action
+- reason
+- waiting condition
+- risk trigger
+- whether Nepha needs to make a manual decision
+
+This keeps the system focused on research quality and decision discipline. Position sizing, execution, and real-money actions stay outside the system.
+
 ## Safety Boundaries
 
 This system is a research and decision-support workflow. It does not:
@@ -161,7 +175,7 @@ uv run ruff check .
 Current expected baseline:
 
 ```text
-137 passed
+148 passed
 All checks passed
 ```
 
