@@ -1,8 +1,24 @@
 # Worldpay77 / Nepha AI IC
 
+Worldpay77 是一个本地运行的 AI Native 投资研究与投委会系统。它不是普通股票筛选器，也不是自动交易机器人，而是一套面向 Nepha 的私有投资公司工作台：K deep 负责提出非共识研究问题，Perplexity Deep Research 负责深度研究，F / W / G 三位 partner 独立分析，Chairman 给出 CIO 式操作导航，Red Team 负责反对和审计，所有研究、裁决和复盘都会沉淀进长期记忆。
+
+系统当前重点是日频研究、手动高质量回填、知识复用、历史学习和可审计决策链。它不会自动下单，不做仓位管理，不替代 Nepha 的最终判断。
+
 Worldpay77 is a local AI-native investment research and decision system. It is designed as a private investment committee, not as a generic stock screener, portfolio manager, or automated trading bot.
 
 The system combines a research director, manual Perplexity Deep Research, a persistent knowledge store, three independent partner agents, a Chairman CIO, and a Red Team review loop. It runs locally and writes auditable Markdown / JSON artifacts under `data/`.
+
+## 中文项目描述
+
+Worldpay77 把每天的股票池变成一条可复盘的 AI Native 投资公司流程：
+
+- 先由 `K deep` 把公开价量异动转成非共识研究任务，而不是直接解释涨跌。
+- 再由 Nepha 手动使用 Perplexity Deep Research 做最高质量研究，并把 Markdown 报告拖回系统。
+- 系统自动抽取公司结论、行业结论、反证、未验证事项和开放问题，写入知识库。
+- 三位 partner 基于不同方法论独立给出投资分析。
+- Chairman 读取历史知识、学习层和 partner 表现，输出可操作的 CIO 裁决链。
+- Red Team 检查证据链、历史反例和共识风险，防止 LLM 只给出市场平均答案。
+- Learning Layer 会生成 decision cases、outcome snapshots、股票时间线和月度复盘，让系统每天变得更有记忆。
 
 ## What It Does
 
