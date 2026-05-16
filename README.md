@@ -1,68 +1,113 @@
 # WorldPay IC / ResearchOS
 
-ResearchOS 是一套面向股票研究与投委会协作的 AI 原生工作流。它把“发现异动、补充深度研究、多方法论交叉判断、风险审计、归档复盘”做成一条可重复执行的产品链路，而不是把代码、模型和本地运行细节暴露给最终用户。
+WorldPay IC is a ResearchOS workspace for equity research teams that need a repeatable Alpha Committee workflow. It turns market anomalies into research tasks, turns deep research into reusable knowledge, and turns committee reports into auditable review records.
 
-系统不会自动下单，不输出仓位比例，也不把结果简化成“买/卖”。最终输出聚焦在：观察理由、等待条件、风险触发器、还缺什么证据，以及是否需要继续追踪。
+The system does not place trades, manage portfolios, or reduce decisions to simple buy/sell calls. Its output focuses on observation, waiting conditions, missing evidence, risk triggers, and reviewable decision logic.
 
-## 产品定位
+## What It Solves
 
-- **WorldPay IC**：面向投资研究团队的 Alpha Committee 工作台。
-- **ResearchOS**：沉淀研究任务、深度研究、投委会裁决和复盘记忆的操作系统。
-- **CIO Agent**：汇总多位策略 Agent 的观点，输出投委会报告。
-- **Risk Auditor**：专门寻找反证、证据缺口、共识叙事风险和执行风险。
-- **Deep Research Inbox**：承接高质量深度研究材料，把一次性研究沉淀为可复用知识。
+Most AI research tools stop at a long narrative report. ResearchOS is designed around the actual operating loop after the first answer:
 
-## 标准任务流
+- Detect unusual stock signals and convert them into focused research questions.
+- Route those questions through a Deep Research Inbox before final reporting.
+- Compare Value, Momentum, and Quality perspectives instead of relying on one model narrative.
+- Produce a polished IC Brief and a separate Risk Audit.
+- Preserve decision cases, evidence gaps, and follow-up triggers for later review.
 
-1. 选择股票池
-2. 运行今日扫描
-3. 查看异常信号
-4. 填入深度研究
-5. 生成投委会报告
-6. 查看 Risk Auditor 风险
-7. 归档复盘
+## Workflow
 
-首页按三步闭环组织：先生成研究任务，再回填 Deep Research，最后重跑生成完整 IC Brief 与 Risk Audit。报告中心、复盘库和完整 Inbox 保留在对应页面，不在第一屏堆叠报告全文。
+The main page is organized as a three-step workflow:
 
-## 三位策略 Agent
+1. Generate research tasks from the selected stock pool.
+2. Fill the Deep Research Inbox with external research findings.
+3. Rerun the committee chain to generate the final IC Brief and Risk Audit.
 
-| Agent | 投资风格 | 主要关注 |
-| --- | --- | --- |
-| Value Partner | 估值、现金流、赔率和安全边际 | 价格是否低于长期价值，坏消息是否已充分计入 |
-| Momentum Partner | 趋势、资金、业绩预期和相对强弱 | 异动是否有持续性，市场是否正在重新定价 |
-| Quality Partner | 护城河、执行质量、财务韧性和治理 | 好公司是否仍然好，增长质量是否可验证 |
+The broader operating cycle is:
 
-三位 Agent 不负责给出最终买卖指令。它们负责把同一只股票放进三种不同框架里，暴露分歧、证据缺口和等待条件。
+```mermaid
+flowchart LR
+    Pool["Stock Pool"] --> Scan["Signal Scan"]
+    Scan --> Inbox["Deep Research Inbox"]
+    Inbox --> Agents["Value / Momentum / Quality Partners"]
+    Agents --> CIO["CIO Agent"]
+    CIO --> Risk["Risk Auditor"]
+    Risk --> Reports["IC Brief + Risk Audit"]
+    Reports --> Review["Review Library"]
+```
 
-## 报告输出
+## Core Components
 
-ResearchOS 当前会产出两类核心报告：
+| Component | Role |
+| --- | --- |
+| Stock Pool | Defines the research universe and watchlist boundaries. |
+| Signal Scan | Converts market movement into research tasks instead of instant conclusions. |
+| Deep Research Inbox | Captures external research and stores it as reusable knowledge. |
+| Value Partner | Focuses on valuation, cash flow, odds, and margin of safety. |
+| Momentum Partner | Focuses on trend, positioning, expectation revisions, and relative strength. |
+| Quality Partner | Focuses on moat, execution quality, resilience, and governance. |
+| CIO Agent | Synthesizes the committee view into an IC Brief. |
+| Risk Auditor | Challenges consensus narratives, evidence gaps, and execution risk. |
+| Review Library | Tracks decisions, timelines, outcomes, and monthly learning reviews. |
 
-- **IC Brief**：面向投委会的简报，包含异动解释、三位 Agent 分歧、CIO Agent 裁决、等待条件和风险触发器。
-- **Risk Audit**：面向风险复核的审计报告，聚焦证据缺口、共识陷阱、反向情景和需要继续验证的问题。
+## Reports
 
-所有报告会提供精排 HTML 阅读版，优先展示重点结论，附录保留审计材料。用户看到的是报告中心、知识库和复盘库，而不是本地目录、运行框架或开发者路径。
+ResearchOS generates two reader-facing report types:
 
-## 使用页面
+- **IC Brief**: a committee-ready report covering the anomaly, consensus explanation, non-consensus questions, agent disagreement, waiting conditions, and risk triggers.
+- **Risk Audit**: an adversarial review focused on missing evidence, fragile assumptions, reverse scenarios, and follow-up checks.
 
-- **任务流**：从股票池到今日简报的一键任务入口。
-- **Deep Research Inbox**：处理深度研究队列，粘贴或拖入研究材料，沉淀知识卡片。
-- **报告中心**：查看历史运行、打开 IC Brief 与 Risk Audit。
-- **股票池**：维护系统扫描边界。
-- **复盘库**：查看历史决策、时间线和月度复盘。
-- **样例指南**：展示 NVDA、BABA、AMD 三份样例报告和三位策略 Agent 的工作方式。
+Reports are rendered as polished HTML reading views. The layout prioritizes summary density first, then full evidence and appendices for auditability.
 
-## 开发者运行
+The guide page includes three sample report formats:
 
-本项目保留本地开发与测试能力。面向用户演示时，建议从 Web UI 的产品化页面进入，不展示开发命令、运行端口和本地文件结构。
+- NVDA anomaly research report
+- BABA investment committee decision report
+- AMD Risk Auditor report
+
+## Product Surface
+
+The web workspace is organized around user-facing product areas:
+
+- **Task Flow**: the main research workflow from signal scan to final report.
+- **Deep Research Inbox**: prompt queue, answer fill-in, and knowledge capture.
+- **Report Center**: recent runs, report links, and run progress.
+- **Stock Pool**: editable research universe.
+- **Review Library**: decision cases, stock timelines, and learning reviews.
+- **Sample Guide**: report examples and partner-agent explanations.
+- **LLM API Settings**: provider and model configuration.
+
+## Developer Setup
+
+Install dependencies:
 
 ```bash
 uv sync --extra dev --extra webui
+```
+
+Run quality checks:
+
+```bash
 uv run ruff check
 uv run pytest -q
+```
+
+Start the web workspace:
+
+```bash
 uv run python webui.py
 ```
 
-## 边界声明
+The server prints the local URL when it starts.
 
-ResearchOS 是投研工作流与报告生成系统，不是投资顾问、交易机器人或自动下单系统。报告内容用于研究、复核和决策准备，不构成任何证券买卖建议。
+## Design Principles
+
+- Research before recommendations.
+- Disagreement before synthesis.
+- Risk audit before final confidence.
+- HTML reports before raw logs.
+- Reviewable memory before one-off answers.
+- Human decision ownership before automation.
+
+## Boundary
+
+ResearchOS is a research and committee-preparation system. It is not an investment adviser, trading robot, broker integration, or automated order system. Reports are for research, review, and decision preparation only, and do not constitute securities advice.
