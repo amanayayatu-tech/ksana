@@ -8,6 +8,7 @@ from chairman.models import ChairmanBrief
 from chairman.output.json_metadata_renderer import render_json_metadata
 from chairman.output.markdown_renderer import render_markdown
 from orchestrator.core.decision_verification import append_verification_cases_from_brief
+from orchestrator.core.learning import append_learning_from_brief
 from orchestrator.core.partner_performance import append_partner_snapshots_from_brief, write_partner_review_report
 
 
@@ -24,5 +25,6 @@ def archive_brief(brief: ChairmanBrief, data_dir: str | Path) -> tuple[Path, Pat
     json_path.write_text(render_json_metadata(brief), encoding="utf-8")
     append_verification_cases_from_brief(brief, data_dir)
     append_partner_snapshots_from_brief(brief, data_dir)
+    append_learning_from_brief(brief, data_dir)
     write_partner_review_report(data_dir, as_of_date=compact_date)
     return markdown_path, json_path

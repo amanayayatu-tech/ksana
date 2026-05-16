@@ -9,7 +9,7 @@ Worldpay77 是 Nepha 的 AI Native 投资公司。
 
 它不是让 AI 写几份股票分析报告，也不是把多个 Agent 串成一条命令行流水线。它的目标是把一家投资公司的核心组织能力本地化、结构化、可追踪化：
 
-- K deep / K deep负责提出真正值得研究的问题。
+- K deep 负责提出真正值得研究的问题。
 - Perplexity Deep Research 是公司的首席研究员，负责把关键问题研究透。
 - 三位投资大佬 Agent 负责从不同投资哲学出发独立判断。
 - Chairman 是首席投资官，负责在分歧中给出可执行裁决。
@@ -18,7 +18,7 @@ Worldpay77 是 Nepha 的 AI Native 投资公司。
 
 一句话：
 
-**K deep 的选题能力 + Perplexity 的深度研究 + 三位投资大佬的方法论 + Chairman 的裁决能力 + Red Team 的反对能力 + 每天复用的知识库 = Worldpay77。**
+**K deep 的选题能力 + Perplexity 的深度研究 + 三位投资合伙人的方法论 + Chairman 的裁决能力 + Red Team 的反对能力 + 每天复用的知识库 = Worldpay77。**
 
 ## 2. 当前代码的真实状态
 
@@ -38,11 +38,11 @@ Worldpay77 是 Nepha 的 AI Native 投资公司。
 当前最核心的差距：
 
 - Research Agent 已把 `methodologies/research_system_v0.3.md` 的 Gate 1-7 接入 Perplexity prompt 和 `signal_fingerprint`，并会在生成新 prompt 前读取历史知识缺口，避免重复研究已确认事实。
-- Perplexity 回填只是当天 Agent 的上下文，不会自动沉淀成长期可检索的公司知识。
+- Perplexity 回填已能沉淀成长期可检索的公司知识，并进入股票时间线；下一步重点是继续积累真实样本。
 - 三位投资大佬 Agent 仍保持静态方法论，但 Chairman 已能读取 Partner Performance Log；第一阶段不把表现反馈直接喂回三位 Agent，避免污染方法论 DNA。
 - Chairman 已具备 `final_verdict`、相似案例、历史冲突、Agent 表现权重和 Red Team 后二次裁决规则；后续主要增强真实已验证样本。
-- Red Team 已从规则审计升级到可读取历史反例、相似案例和知识库冲突；后续主要增强 Red Team 反对意见的验证闭环。
-- 系统已形成股票记忆、相似案例、Agent 表现、Decision Verification 和 Partner Review 的第一版长期记忆层；后续需要更多真实样本喂养。
+- Red Team 已从规则审计升级到可读取历史反例、相似案例、知识库冲突和共识风险；后续主要增强 Red Team 反对意见的验证闭环。
+- 系统已形成股票记忆、相似案例、Decision Case、Outcome Snapshot、股票时间线、Agent 表现、Decision Verification 和 Partner Review 的第一版长期记忆层；后续需要更多真实样本喂养。
 
 ## 3. 组织架构
 
@@ -60,7 +60,7 @@ Nepha 的职责：
 
 系统里的 AI 不替 Nepha 下单，不接券商，不做自动交易。
 
-### 3.2 研究部: K deep / K deep
+### 3.2 研究部: K deep
 
 研究部的核心任务不是"发现涨跌幅"，而是"提出值得 Perplexity 研究的好问题"。
 
@@ -69,7 +69,7 @@ K deep 的当前权威源文件是 `methodologies/research_system_v0.3.md`。它
 目标态 Research Agent 应该分三层工作：
 
 1. 公开信号层：保留当前价量、成交量、跳空、连续涨跌等扫描能力，用它识别市场正在说话的时刻。
-2. K deep 框架层：把信号放进赛道、商业模式、创始人、竞争格局、非连续变化、渗透率、成本曲线、供需结构、监管变化、资本市场预期差中重新提问。
+2. K deep 框架层：把信号放进赛道、商业模式、创始人、竞争格局、非连续变化、渗透率、成本曲线、供需结构、监管变化、资本市场预期差中重新提问，并检查是否存在非共识 edge。
 3. Perplexity prompt 层：把最重要的问题转成结构化 Deep Research prompt，按优先级交给 Nepha 手动研究。
 
 Research Agent 不输出交易建议。它只输出：
@@ -120,7 +120,7 @@ Perplexity 在系统里不是普通搜索工具，而是首席研究员。
 目标态输出不只是 `watch / avoid / abstain`，而是：
 
 - 当前试运行期：仍可限制为 `watch / avoid / abstain`，用于安全校准。
-- 正式决策期：允许输出 `long` 倾向和仓位建议，但必须经过 Chairman 和 Red Team，再由 Nepha 决定。
+- 正式决策期：允许输出更明确的操作导航，但不替 Nepha 做仓位管理；是否执行仍必须经过 Chairman、Red Team 和 Nepha。
 
 ### 3.5 首席投资官: Chairman
 
@@ -258,7 +258,7 @@ Chairman 做历史类比时，必须知道两次判断发生在什么市场叙�
       ↓
 Research Agent 扫描股池
       ↓
-K deep / K deep 框架生成研究问题
+K deep 框架生成研究问题
       ↓
 系统检索知识库
       ↓
@@ -387,6 +387,7 @@ Perplexity 回填后，第二天同一股票或同行业触发时，系统能自
 - 把 `research_system_v0.3.md` 中的 Gate 1-7 真正接入 prompt 生成；第一版已通过 `business_agents/research_agent/methodology_profile.py` 固化为可执行 profile。
 - 生成 prompt 前检索 `research_planning_context`，自动区分已回答事实、未关闭问题、历史冲突、相似案例和过期结论。
 - 每条 Research signal 输出 `research_task_plan`，把价量触发升级成 K deep 研究任务编排。
+- 每条 Research signal 输出 `non_consensus_screener`，默认假设市场已知 headline，必须追问是否存在未被定价的变量。
 - Perplexity prompt 按问题类型分类：公司、行业、竞争、管理层、估值、监管、资本市场。
 - Prompt 必须带上历史知识缺口，不重复问已经回答过的问题。
 - 每条 prompt 有优先级和预期输出结构。
@@ -406,6 +407,7 @@ Perplexity 回填后，第二天同一股票或同行业触发时，系统能自
 - Chairman 输出 `final_verdict`、`decision_chain`、`history_context`。
 - Chairman 引入历史知识和 Agent 表现上下文；复杂"相似案例检索"拆成 P2.5，不在 P2 里一次性完成。
 - Red Team 检索知识库中的反例和历史失败模式。
+- Red Team 增加 `consensus_risk`，识别三位 Partner 是否只是复述 Perplexity/市场主流解释。
 - Red Team 输出 `strongest_objection` 和 `what_would_invalidate_this_decision`。
 - Red Team 输出 `chairman_second_review`，给出 block/challenge/monitor 后 Chairman 应该如何降级或重审。
 
@@ -442,15 +444,18 @@ Perplexity 回填后，第二天同一股票或同行业触发时，系统能自
 - 冻结 `schemas/decision_verification.schema.yaml`，验证状态只能是 `validated / partially_validated / invalidated / inconclusive`，非 pending 状态必须有 `evidence_url`。
 - 为 `long / watch / avoid / abstain` 分别定义目标函数：`long` 验证 thesis 与价格/基本面共同成立；`watch` 验证等待是否保留选择权；`avoid` 验证被避开的风险是否真实；`abstain` 验证证据不足是否成立。
 - 生成 Partner Performance Log。
+- 生成 Learning Layer：`decision_cases.json`、`outcome_snapshots.json`、`stock_timelines/*.json/md`、`monthly_reviews/LEARNING-REVIEW-*.json/md`。
 - Partner Performance Log 第一阶段只给 Chairman 和 Nepha 看，不反向注入三位 Agent prompt，避免历史准确率污染各自方法论。
 - 每月输出投资委员会复盘报告。
 - 每次 archive brief 后自动生成 `partner_performance/reviews/PARTNER-REVIEW-*.json/md`，包含 Agent 表现权重、诊断和 Red Team 反对意见有效性样本。
+- 旧 brief 可以通过 `uv run orchestrator learning rebuild-cases --data-dir data` 回放成学习样本。
 
 验收标准：
 
 - 系统能回答"F partner Agent 过去 90 天在哪类股票上最准确"。
 - 系统能回答"Chairman 最近是否过度保守"。
 - 系统能回答"哪些 Red Team 反对意见后来被验证为真实风险"。
+- Web UI 的"学习复盘"页能看到 decision cases、outcome snapshots、月度复盘和每只股票时间线。
 
 ## 9. 工程原则
 
@@ -476,7 +481,7 @@ Perplexity 回填后，第二天同一股票或同行业触发时，系统能自
 
 ## 11. 目标态一句话
 
-Worldpay77 要成为一个由 Nepha 拥有的 AI Native 投资公司：它用 K deep / K deep 体系发现真正值得研究的问题，用 Perplexity 做世界级研究，用三位投资大佬进行独立判断，用 Chairman 做有逻辑链的裁决，用 Red Team 做不妥协的反对，并把每天的研究、判断、反对和验证结果沉淀成长期记忆。
+Worldpay77 要成为一个由 Nepha 拥有的 AI Native 投资公司：它用 K deep 体系发现真正值得研究的问题，用 Perplexity 做世界级研究，用三位投资合伙人进行独立判断，用 Chairman 做有逻辑链的裁决，用 Red Team 做不妥协的反对，并把每天的研究、判断、反对和验证结果沉淀成长期记忆。
 
 系统真正完成的标志不是"能跑出一份报告"，而是：
 

@@ -13,6 +13,7 @@ from business_agents._common.knowledge_store import get_recent_knowledge_summary
 from chairman.llm.narrative_generator import LLMClient
 from chairman.models import Recommendation, ResearchSignal
 from red_team import RED_TEAM_VERSION
+from red_team.core.consensus_risk import assess_consensus_risk
 from red_team.core.risk_completeness_evaluator import evaluate_risk_completeness
 from red_team.core.rule_auditor import audit_rules, findings_by_recommendation
 from red_team.llm.methodology_challenger import generate_challenges
@@ -167,12 +168,14 @@ def build_substantive_objections(
         )
         rule_ids = finding_ids_by_ticker.get(ticker, [])
         final_verdict = str(verdict.get("final_verdict") or "unknown")
+        consensus_risk = assess_consensus_risk(ticker, recs, verdict, knowledge)
         red_team_verdict = choose_red_team_verdict(
             final_verdict=final_verdict,
             has_perplexity=has_perplexity,
             open_questions=open_questions,
             historical_conflicts=historical_conflicts,
             rule_ids=rule_ids,
+            consensus_risk=consensus_risk,
         )
         objections.append(
             SubstantiveObjection(
@@ -186,11 +189,13 @@ def build_substantive_objections(
                     historical_conflicts=historical_conflicts,
                     similar_cases=similar_cases,
                     rule_ids=rule_ids,
+                    consensus_risk=consensus_risk,
                 ),
                 evidence_chain_risk=build_evidence_chain_risk(
                     has_perplexity=has_perplexity,
                     entries_count=len(entries),
                     rule_ids=rule_ids,
+                    consensus_risk=consensus_risk,
                 ),
                 missed_counter_evidence=counter_evidence,
                 historical_failure_pattern=build_historical_failure_pattern(
@@ -200,12 +205,14 @@ def build_substantive_objections(
                     similar_cases,
                 ),
                 similar_case_risks=build_similar_case_risks(similar_cases),
+                consensus_risk=consensus_risk,
                 what_must_be_true_for_chairman_to_be_right=build_must_be_true(verdict, recs),
                 what_would_invalidate_this_decision=build_invalidation_points(
                     final_verdict=final_verdict,
                     open_questions=open_questions,
                     historical_conflicts=historical_conflicts,
                     rule_ids=rule_ids,
+                    consensus_risk=consensus_risk,
                 ),
                 chairman_second_review=build_second_review_recommendation(
                     final_verdict=final_verdict,
@@ -250,11 +257,17 @@ def choose_red_team_verdict(
     open_questions: list[str],
     historical_conflicts: list[str],
     rule_ids: list[str],
+    consensus_risk: dict[str, Any] | None = None,
 ) -> str:
+    consensus_risk = consensus_risk or {}
     if final_verdict == "act" and rule_ids:
         return "block"
+    if final_verdict == "act" and consensus_risk.get("risk_level") == "high":
+        return "challenge"
     if final_verdict == "act" and (open_questions or historical_conflicts or not has_perplexity):
         return "challenge"
+    if consensus_risk.get("risk_level") == "high":
+        return "monitor"
     if rule_ids or open_questions or historical_conflicts or not has_perplexity:
         return "monitor"
     return "no_major_objection"
@@ -269,9 +282,12 @@ def build_strongest_objection(
     historical_conflicts: list[str],
     similar_cases: list[dict[str, Any]],
     rule_ids: list[str],
+    consensus_risk: dict[str, Any] | None = None,
 ) -> str:
     if rule_ids:
         return f"{ticker} 的裁决仍有规则/合规审计问题：{', '.join(rule_ids)}。"
+    if (consensus_risk or {}).get("risk_level") == "high":
+        return f"{ticker} 的三位 partner 观点可能过度接近市场共识：{consensus_risk.get('reason')}"
     if historical_conflicts:
         return f"知识库存在与本次裁决冲突的历史反例：{historical_conflicts[0]}"
     if open_questions:
@@ -283,7 +299,13 @@ def build_strongest_objection(
     return "未发现单一阻断点，但仍需确认 Chairman 没有把短期事件过度外推为长期 thesis。"
 
 
-def build_evidence_chain_risk(*, has_perplexity: bool, entries_count: int, rule_ids: list[str]) -> str:
+def build_evidence_chain_risk(
+    *,
+    has_perplexity: bool,
+    entries_count: int,
+    rule_ids: list[str],
+    consensus_risk: dict[str, Any] | None = None,
+) -> str:
     risks = []
     if not has_perplexity:
         risks.append("缺少 Perplexity 原始研究消费记录")
@@ -291,6 +313,8 @@ def build_evidence_chain_risk(*, has_perplexity: bool, entries_count: int, rule_
         risks.append("知识库没有同标的历史研究可比")
     if rule_ids:
         risks.append(f"存在规则审计发现 {', '.join(rule_ids)}")
+    if (consensus_risk or {}).get("risk_level") in {"medium", "high"}:
+        risks.append(f"共识风险 {consensus_risk.get('risk_level')}：{consensus_risk.get('reason')}")
     return "；".join(risks) if risks else "证据链暂未发现结构性缺口。"
 
 
@@ -330,6 +354,7 @@ def build_invalidation_points(
     open_questions: list[str],
     historical_conflicts: list[str],
     rule_ids: list[str],
+    consensus_risk: dict[str, Any] | None = None,
 ) -> list[str]:
     points = [
         "后续公开信息显示本次异动只是指数、期权或短期流动性驱动，而非公司或行业基本面变化。",
@@ -337,6 +362,8 @@ def build_invalidation_points(
     ]
     if final_verdict == "act":
         points.append("Red Team 发现的未关闭问题在后续 7-30 天内被验证为真实风险。")
+    if (consensus_risk or {}).get("risk_level") in {"medium", "high"}:
+        points.extend((consensus_risk or {}).get("required_questions") or [])
     points.extend(open_questions[:3])
     points.extend(historical_conflicts[:3])
     points.extend(f"规则审计 {rule_id} 未关闭。" for rule_id in rule_ids[:3])

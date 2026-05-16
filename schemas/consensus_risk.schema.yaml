@@ -1,0 +1,33 @@
+schema_id: worldpay77.red_team.consensus_risk.v1
+description: >
+  Red Team detector for LLM consensus collapse. It checks whether partner arguments
+  overfit Perplexity/mainstream narratives without identifying a non-consensus edge.
+fields:
+  ticker:
+    type: string
+    required: true
+  risk_level:
+    type: enum
+    values: [low, medium, high]
+    required: true
+  score:
+    type: integer
+    required: true
+  average_overlap_with_perplexity_memory:
+    type: number
+    required: true
+  same_direction_cluster:
+    type: boolean
+    required: true
+  shared_partner_terms:
+    type: array[string]
+    required: true
+  non_consensus_marker_hits:
+    type: array[string]
+    required: true
+  reason:
+    type: string
+    required: true
+  required_questions:
+    type: array[string]
+    required: true

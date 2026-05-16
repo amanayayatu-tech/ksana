@@ -21,6 +21,13 @@ from fastapi.templating import Jinja2Templates
 from business_agents._common.knowledge_store import delete_entry_for_prompt, ingest_filled_result
 from business_agents._common.llm_client import build_llm_client_from_env
 from business_agents._common.perplexity_results import sync_signal_file_perplexity_status
+from orchestrator.core.learning import (
+    load_learning_overview,
+    load_stock_timeline,
+    rebuild_stock_timelines,
+    refresh_outcome_snapshots,
+    write_monthly_review,
+)
 from orchestrator.core.models import StepResult
 from orchestrator.persistence.run_log import RunLog
 
@@ -176,6 +183,24 @@ def stock_pool_page(request: Request) -> Any:
     )
 
 
+@app.get("/learning")
+def learning_page(request: Request) -> Any:
+    return templates.TemplateResponse(
+        request,
+        "learning.html",
+        {"active_page": "learning"},
+    )
+
+
+@app.get("/timeline/{ticker}")
+def stock_timeline_page(request: Request, ticker: str) -> Any:
+    return templates.TemplateResponse(
+        request,
+        "timeline.html",
+        {"active_page": "learning", "ticker": ticker.upper()},
+    )
+
+
 @app.get("/guide")
 def guide_page(request: Request) -> Any:
     return templates.TemplateResponse(
@@ -322,6 +347,32 @@ def api_stock_pool() -> dict[str, Any]:
     data = yaml.safe_load(STOCK_POOL_PATH.read_text(encoding="utf-8")) or {}
     stock_pool = normalize_stock_pool(data)
     return {"ok": True, "path": relative_path(STOCK_POOL_PATH), "stock_pool": stock_pool}
+
+
+@app.get("/api/learning")
+def api_learning() -> dict[str, Any]:
+    return {"ok": True, "learning": get_learning_overview()}
+
+
+@app.get("/api/learning/timeline/{ticker}")
+def api_learning_timeline(ticker: str) -> dict[str, Any]:
+    return {"ok": True, "timeline": load_stock_timeline(DATA_DIR, ticker.upper())}
+
+
+@app.post("/api/learning/refresh")
+def api_learning_refresh(
+    mode: str = Body("timelines"),
+    as_of_date: str | None = Body(None),
+    month: str | None = Body(None),
+) -> dict[str, Any]:
+    if mode == "outcomes":
+        path = refresh_outcome_snapshots(DATA_DIR, as_of_date=normalize_date(as_of_date) if as_of_date else None)
+        return {"ok": True, "paths": [str(path)]}
+    if mode == "monthly":
+        paths = write_monthly_review(DATA_DIR, month=month)
+        return {"ok": True, "paths": [str(path) for path in paths] if paths else []}
+    paths = rebuild_stock_timelines(DATA_DIR)
+    return {"ok": True, "paths": [str(path) for path in paths]}
 
 
 @app.post("/api/stock-pool")
@@ -2600,6 +2651,22 @@ def get_verification_overview() -> dict[str, Any]:
             1 for item in partner_snapshots if item.get("verification_status") != "pending"
         ),
     }
+
+
+def get_learning_overview() -> dict[str, Any]:
+    overview = load_learning_overview(DATA_DIR)
+    overview["top_tickers"] = [
+        {"ticker": ticker, "count": count, "timeline_url": f"/timeline/{ticker}"}
+        for ticker, count in overview.get("top_tickers", [])
+    ]
+    overview["latest_cases"] = [
+        {
+            **case,
+            "timeline_url": f"/timeline/{case.get('ticker')}",
+        }
+        for case in overview.get("latest_cases", [])
+    ]
+    return overview
 
 
 def read_json_list(path: Path) -> list[dict[str, Any]]:

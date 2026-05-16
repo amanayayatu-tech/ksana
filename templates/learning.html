@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}学习复盘 · Nepha AI IC{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="panel">
+    <div class="panel-head">
+      <h1 class="panel-title">学习复盘</h1>
+      <div class="row">
+        <span id="learningStatus" class="pill">待刷新</span>
+        <button id="refreshTimelines">重建时间线</button>
+        <button id="refreshLearning">刷新</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="metric-strip">
+        <div class="metric-cell">
+          <div class="metric-label">Decision Cases</div>
+          <div id="caseMetric" class="metric-value">-</div>
+          <div class="metric-caption">每次裁决样本</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">Outcome Snapshots</div>
+          <div id="outcomeMetric" class="metric-value">-</div>
+          <div class="metric-caption">价格结果观察</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">股票时间线</div>
+          <div id="timelineMetric" class="metric-value">-</div>
+          <div class="metric-caption">纵向复用</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">月度复盘</div>
+          <div id="monthlyMetric" class="metric-value">-</div>
+          <div class="metric-caption">系统学习</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid two">
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">重点标的</h2>
+        <span class="pill ok">时间线入口</span>
+      </div>
+      <div class="panel-body">
+        <div id="tickerList" class="memory-ledger"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">学习状态</h2>
+        <span id="reviewPath" class="pill">月报</span>
+      </div>
+      <div class="panel-body">
+        <div id="statusLedger" class="memory-ledger"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">最近 Decision Cases</h2>
+      <span class="pill">只展示已归档样本</span>
+    </div>
+    <div class="panel-body">
+      <div class="data-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>股票</th>
+              <th>Chairman</th>
+              <th>方向</th>
+              <th>共识</th>
+              <th>时间线</th>
+            </tr>
+          </thead>
+          <tbody id="caseBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const status = document.getElementById("learningStatus");
+
+  function setStatus(text, kind = "") {
+    status.className = `pill ${kind}`.trim();
+    status.textContent = text;
+  }
+
+  async function loadLearning() {
+    setStatus("读取中", "warn");
+    const res = await fetch("/api/learning");
+    const data = await res.json();
+    if (!data.ok) {
+      setStatus("读取失败", "error");
+      return;
+    }
+    renderLearning(data.learning || {});
+    setStatus("已刷新", "ok");
+  }
+
+  function renderLearning(learning) {
+    document.getElementById("caseMetric").textContent = learning.decision_cases ?? 0;
+    document.getElementById("outcomeMetric").textContent = learning.outcome_snapshots ?? 0;
+    document.getElementById("timelineMetric").textContent = learning.stock_timelines ?? 0;
+    document.getElementById("monthlyMetric").textContent = learning.monthly_reviews ?? 0;
+    document.getElementById("reviewPath").textContent = learning.latest_monthly_review ? basename(learning.latest_monthly_review) : "暂无月报";
+
+    const tickers = learning.top_tickers || [];
+    document.getElementById("tickerList").innerHTML = tickers.length ? tickers.map((item) => `
+      <a class="memory-row" href="${escapeHtml(item.timeline_url)}">
+        <div><span class="pill ok">${escapeHtml(item.ticker)}</span></div>
+        <div>
+          <div class="memory-title">${escapeHtml(item.ticker)} 时间线</div>
+          <div class="memory-meta">${item.count || 0} 个决策样本</div>
+        </div>
+        <div class="memory-meta">查看</div>
+      </a>
+    `).join("") : '<p class="muted">还没有学习样本。</p>';
+
+    const statusRows = [
+      ["case status", learning.status_counts || {}],
+      ["outcome status", learning.outcome_status_counts || {}],
+    ];
+    document.getElementById("statusLedger").innerHTML = statusRows.map(([label, value]) => `
+      <div class="memory-row">
+        <div><span class="pill">${escapeHtml(label)}</span></div>
+        <div>
+          <div class="memory-title">${escapeHtml(JSON.stringify(value))}</div>
+          <div class="memory-meta">用于 Chairman 权重和月度复盘，不反向污染 partner 方法论。</div>
+        </div>
+      </div>
+    `).join("");
+
+    const cases = learning.latest_cases || [];
+    document.getElementById("caseBody").innerHTML = cases.length ? cases.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.as_of_date || "")}</td>
+        <td><code>${escapeHtml(item.ticker || "")}</code></td>
+        <td>${escapeHtml(item.chairman_final_verdict || "")}</td>
+        <td>${escapeHtml(item.decision_direction || "")}</td>
+        <td>${escapeHtml(item.consensus_level || "")}</td>
+        <td><a class="link-button" href="${escapeHtml(item.timeline_url || "#")}">打开</a></td>
+      </tr>
+    `).join("") : '<tr><td colspan="6" class="muted">暂无 decision case</td></tr>';
+  }
+
+  async function rebuildTimelines() {
+    setStatus("重建中", "warn");
+    await fetch("/api/learning/refresh", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode: "timelines"})
+    });
+    await loadLearning();
+  }
+
+  function basename(path) {
+    const parts = String(path).split("/");
+    return parts[parts.length - 1] || path;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  document.getElementById("refreshLearning").addEventListener("click", loadLearning);
+  document.getElementById("refreshTimelines").addEventListener("click", rebuildTimelines);
+  loadLearning();
+</script>
+{% endblock %}

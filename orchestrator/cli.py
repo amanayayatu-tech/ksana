@@ -11,6 +11,12 @@ import click
 import yaml
 
 from orchestrator.core.event_listener import AdHocThrottle
+from orchestrator.core.learning import (
+    rebuild_stock_timelines,
+    rebuild_learning_from_archived_briefs,
+    refresh_outcome_snapshots,
+    write_monthly_review,
+)
 from orchestrator.core.perplexity_wait import wait_for_perplexity_fill
 from orchestrator.core.pipeline import run_full_pipeline, run_step_by_name
 from orchestrator.core.scheduler import load_scheduler_config
@@ -164,6 +170,46 @@ def config_group() -> None:
 @click.option("--config-path", default=None, type=click.Path(path_type=Path))
 def config_show_command(config_path: Path | None) -> None:
     click.echo(yaml.safe_dump(load_scheduler_config(config_path), allow_unicode=True, sort_keys=False))
+
+
+@cli.group("learning")
+def learning_group() -> None:
+    """Decision learning, outcome snapshots, and timeline reports."""
+
+
+@learning_group.command("refresh-outcomes")
+@click.option("--as-of-date", default=None)
+@click.option("--data-dir", default="data", type=click.Path(path_type=Path))
+def learning_refresh_outcomes_command(as_of_date: str | None, data_dir: Path) -> None:
+    path = refresh_outcome_snapshots(data_dir, as_of_date=normalize_date(as_of_date) if as_of_date else None)
+    click.echo(f"outcome_snapshots={path}")
+
+
+@learning_group.command("rebuild-cases")
+@click.option("--data-dir", default="data", type=click.Path(path_type=Path))
+def learning_rebuild_cases_command(data_dir: Path) -> None:
+    path = rebuild_learning_from_archived_briefs(data_dir)
+    click.echo(f"decision_cases={path}")
+
+
+@learning_group.command("build-timelines")
+@click.option("--ticker", default=None)
+@click.option("--data-dir", default="data", type=click.Path(path_type=Path))
+def learning_build_timelines_command(ticker: str | None, data_dir: Path) -> None:
+    paths = rebuild_stock_timelines(data_dir, ticker=ticker)
+    click.echo(json.dumps([str(path) for path in paths], ensure_ascii=False, indent=2))
+
+
+@learning_group.command("monthly-review")
+@click.option("--month", default=None, help="YYYY-MM")
+@click.option("--data-dir", default="data", type=click.Path(path_type=Path))
+def learning_monthly_review_command(month: str | None, data_dir: Path) -> None:
+    paths = write_monthly_review(data_dir, month=month)
+    if not paths:
+        click.echo("no learning cases found")
+        return
+    click.echo(f"monthly_review_md={paths[0]}")
+    click.echo(f"monthly_review_json={paths[1]}")
 
 
 def normalize_date(value: str | None) -> str:

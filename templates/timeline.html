@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker }} 时间线 · Nepha AI IC{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="panel-title">{{ ticker }} 股票时间线</h1>
+    <div class="row">
+      <a class="pill" href="/learning">返回学习复盘</a>
+      <span id="timelineStatus" class="pill">待刷新</span>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="metric-strip">
+      <div class="metric-cell">
+        <div class="metric-label">Knowledge</div>
+        <div id="knowledgeMetric" class="metric-value">-</div>
+        <div class="metric-caption">Perplexity 沉淀</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Decision Cases</div>
+        <div id="caseMetric" class="metric-value">-</div>
+        <div class="metric-caption">Chairman 裁决</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Outcomes</div>
+        <div id="outcomeMetric" class="metric-value">-</div>
+        <div class="metric-caption">价格观察</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Open Questions</div>
+        <div id="questionMetric" class="metric-value">-</div>
+        <div class="metric-caption">下次优先复用</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel mt">
+  <div class="panel-head">
+    <h2 class="panel-title">纵向事件</h2>
+    <span class="pill ok">历史先行，再问新问题</span>
+  </div>
+  <div class="panel-body">
+    <div id="eventList" class="memory-ledger"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ticker = "{{ ticker }}";
+  const status = document.getElementById("timelineStatus");
+
+  function setStatus(text, kind = "") {
+    status.className = `pill ${kind}`.trim();
+    status.textContent = text;
+  }
+
+  async function loadTimeline() {
+    setStatus("读取中", "warn");
+    const res = await fetch(`/api/learning/timeline/${encodeURIComponent(ticker)}`);
+    const data = await res.json();
+    if (!data.ok) {
+      setStatus("读取失败", "error");
+      return;
+    }
+    renderTimeline(data.timeline || {});
+    setStatus("已刷新", "ok");
+  }
+
+  function renderTimeline(timeline) {
+    document.getElementById("knowledgeMetric").textContent = timeline.knowledge_count ?? 0;
+    document.getElementById("caseMetric").textContent = timeline.case_count ?? 0;
+    document.getElementById("outcomeMetric").textContent = timeline.outcome_count ?? 0;
+    document.getElementById("questionMetric").textContent = timeline.open_questions_count ?? 0;
+    const events = timeline.events || [];
+    document.getElementById("eventList").innerHTML = events.length ? events.map((event) => `
+      <div class="memory-row">
+        <div><span class="pill ${kindFor(event.event_type)}">${escapeHtml(event.date || "")}</span></div>
+        <div>
+          <div class="memory-title">${escapeHtml(event.title || event.source_id || "")}</div>
+          <div class="memory-meta">${escapeHtml(event.event_type || "")} · ${escapeHtml(event.source_id || "")}</div>
+          <div class="memory-meta">${escapeHtml(event.summary || "")}</div>
+          ${(event.open_questions || []).length ? `<div class="memory-meta">未关闭：${escapeHtml((event.open_questions || []).slice(0, 3).join(" / "))}</div>` : ""}
+        </div>
+      </div>
+    `).join("") : '<p class="muted">暂无时间线事件。</p>';
+  }
+
+  function kindFor(type) {
+    if (type === "outcome_snapshot") return "warn";
+    if (type === "chairman_decision") return "ok";
+    return "";
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  loadTimeline();
+</script>
+{% endblock %}

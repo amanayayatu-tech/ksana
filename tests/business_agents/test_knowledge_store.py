@@ -172,6 +172,8 @@ def test_research_agent_prompt_uses_history_before_new_questions(tmp_path):
 
     assert "历史知识复用要求" in prompt_data["prompt_text"]
     assert "机构资金流向需要等待 13F" in prompt_data["prompt_text"]
+    assert "非共识 Screener 要求" in prompt_data["prompt_text"]
     assert prompt_data["research_task_plan"]["k_deep_director_mode"] is True
+    assert prompt_data["research_task_plan"]["non_consensus_screener"]["required_evidence"]
     assert prompt_data["research_task_plan"]["memory_reuse_policy"]["must_reopen"]
     assert signal_data["research_signal"]["research_planning_context"]["history_found"] is True

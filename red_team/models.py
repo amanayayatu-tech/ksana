@@ -70,6 +70,7 @@ class SubstantiveObjection(RedTeamModel):
     missed_counter_evidence: list[str] = Field(default_factory=list)
     historical_failure_pattern: str | None = None
     similar_case_risks: list[str] = Field(default_factory=list)
+    consensus_risk: dict[str, Any] = Field(default_factory=dict)
     what_must_be_true_for_chairman_to_be_right: str
     what_would_invalidate_this_decision: list[str] = Field(default_factory=list)
     chairman_second_review: dict[str, Any] = Field(default_factory=dict)

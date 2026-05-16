@@ -8,14 +8,14 @@ The system combines a research director, manual Perplexity Deep Research, a pers
 
 Worldpay77 turns a daily stock pool into a structured investment committee workflow:
 
-1. `K deep` scans the stock pool and turns public price-volume anomalies into research tasks.
+1. `K deep` scans the stock pool, treats public price-volume anomalies only as triggers, and turns them into non-consensus research tasks.
 2. Perplexity Deep Research is run manually by Nepha and pasted or dragged back into the system as Markdown.
 3. Filled Perplexity reports are extracted into reusable knowledge entries.
 4. `F partner`, `W partner`, and `G partner` independently analyze each signal.
 5. `Chairman` produces a CIO-style decision brief with reasoning and history context.
 6. `Red Team` challenges the evidence chain, decision logic, and missed risks.
 7. The final brief shows an operation summary: suggested action, reasoning, waiting conditions, risk triggers, and whether Nepha must manually decide.
-8. Decision verification and partner performance logs create a longer-term review loop.
+8. Decision cases, outcome snapshots, stock timelines, and partner performance logs create a longer-term review loop.
 
 ```mermaid
 flowchart LR
@@ -27,8 +27,9 @@ flowchart LR
     Partners --> Chairman["Chairman CIO"]
     Chairman --> RedTeam["Red Team"]
     RedTeam --> Brief["Brief + Audit"]
-    Brief --> Verification["Decision Verification"]
-    Verification --> Knowledge
+    Brief --> Learning["Decision Cases + Outcomes"]
+    Learning --> Timelines["Stock Timelines"]
+    Timelines --> Knowledge
 ```
 
 ## Current Product Surface
@@ -45,12 +46,13 @@ Open:
 http://127.0.0.1:7777
 ```
 
-The Web UI has six main pages:
+The Web UI has seven main pages:
 
 - `投委会`: AI-native operating cockpit, run controls, memory ledger, CIO brief, and Red Team audit.
 - `研究中枢`: Perplexity prompt queue, manual answer paste-back, Markdown drag-and-drop fill-in, knowledge-entry receipt, and rerun workflow.
 - `运行档案`: recent run history, live run status, generated artifacts, and run-progress detail.
 - `股票池`: editable local stock pool.
+- `学习复盘`: decision cases, outcome snapshots, monthly learning review, and per-stock timelines.
 - `使用指南`: user-facing operating guide for the daily workflow and report-reading discipline.
 - `环境`: local LLM / OpenAI / Codex CLI provider configuration.
 
@@ -99,6 +101,15 @@ uv run red-team audit --data-dir data --type morning
 
 The old partner and research-system names are intentionally not used in command names, module paths, or public UI labels.
 
+Learning and backfill commands:
+
+```bash
+uv run orchestrator learning rebuild-cases --data-dir data
+uv run orchestrator learning refresh-outcomes --data-dir data --as-of-date 2026-05-16
+uv run orchestrator learning build-timelines --data-dir data
+uv run orchestrator learning monthly-review --data-dir data --month 2026-05
+```
+
 ## Data Layout
 
 Important local outputs:
@@ -113,6 +124,7 @@ data/briefs/YYYYMMDD/                  Chairman briefs
 data/red_team_audits/YYYYMMDD/         Red Team audits
 data/decision_verification/            pending verification cases
 data/partner_performance/              partner outcome snapshots
+data/learning/                         decision cases, outcome snapshots, stock timelines, monthly reviews
 ```
 
 The repository ignores runtime data under `data/` by default. Local generated reports are private machine state unless explicitly exported.
@@ -132,6 +144,30 @@ Perplexity reports are not treated as one-off inputs. On save, the system extrac
 - sector and narrative tags
 
 Future runs retrieve recent same-ticker memory and similar historical cases before generating new prompts or committee context.
+
+## Learning Loop
+
+Every archived Chairman brief now creates a time-safe `decision_case` under `data/learning/decision_cases.json`.
+
+The learning layer also maintains:
+
+- `outcome_snapshots.json`: 1/7/30/90-day price observations, never used as automatic truth.
+- `stock_timelines/*.md|json`: per-ticker longitudinal memory combining Perplexity research, Chairman decisions, and outcome snapshots.
+- `monthly_reviews/LEARNING-REVIEW-*.md|json`: monthly system review for Nepha.
+
+Historical replay is guarded by `available_context_cutoff` and `future_data_allowed: false`, so rerunning an old date cannot inject later reports or prices into that old decision.
+
+## Non-Consensus Screening
+
+`K deep` now adds a non-consensus screener to each research signal and Perplexity prompt. The prompt asks Perplexity to distinguish:
+
+- market-consensus explanations already priced in
+- possible mispricing or edge
+- beta versus alpha attribution
+- strongest counter-evidence
+- unresolved historical questions that must be refreshed
+
+`Red Team` then runs a consensus-risk detector. If the three partners simply repeat the same Perplexity/mainstream narrative without a clear edge, the audit can downgrade the decision to `challenge` or `monitor`.
 
 ## Reading the Brief
 
@@ -175,7 +211,7 @@ uv run ruff check .
 Current expected baseline:
 
 ```text
-148 passed
+156 passed
 All checks passed
 ```
 
@@ -187,3 +223,7 @@ All checks passed
 - [schemas/knowledge_entry.schema.yaml](schemas/knowledge_entry.schema.yaml): knowledge-entry contract.
 - [schemas/decision_verification.schema.yaml](schemas/decision_verification.schema.yaml): decision verification contract.
 - [schemas/partner_performance.schema.yaml](schemas/partner_performance.schema.yaml): partner performance contract.
+- [schemas/decision_case.schema.yaml](schemas/decision_case.schema.yaml): learning decision-case contract.
+- [schemas/outcome_snapshot.schema.yaml](schemas/outcome_snapshot.schema.yaml): price outcome snapshot contract.
+- [schemas/stock_timeline.schema.yaml](schemas/stock_timeline.schema.yaml): per-stock timeline contract.
+- [schemas/consensus_risk.schema.yaml](schemas/consensus_risk.schema.yaml): Red Team consensus-risk contract.

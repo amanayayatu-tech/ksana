@@ -160,6 +160,13 @@ class ResearchAgent(BaseBusinessAgent):
                 as_of_date=self.run_date,
                 signal_fingerprint=signal_fingerprint,
             )
+            non_consensus_screener = build_non_consensus_screener(
+                entry.ticker,
+                entry.name,
+                triggers,
+                features,
+                research_planning_context,
+            )
             research_task_plan = build_research_task_plan(
                 entry.ticker,
                 entry.name,
@@ -167,6 +174,7 @@ class ResearchAgent(BaseBusinessAgent):
                 features,
                 signal_fingerprint,
                 research_planning_context,
+                non_consensus_screener,
             )
             k_deep_question_set = build_k_deep_research_question_set(
                 entry.ticker,
@@ -175,6 +183,7 @@ class ResearchAgent(BaseBusinessAgent):
                 features,
                 research_planning_context=research_planning_context,
                 research_task_plan=research_task_plan,
+                non_consensus_screener=non_consensus_screener,
             )
             methodology_profile = k_deep_question_set["methodology_profile"]
             signal = {
@@ -207,13 +216,14 @@ class ResearchAgent(BaseBusinessAgent):
                 "signal_fingerprint": signal_fingerprint,
                 "research_planning_context": research_planning_context,
                 "research_task_plan": research_task_plan,
+                "non_consensus_screener": non_consensus_screener,
                 "event_input": {
                     "event_name": "public_price_volume_anomaly",
                     "event_date": features["latest_date"],
                     "event_level": "company",
                     "event_size": infer_event_size(triggers),
                     "expected_bayesian_impact": "needs_manual_causal_research",
-                    "is_market_aware": True,
+                    "is_market_aware": non_consensus_screener["market_awareness_assumption"],
                 },
                 "discontinuity_assessment": {
                     "type": "price_volume_discontinuity",
@@ -309,6 +319,7 @@ class ResearchAgent(BaseBusinessAgent):
                             k_deep_question_set,
                             research_planning_context,
                             research_task_plan,
+                            non_consensus_screener,
                         ),
                     }
                 )
@@ -598,6 +609,7 @@ def build_perplexity_prompt(
     k_deep_question_set: dict[str, Any] | None = None,
     research_planning_context: dict[str, Any] | None = None,
     research_task_plan: dict[str, Any] | None = None,
+    non_consensus_screener: dict[str, Any] | None = None,
 ) -> str:
     trigger_lines = "\n".join(
         f"- {trigger['rule']}: {trigger.get('value')} ({trigger.get('date')})"
@@ -621,6 +633,9 @@ def build_perplexity_prompt(
     question_lines = render_k_deep_questions_for_prompt(question_set)
     reuse_lines = render_research_planning_context_for_prompt(planning_context)
     task_lines = render_research_task_plan_for_prompt(task_plan)
+    screener_lines = render_non_consensus_screener_for_prompt(
+        non_consensus_screener or question_set.get("non_consensus_screener") or {}
+    )
     return (
         f"请作为 Worldpay77 的首席研究员，研究 {display_name} 最近 7-10 个交易日公开价量异动背后的真实原因。\n\n"
         "研究边界：只判断是否存在新闻、财报、监管、行业、竞争、资金面、指数或预期差层面的可验证原因；不要给交易建议，不要输出买卖操作。\n\n"
@@ -633,6 +648,8 @@ def build_perplexity_prompt(
         f"{reuse_lines}\n\n"
         "## 本次研究任务编排\n\n"
         f"{task_lines}\n\n"
+        "## 非共识 Screener 要求\n\n"
+        f"{screener_lines}\n\n"
         "## K deep 研究问题组\n\n"
         f"{question_lines}\n\n"
         "## 输出结构要求\n\n"
@@ -641,7 +658,8 @@ def build_perplexity_prompt(
         "3. K deep 关键判断：回答商业模式、竞争格局、渗透率/成本曲线、管理层/资本配置、市场预期差是否发生变化。\n"
         "4. 反证：列出最能推翻主结论的公开证据或不一致数据。\n"
         "5. 仍未验证：列出后续需要继续跟踪的 5-10 个问题，尤其是机构资金、期权、监管落地、财报后分析师调整和竞争对手动作。\n"
-        "6. 可沉淀记忆：最后单独给出“可进入知识库的结构化要点”，包括事件摘要、主要催化剂、反证、未关闭问题和可信度。\n"
+        "6. 共识风险：判断你的结论是否只是市场已经知道的主流解释；如果是，请明确写出“没有发现非共识 edge”。\n"
+        "7. 可沉淀记忆：最后单独给出“可进入知识库的结构化要点”，包括事件摘要、主要催化剂、反证、未关闭问题和可信度。\n"
     )
 
 
@@ -652,6 +670,7 @@ def build_research_task_plan(
     features: dict[str, Any],
     signal_fingerprint: dict[str, Any],
     planning_context: dict[str, Any],
+    non_consensus_screener: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Plan K deep-style research work before asking Perplexity new questions."""
 
@@ -663,6 +682,7 @@ def build_research_task_plan(
         "reuse_existing_knowledge",
         "refresh_unresolved_questions" if open_questions else "establish_first_stock_memory",
         "new_event_causality",
+        "non_consensus_edge_detection",
         "beta_vs_alpha_attribution",
         "falsification_and_counter_evidence",
     ]
@@ -676,8 +696,10 @@ def build_research_task_plan(
             f"{display_name} 本次价量触发是否改变历史结论，还是只是旧 thesis 的短期噪音？",
             "这次异动的主因是公司 alpha、行业 beta、宏观 beta、资金面，还是指数/期权结构？",
             "哪些公开证据最能推翻主因判断，未来 7/30/90 天如何跟踪？",
+            "这次异动是否只是市场共识已知信息？如果不是，真正未被定价的变量是什么？",
         ]
     )
+    non_consensus_screener = non_consensus_screener or {}
     return {
         "plan_version": "research_task_plan_v1",
         "ticker": ticker,
@@ -691,6 +713,7 @@ def build_research_task_plan(
         },
         "k_deep_director_mode": True,
         "focus_tracks": unique_preserve_order(focus_tracks),
+        "non_consensus_screener": non_consensus_screener,
         "memory_reuse_policy": {
             "history_found": bool(planning_context.get("history_found")),
             "do_not_repeat": do_not_repeat[:8],
@@ -701,6 +724,61 @@ def build_research_task_plan(
             ],
         },
         "priority_questions": unique_preserve_order(priority_questions)[:10],
+    }
+
+
+def build_non_consensus_screener(
+    ticker: str,
+    name: str,
+    triggers: list[dict[str, Any]],
+    features: dict[str, Any],
+    planning_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the K deep first-pass screener for non-consensus edge."""
+
+    display_name = f"{ticker} {name}".strip()
+    trigger_rules = [trigger["rule"] for trigger in triggers]
+    has_history = bool(planning_context.get("history_found"))
+    open_questions = planning_context.get("open_questions") or []
+    ten_day = float(features.get("ten_day_change_pct") or 0)
+    volume_ratio = float(features.get("max_volume_ratio") or 0)
+    if abs(ten_day) >= 10 and volume_ratio >= 2:
+        mispricing_type = "price_volume_dislocation"
+    elif open_questions:
+        mispricing_type = "unresolved_thesis_repricing"
+    elif has_history:
+        mispricing_type = "history_update_required"
+    else:
+        mispricing_type = "unknown_until_perplexity_research"
+    consensus_prior = "high_market_awareness"
+    if open_questions or planning_context.get("historical_conflicts"):
+        consensus_prior = "known_narrative_but_unresolved_edge"
+    return {
+        "screener_version": "non_consensus_screener_v1",
+        "ticker": ticker,
+        "market_awareness_assumption": True,
+        "consensus_risk_prior": consensus_prior,
+        "possible_mispricing_type": mispricing_type,
+        "trigger_rules": trigger_rules,
+        "why_this_might_be_non_consensus": [
+            f"{display_name} 有公开价量异动，但 K deep 只把它当成提问入口，不把涨跌本身当 alpha。",
+            "需要验证是否存在市场已知新闻之外的边际变化、错定价或未关闭历史问题。",
+        ],
+        "what_everyone_may_already_know": [
+            "当天新闻标题、财报 headline、指数/期权/资金面解释可能已经被市场快速定价。",
+            "若 Perplexity 只能复述这些主流解释，则本次研究不能升级为高质量 edge。",
+        ],
+        "edge_questions": [
+            "如果这个催化剂已经公开，为什么市场还可能错定价？",
+            "本次异动是否改变收入、利润率、竞争地位、监管路径或资本配置预期？",
+            "历史未关闭问题中，哪些被本次新事实关闭，哪些仍然悬而未决？",
+            "有没有同行/供应链/期权/机构持仓变化能说明主流解释不完整？",
+        ],
+        "required_evidence": [
+            "至少一个可验证的边际变化来源，而不只是行情解释。",
+            "至少一个最强反证或失败路径。",
+            "明确写出是否发现非共识 edge；没有发现也要直说。",
+        ],
     }
 
 
@@ -738,7 +816,26 @@ def render_research_task_plan_for_prompt(plan: dict[str, Any]) -> str:
     policy = plan.get("memory_reuse_policy") or {}
     if policy.get("similar_case_prompt_ids"):
         lines.append(f"- similar_case_prompt_ids: {', '.join(map(str, policy['similar_case_prompt_ids']))}")
+    screener = plan.get("non_consensus_screener") or {}
+    if screener:
+        lines.append(f"- consensus_risk_prior: {screener.get('consensus_risk_prior')}")
+        lines.append(f"- possible_mispricing_type: {screener.get('possible_mispricing_type')}")
     lines.extend(render_prompt_list("优先研究问题", plan.get("priority_questions") or [], 8))
+    return "\n".join(lines).strip()
+
+
+def render_non_consensus_screener_for_prompt(screener: dict[str, Any]) -> str:
+    if not screener:
+        return "- 未生成非共识 screener；请主动检查结论是否只是市场共识。"
+    lines = [
+        f"- screener_version: {screener.get('screener_version')}",
+        f"- consensus_risk_prior: {screener.get('consensus_risk_prior')}",
+        f"- possible_mispricing_type: {screener.get('possible_mispricing_type')}",
+    ]
+    lines.extend(render_prompt_list("为什么可能有非共识", screener.get("why_this_might_be_non_consensus") or [], 4))
+    lines.extend(render_prompt_list("市场可能已经知道", screener.get("what_everyone_may_already_know") or [], 4))
+    lines.extend(render_prompt_list("必须回答的 edge 问题", screener.get("edge_questions") or [], 6))
+    lines.extend(render_prompt_list("证据要求", screener.get("required_evidence") or [], 5))
     return "\n".join(lines).strip()
 
 
@@ -757,6 +854,7 @@ def build_k_deep_research_question_set(
     features: dict[str, Any],
     research_planning_context: dict[str, Any] | None = None,
     research_task_plan: dict[str, Any] | None = None,
+    non_consensus_screener: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build deterministic K deep questions from the frozen methodology profile."""
 
@@ -791,6 +889,7 @@ def build_k_deep_research_question_set(
         "methodology_profile": profile_snapshot,
         "research_planning_context": research_planning_context or {},
         "research_task_plan": research_task_plan or {},
+        "non_consensus_screener": non_consensus_screener or {},
         "question_groups": build_gate_question_groups(question_context),
         "self_critique_hooks": list(SELF_CRITIQUE_HOOKS),
     }
@@ -857,10 +956,16 @@ def build_signal_fingerprint(
         "price_direction": "up" if ten_day_change > 0 else "down" if ten_day_change < 0 else "flat",
         "price_move_bucket": bucket_abs_value(abs(ten_day_change), [(5, "small"), (10, "medium"), (20, "large")]),
         "volume_bucket": bucket_abs_value(max_volume_ratio, [(1.5, "normal"), (2, "elevated"), (4, "extreme")]),
+        "non_consensus_detection": {
+            "enabled": True,
+            "default_assumption": "market_is_aware_until_proven_otherwise",
+            "requires_edge_evidence": True,
+        },
         "tags": unique_preserve_order(
             [
                 market.lower(),
                 "k_deep",
+                "non_consensus_screener",
                 RESEARCH_SYSTEM_HARD_RULES["perplexity_integration_mode"],
                 infer_signal_type(triggers),
                 infer_event_size(triggers),

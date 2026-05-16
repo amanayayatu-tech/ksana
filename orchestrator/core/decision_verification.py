@@ -105,13 +105,23 @@ def build_case_from_summary(brief: ChairmanBrief, summary: dict[str, Any]) -> di
     direction = map_chairman_verdict_to_direction(verdict)
     ticker = str(summary.get("ticker") or "UNKNOWN")
     brief_id = brief.brief_id
+    as_of_date = date_from_brief_id(brief_id)
     return {
         "case_id": f"DV-{brief_id}-{ticker}",
         "source_brief_id": brief_id,
         "source_signal_id": summary.get("research_signal_id"),
         "ticker": ticker,
+        "as_of_date": as_of_date,
+        "available_context_cutoff": as_of_date,
+        "future_data_allowed": False,
         "decision_direction": direction,
         "chairman_final_verdict": verdict.get("final_verdict") or "wait",
+        "action_route": verdict.get("action_route") or "watchlist_monitor",
+        "chairman_confidence": verdict.get("confidence"),
+        "history_context": verdict.get("history_context") or {},
+        "learning_context": verdict.get("learning_context") or {},
+        "decision_chain": verdict.get("decision_chain") or [],
+        "operation_summary": summary.get("operation_summary") or {},
         "verification_windows_days": DEFAULT_WINDOWS,
         "objective": OBJECTIVES[direction],
         "status": "pending",
@@ -159,3 +169,10 @@ def normalize_decision_direction(value: Any) -> str:
     if direction in {"long", "watch", "avoid", "abstain"}:
         return direction
     return "watch"
+
+
+def date_from_brief_id(brief_id: str) -> str:
+    for part in str(brief_id).split("-"):
+        if len(part) == 8 and part.isdigit():
+            return f"{part[:4]}-{part[4:6]}-{part[6:]}"
+    return datetime.now().date().isoformat()

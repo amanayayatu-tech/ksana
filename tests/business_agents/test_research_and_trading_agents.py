@@ -110,13 +110,16 @@ def test_research_prompt_uses_k_deep_question_framework(tmp_path):
     assert "research_system_v0.3.md" in prompt_data["prompt_text"]
     assert "human_in_the_loop" in prompt_data["prompt_text"]
     assert "竞争格局" in prompt_data["prompt_text"]
+    assert "非共识 Screener 要求" in prompt_data["prompt_text"]
     assert "可进入知识库的结构化要点" in prompt_data["prompt_text"]
     assert signal_data["research_signal"]["k_deep_research_questions"]["question_groups"]
+    assert signal_data["research_signal"]["non_consensus_screener"]["screener_version"] == "non_consensus_screener_v1"
     assert signal_data["research_signal"]["research_methodology_profile"]["methodology_source"] == "research_system_v0.3.md"
     fingerprint = signal_data["research_signal"]["signal_fingerprint"]
     assert fingerprint["fingerprint_version"] == "signal_fingerprint_v1"
     assert fingerprint["methodology"]["methodology_source"] == "research_system_v0.3.md"
     assert "single_day_move_ge_7pct" in fingerprint["trigger_rules"]
+    assert "non_consensus_screener" in fingerprint["tags"]
 
 
 def test_research_agent_no_trigger_writes_summary_only(tmp_path):

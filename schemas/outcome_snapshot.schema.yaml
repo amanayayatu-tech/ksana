@@ -1,0 +1,48 @@
+schema_id: worldpay77.learning.outcome_snapshot.v1
+description: >
+  Price-only outcome observation for a decision case at a fixed window. This is not a
+  final verification label and must not overwrite manual thesis validation.
+fields:
+  snapshot_id:
+    type: string
+    required: true
+  case_id:
+    type: string
+    required: true
+  ticker:
+    type: string
+    required: true
+  decision_direction:
+    type: enum
+    values: [long, watch, avoid, abstain]
+    required: true
+  decision_date:
+    type: date
+    required: true
+  window_days:
+    type: integer
+    required: true
+  window_end_date:
+    type: date
+    required: true
+  outcome_as_of:
+    type: date
+    required: true
+  status:
+    type: enum
+    values: [pending, price_supports, price_against, requires_manual_review, inconclusive]
+    required: true
+  price_signal:
+    type: string
+    required: true
+  price_change_pct:
+    type: number
+    required: false
+  future_data_allowed:
+    type: boolean
+    required: true
+    must_equal: false
+guardrails:
+  no_auto_truth: >
+    Price movement can support or contradict a thesis, but final validation remains a
+    human or evidence-backed review in decision_verification.

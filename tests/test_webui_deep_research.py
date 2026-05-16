@@ -81,6 +81,34 @@ def test_guide_page_is_available():
     assert "操作建议汇总" in response.text
 
 
+def test_learning_pages_are_available():
+    client = TestClient(webui.app)
+    response = client.get("/learning")
+    assert response.status_code == 200
+    assert "学习复盘" in response.text
+
+    timeline = client.get("/timeline/BABA")
+    assert timeline.status_code == 200
+    assert "BABA 股票时间线" in timeline.text
+
+
+def test_learning_api_reads_overview(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    (data_dir / "learning").mkdir(parents=True)
+    (data_dir / "learning" / "decision_cases.json").write_text(
+        '[{"case_id":"DC-1","ticker":"BABA","as_of_date":"2026-05-13","status":"pending"}]',
+        encoding="utf-8",
+    )
+
+    response = TestClient(webui.app).get("/api/learning")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["learning"]["decision_cases"] == 1
+    assert data["learning"]["top_tickers"][0]["ticker"] == "BABA"
+
+
 def test_history_marks_schema_repair_from_recommendation_yaml(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     rec_dir = data_dir / "recommendations" / "20260513" / "f_partner"

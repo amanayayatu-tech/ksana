@@ -29,6 +29,7 @@ from chairman.models import (
     ResearchSignal,
     WPartnerRecommendation,
 )
+from orchestrator.core.learning import load_chairman_learning_context
 from orchestrator.core.partner_performance import load_partner_performance_context
 
 DECISIONS_APPLIED = [
@@ -68,6 +69,11 @@ def assemble_brief(
         data_dir=data_dir,
         date=date,
     )
+    learning_memory = build_learning_memory(
+        grouped,
+        data_dir=data_dir,
+        date=date,
+    )
     partner_performance_context = load_partner_performance_context(data_dir)
 
     summaries: list[dict[str, Any]] = []
@@ -89,6 +95,7 @@ def assemble_brief(
         escalation = determine_escalation(group_recs, consensus, disagreement)
         all_escalations.extend(escalation.escalations)
         historical_knowledge = knowledge_memory.get(group_recs[0].ticker, {})
+        learning_context = learning_memory.get(group_recs[0].ticker, {})
         verdict = build_chairman_verdict(
             group_recs,
             consensus.model_dump(mode="json"),
@@ -97,6 +104,7 @@ def assemble_brief(
             [item.model_dump(mode="json") for item in escalation.escalations],
             research_signal,
             partner_performance_context,
+            learning_context,
         )
 
         summaries.append(
@@ -110,6 +118,7 @@ def assemble_brief(
                 "operation_summary": build_operation_summary(group_recs, verdict),
                 "nepha_action_hint": build_nepha_action_hint(disagreement),
                 "historical_knowledge": historical_knowledge,
+                "learning_context": learning_context,
                 "chairman_verdict": verdict,
             }
         )
@@ -133,6 +142,7 @@ def assemble_brief(
         upstream_coverage_status=upstream_coverage,
         red_team_queue=red_team_queue,
         knowledge_memory=knowledge_memory,
+        learning_memory=learning_memory,
         final_verdicts=build_final_verdicts(summaries),
         partner_performance_context=partner_performance_context,
         chairman_observations=build_observations(summaries),
@@ -153,10 +163,12 @@ def build_chairman_verdict(
     escalation_items: list[dict[str, Any]],
     research_signal: ResearchSignal | None,
     partner_performance_context: dict[str, Any] | None = None,
+    learning_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create deterministic CIO-style decision navigation for Nepha."""
 
     partner_performance_context = partner_performance_context or {}
+    learning_context = learning_context or {}
     lead_view = select_lead_agent(recommendations, partner_performance_context)
     has_perplexity = any(
         ref.used_perplexity_results
@@ -201,6 +213,7 @@ def build_chairman_verdict(
             recommendations,
             partner_performance_context,
         ),
+        learning_context=learning_context,
     )
     return {
         "final_verdict": final_verdict,
@@ -217,6 +230,7 @@ def build_chairman_verdict(
             historical_knowledge=historical_knowledge,
             escalation_items=escalation_items,
             partner_performance_context=partner_performance_context,
+            learning_context=learning_context,
         ),
         "history_context": {
             "entries_count": len(history_entries),
@@ -228,6 +242,13 @@ def build_chairman_verdict(
             "open_questions_count": len(open_questions),
             "open_questions_sample": open_questions[:3],
             "historical_conflicts": historical_conflicts[:3],
+        },
+        "learning_context": {
+            "prior_cases_count": learning_context.get("prior_cases_count", 0),
+            "latest_case_id": learning_context.get("latest_case_id", ""),
+            "outcome_status_counts": learning_context.get("outcome_status_counts", {}),
+            "pattern_notes": (learning_context.get("pattern_notes") or [])[:5],
+            "timeline_path": learning_context.get("timeline_path", ""),
         },
         "dissent_summary": build_dissent_summary(disagreement, escalation_items, open_questions),
         "red_team_rebuttal_policy": {
@@ -303,6 +324,7 @@ def estimate_chairman_confidence(
     historical_conflicts: int,
     has_high_escalation: bool,
     average_performance_multiplier: float = 1.0,
+    learning_context: dict[str, Any] | None = None,
 ) -> int:
     if not recommendations:
         return 0
@@ -325,6 +347,15 @@ def estimate_chairman_confidence(
     if has_high_escalation:
         adjustment -= 10
     adjustment += round((average_performance_multiplier - 1.0) * 12)
+    learning_context = learning_context or {}
+    if learning_context.get("prior_cases_count"):
+        adjustment += 2
+    outcome_counts = learning_context.get("outcome_status_counts") or {}
+    negative_outcomes = int(outcome_counts.get("price_against", 0)) + int(
+        outcome_counts.get("requires_manual_review", 0)
+    )
+    if negative_outcomes:
+        adjustment -= min(8, negative_outcomes * 2)
     return max(0, min(95, round(average + adjustment)))
 
 
@@ -339,6 +370,7 @@ def build_decision_chain(
     historical_knowledge: dict[str, Any],
     escalation_items: list[dict[str, Any]],
     partner_performance_context: dict[str, Any],
+    learning_context: dict[str, Any] | None = None,
 ) -> list[str]:
     entries = historical_knowledge.get("entries", []) or []
     similar_cases = historical_knowledge.get("similar_cases", []) or []
@@ -368,11 +400,30 @@ def build_decision_chain(
         chain.append(f"知识库存在 {len(historical_conflicts)} 条历史冲突/反例，裁决必须先解释：{historical_conflicts[0]}")
     performance_notes = build_performance_chain_notes(recommendations, partner_performance_context)
     chain.extend(performance_notes)
+    chain.extend(build_learning_chain_notes(learning_context or {}))
     if disagreement.get("primary_type"):
         chain.append(f"主要分歧类型为 {disagreement.get('primary_type')}：{disagreement.get('narrative')}")
     if escalation_items:
         chain.append(f"已产生 {len(escalation_items)} 条 Red Team 待审事项，行动前需要先处理。")
     return chain
+
+
+def build_learning_chain_notes(learning_context: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    prior_cases_count = int(learning_context.get("prior_cases_count") or 0)
+    if prior_cases_count:
+        notes.append(
+            f"学习层找到 {prior_cases_count} 个该标的历史 decision case，最近一条是 "
+            f"{learning_context.get('latest_case_id') or 'unknown'}。"
+        )
+    outcome_counts = learning_context.get("outcome_status_counts") or {}
+    if outcome_counts:
+        notes.append(f"历史 outcome snapshot 分布为 {outcome_counts}；价格结果只作复盘，不自动替代裁决。")
+    for item in (learning_context.get("pattern_notes") or [])[:2]:
+        notes.append(f"学习层提示：{item}")
+    if not notes:
+        notes.append("学习层暂无同标的历史 case；本次裁决会成为后续复盘样本。")
+    return notes
 
 
 def build_performance_chain_notes(
@@ -435,6 +486,24 @@ def build_knowledge_memory(
         summary = get_recent_knowledge_summary(data_dir, ticker, as_of_date=date)
         if has_reusable_knowledge(summary):
             memory[ticker] = summary
+    return memory
+
+
+def build_learning_memory(
+    grouped: dict[tuple[str, str], list[Recommendation]],
+    *,
+    data_dir: str | Path | None,
+    date: str,
+) -> dict[str, Any]:
+    """Load time-safe decision/outcome learning context for Chairman only."""
+
+    if data_dir is None:
+        return {}
+    memory: dict[str, Any] = {}
+    for ticker, _market in grouped:
+        context = load_chairman_learning_context(data_dir, ticker, as_of_date=date)
+        if context.get("prior_cases_count") or context.get("outcome_status_counts"):
+            memory[ticker] = context
     return memory
 
 

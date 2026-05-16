@@ -46,6 +46,19 @@
 {% endfor %}
 {% endif %}
 
+{% if objection.consensus_risk %}
+**共识风险检测**：{{ objection.consensus_risk.risk_level }} / score={{ objection.consensus_risk.score }}
+
+{{ objection.consensus_risk.reason }}
+
+{% if objection.consensus_risk.required_questions %}
+需要补问：
+{% for item in objection.consensus_risk.required_questions %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
 **推翻本次裁决的条件**：
 {% for item in objection.what_would_invalidate_this_decision %}
 - {{ item }}

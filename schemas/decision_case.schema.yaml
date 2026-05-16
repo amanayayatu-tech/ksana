@@ -1,0 +1,79 @@
+schema_id: worldpay77.learning.decision_case.v1
+description: >
+  Time-safe learning case generated from each archived Chairman brief. It records what
+  the system knew at decision time and explicitly forbids future data in prompt context.
+fields:
+  case_id:
+    type: string
+    required: true
+  source_brief_id:
+    type: string
+    required: true
+  source_signal_id:
+    type: string
+    required: false
+  ticker:
+    type: string
+    required: true
+  market:
+    type: string
+    required: false
+  as_of_date:
+    type: date
+    required: true
+  available_context_cutoff:
+    type: date
+    required: true
+  future_data_allowed:
+    type: boolean
+    required: true
+    must_equal: false
+  decision_direction:
+    type: enum
+    values: [long, watch, avoid, abstain]
+    required: true
+  chairman_final_verdict:
+    type: enum
+    values: [act, wait, reject, research_more]
+    required: true
+  action_route:
+    type: string
+    required: true
+  consensus_level:
+    type: string
+    required: false
+  lead_agent:
+    type: object
+    required: false
+  partner_views:
+    type: array[object]
+    required: true
+  decision_chain:
+    type: array[string]
+    required: true
+  history_context:
+    type: object
+    required: true
+  learning_context:
+    type: object
+    required: true
+  open_questions_at_decision:
+    type: array[string]
+    required: true
+  historical_conflicts_at_decision:
+    type: array[string]
+    required: true
+  similar_cases_at_decision:
+    type: array[object]
+    required: true
+  verification_windows_days:
+    type: array[integer]
+    default: [1, 7, 30, 90]
+    required: true
+  objective:
+    type: object
+    required: true
+guardrails:
+  no_future_context: >
+    Any prompt or learning context for an as_of_date rerun must only use decision cases,
+    outcome snapshots, and knowledge entries whose dates are <= available_context_cutoff.

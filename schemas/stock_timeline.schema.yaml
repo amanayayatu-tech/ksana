@@ -1,0 +1,33 @@
+schema_id: worldpay77.learning.stock_timeline.v1
+description: >
+  Longitudinal per-ticker timeline combining Perplexity knowledge, Chairman decision
+  cases, and outcome snapshots for future prompt reuse.
+fields:
+  timeline_version:
+    type: string
+    required: true
+  ticker:
+    type: string
+    required: true
+  generated_at:
+    type: datetime
+    required: true
+  case_count:
+    type: integer
+    required: true
+  knowledge_count:
+    type: integer
+    required: true
+  outcome_count:
+    type: integer
+    required: true
+  open_questions_count:
+    type: integer
+    required: true
+  events:
+    type: array[object]
+    required: true
+event_types:
+  - perplexity_knowledge
+  - chairman_decision
+  - outcome_snapshot
