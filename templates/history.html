@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}运行档案 · Nepha AI IC{% endblock %}
+{% block title %}报告中心 · WorldPay IC{% endblock %}
 
 {% block content %}
 <section class="panel">
   <div class="panel-head">
-    <h1 class="panel-title">运行档案</h1>
+    <h1 class="panel-title">报告中心</h1>
     <div class="row">
       <span id="historyStatus" class="pill">待刷新</span>
       <button id="refreshHistory">刷新</button>
@@ -15,14 +15,14 @@
       <table class="history-table">
         <thead>
           <tr>
-            <th>run_id</th>
+            <th>任务 ID</th>
             <th>日期</th>
-            <th>投委会类型</th>
+            <th>简报类型</th>
             <th>status</th>
             <th>失败步骤</th>
-            <th>产物</th>
-            <th>修复 / fallback</th>
-            <th>started_at</th>
+            <th>报告</th>
+            <th>修复状态</th>
+            <th>开始时间</th>
           </tr>
         </thead>
         <tbody id="historyBody"></tbody>
@@ -32,12 +32,12 @@
 </section>
 
 <div id="artifactModal" class="modal-backdrop hidden">
-  <div class="modal">
+  <div id="artifactModalPanel" class="modal">
     <div class="modal-head">
-      <h2 id="artifactTitle" class="modal-title">产物预览</h2>
+      <h2 id="artifactTitle" class="modal-title">报告预览</h2>
       <button id="closeArtifact">关闭</button>
     </div>
-    <div class="modal-body">
+    <div id="artifactModalBody" class="modal-body">
       <article id="artifactContent" class="markdown"></article>
     </div>
   </div>
@@ -123,8 +123,8 @@
 
   function artifactLinks(artifacts) {
     const items = [];
-    if (artifacts.brief) items.push(artifactButton("Brief", artifacts.brief));
-    if (artifacts.audit) items.push(artifactButton("Red Team", artifacts.audit));
+    if (artifacts.brief) items.push(artifactButton("IC Brief", artifacts.brief));
+    if (artifacts.audit) items.push(artifactButton("Risk Audit", artifacts.audit));
     return items.join("<br>") || "";
   }
 
@@ -139,9 +139,13 @@
 
   async function openArtifact(path) {
     const modal = document.getElementById("artifactModal");
+    const panel = document.getElementById("artifactModalPanel");
+    const modalBody = document.getElementById("artifactModalBody");
     const title = document.getElementById("artifactTitle");
     const content = document.getElementById("artifactContent");
-    title.textContent = path;
+    panel.className = "modal";
+    modalBody.className = "modal-body";
+    title.textContent = basename(path);
     content.innerHTML = '<p class="muted">读取中</p>';
     modal.classList.remove("hidden");
     const res = await fetch(`/api/artifact?path=${encodeURIComponent(path)}`);
@@ -150,7 +154,15 @@
       content.innerHTML = `<p class="muted">${escapeHtml(data.detail || "读取失败")}</p>`;
       return;
     }
-    title.textContent = data.path;
+    title.textContent = basename(data.path);
+    if (["html", "markdown"].includes(data.format)) {
+      panel.className = "modal report-modal";
+      modalBody.className = "modal-body frame-body";
+      content.className = "";
+      content.innerHTML = `<iframe class="artifact-frame" src="/artifact/view?path=${encodeURIComponent(data.path)}" title="${escapeHtml(data.path)}"></iframe>`;
+      return;
+    }
+    content.className = "markdown";
     content.innerHTML = DOMPurify.sanitize(marked.parse(data.content || ""));
   }
 

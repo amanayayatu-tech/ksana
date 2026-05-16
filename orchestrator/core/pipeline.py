@@ -100,7 +100,9 @@ def build_full_pipeline_steps(
             depends_on=["trading_f_partner", "trading_w_partner", "trading_g_partner"],
             skip_on_failure=False,
             output_files=[
-                Path(data_dir_text) / "briefs" / compact / f"BRIEF-{compact}-{_brief_suffix(brief_type)}.json"
+                Path(data_dir_text) / "briefs" / compact / f"BRIEF-{compact}-{_brief_suffix(brief_type)}.md",
+                Path(data_dir_text) / "briefs" / compact / f"BRIEF-{compact}-{_brief_suffix(brief_type)}.html",
+                Path(data_dir_text) / "briefs" / compact / f"BRIEF-{compact}-{_brief_suffix(brief_type)}.json",
             ],
         ),
         PipelineStep(
@@ -120,6 +122,14 @@ def build_full_pipeline_steps(
             depends_on=["chairman"],
             skip_on_failure=False,
             output_files=[
+                Path(data_dir_text)
+                / "red_team_audits"
+                / compact
+                / f"AUDIT-{compact}-{_brief_suffix(brief_type)}.md",
+                Path(data_dir_text)
+                / "red_team_audits"
+                / compact
+                / f"AUDIT-{compact}-{_brief_suffix(brief_type)}.html",
                 Path(data_dir_text)
                 / "red_team_audits"
                 / compact

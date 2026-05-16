@@ -62,6 +62,9 @@ def test_red_team_cli_generates_audit_and_rules_only(tmp_path):
     )
     assert audit_result.exit_code == 0, audit_result.output
     assert (data_dir / "red_team_audits" / "20260513" / "AUDIT-20260513-AM.md").exists()
+    html_path = data_dir / "red_team_audits" / "20260513" / "AUDIT-20260513-AM.html"
+    assert html_path.exists()
+    assert "RESEARCHOS RISK AUDITOR" in html_path.read_text(encoding="utf-8")
     assert (data_dir / "red_team_audits" / "20260513" / "AUDIT-20260513-AM.json").exists()
 
     rules_result = runner.invoke(

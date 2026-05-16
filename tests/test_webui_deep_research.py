@@ -37,29 +37,29 @@ def test_deep_research_fill_and_skip_round_trip(tmp_path, monkeypatch):
     assert list_response.status_code == 200
     prompts = list_response.json()["prompts"]
     assert prompts[0]["status"] == "pending"
-    assert "Perplexity 深度研究 Prompt" in prompts[0]["prompt_markdown"]
+    assert "Deep Research Prompt" in prompts[0]["prompt_markdown"]
 
     fill_response = client.post(
         "/api/deep-research/fill",
         json={
             "prompt_id": "PR-20260513-001",
-            "answer_text": "Perplexity 回填：存在结构性证据，但仍需复核。",
+            "answer_text": "Deep Research 回填：存在结构性证据，但仍需复核。",
         },
     )
     assert fill_response.status_code == 200
     filled_path = data_dir / "perplexity_results" / "PR-20260513-001_filled.yaml"
     assert filled_path.exists()
-    assert "Perplexity 回填" in filled_path.read_text(encoding="utf-8")
+    assert "Deep Research 回填" in filled_path.read_text(encoding="utf-8")
     assert fill_response.json()["knowledge_entry"]["prompt_id"] == "PR-20260513-001"
     assert (data_dir / "knowledge_store" / "knowledge.db").exists()
 
     dashboard = client.get("/api/ops-dashboard").json()["dashboard"]
     assert dashboard["trial_status"]["filled_perplexity"] == 1
     assert dashboard["knowledge"]["entries"] == 1
-    assert dashboard["company_flow"][0]["label"] == "K deep 研究总监"
+    assert dashboard["company_flow"][0]["label"] == "异常扫描"
 
     filled_response = client.get("/api/deep-research/prompts?status=filled")
-    assert filled_response.json()["prompts"][0]["answer_text"].startswith("Perplexity 回填")
+    assert filled_response.json()["prompts"][0]["answer_text"].startswith("Deep Research 回填")
 
     skip_response = client.post(
         "/api/deep-research/skip",
@@ -78,14 +78,36 @@ def test_guide_page_is_available():
 
     assert response.status_code == 200
     assert "使用指南" in response.text
-    assert "操作建议汇总" in response.text
+    assert "NVDA 异动研究报告" in response.text
+    assert "Value Partner" in response.text
+
+
+def test_index_shows_partner_dispatch_without_collapsed_details():
+    response = TestClient(webui.app).get("/")
+
+    assert response.status_code == 200
+    assert "完整研报不是一次点击完成" in response.text
+    assert "1 生成研究任务" in response.text
+    assert "runResearchScan" in response.text
+    assert "/api/agent-stream" in response.text
+    assert 'agent: "research"' in response.text
+    assert "/api/run-stream" not in response.text
+    assert "data-run" not in response.text
+    assert "第二步：Deep Research 回填" in response.text
+    assert "第三步：回填后重跑完整研报" in response.text
+    assert "workflowPromptList" in response.text
+    assert "workflowRerun" in response.text
+    assert "第一屏只处理一件事" not in response.text
+    assert "合伙人单步调度" in response.text
+    assert '<section class="panel advanced-panel">' in response.text
+    assert '<details class="panel advanced-panel">' not in response.text
 
 
 def test_learning_pages_are_available():
     client = TestClient(webui.app)
     response = client.get("/learning")
     assert response.status_code == 200
-    assert "学习复盘" in response.text
+    assert "复盘库" in response.text
 
     timeline = client.get("/timeline/BABA")
     assert timeline.status_code == 200
@@ -318,7 +340,7 @@ def test_run_progress_infers_current_full_pipeline_step(tmp_path, monkeypatch):
     assert progress["steps"][0]["step_name"] == "research_scan"
     assert progress["steps"][0]["state"] == "running"
     assert progress["steps"][0]["estimate_seconds"] > 0
-    assert "K deep" in progress["current_step_label"]
+    assert "异常扫描" in progress["current_step_label"]
 
 
 def test_run_progress_marks_parallel_partners_after_research(tmp_path, monkeypatch):
@@ -348,7 +370,7 @@ def test_run_progress_marks_parallel_partners_after_research(tmp_path, monkeypat
     assert states["trading_f_partner"] == "running"
     assert states["trading_w_partner"] == "running"
     assert states["trading_g_partner"] == "running"
-    assert "F partner" in progress["current_step_label"]
+    assert "Value Partner" in progress["current_step_label"]
 
 
 def test_run_progress_uses_rerun_step_plan(tmp_path, monkeypatch):
@@ -378,8 +400,8 @@ def test_run_progress_uses_rerun_step_plan(tmp_path, monkeypatch):
         "red_team",
     ]
     assert progress["steps"][0]["state"] == "running"
-    assert "K deep" not in progress["current_step_label"]
-    assert "F partner" in progress["current_step_label"]
+    assert "异常扫描" not in progress["current_step_label"]
+    assert "Value Partner" in progress["current_step_label"]
 
 
 def test_run_progress_advances_rerun_steps_sequentially(tmp_path, monkeypatch):
@@ -413,7 +435,7 @@ def test_run_progress_advances_rerun_steps_sequentially(tmp_path, monkeypatch):
     assert states["trading_f_partner"] == "completed"
     assert states["trading_w_partner"] == "running"
     assert states["trading_g_partner"] == "pending"
-    assert progress["current_step_label"] == "W partner 重新生成投资建议"
+    assert progress["current_step_label"] == "Momentum Partner 重新分析"
 
 
 def test_run_progress_infers_current_step_elapsed_from_previous_step():
@@ -484,14 +506,76 @@ def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch
     assert "| Agent | 投资建议 |" in result["content"]
     assert "**观察**" in result["content"]
     assert "CIO 裁决" in result["content"]
-    assert "f_partner:观察" in result["content"]
-    assert "g_partner:暂不判断" in result["content"]
+    assert "Value Partner:观察" in result["content"]
+    assert "Quality Partner:暂不判断" in result["content"]
     assert "只能观察" in result["content"]
     assert "当前不展示杠杆、衍生品或内部方向标签" in result["content"]
     assert "第一阶段禁止输出 买入候选/反向风险" not in result["content"]
     assert "long-term growth" in result["content"]
     assert "short-term pressure" in result["content"]
     assert "watch for cash flow" in result["content"]
+
+
+def test_artifact_view_rerenders_existing_html_from_markdown_source(tmp_path, monkeypatch):
+    project_root = tmp_path
+    data_dir = project_root / "data"
+    report_dir = data_dir / "red_team_audits" / "20260515"
+    report_dir.mkdir(parents=True)
+    html_path = report_dir / "AUDIT-20260515-AM.html"
+    markdown_path = report_dir / "AUDIT-20260515-AM.md"
+    html_path.write_text(
+        "<html><body><h1>Red Team Audit</h1><p>Chairman data/red_team_audits/20260515 Perplexity</p></body></html>",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        "# Red Team Audit\n\n## 摘要\n- Chairman 需要等待 Perplexity 证据回填。\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    response = TestClient(webui.app).get(
+        "/artifact/view",
+        params={"path": "data/red_team_audits/20260515/AUDIT-20260515-AM.html"},
+    )
+
+    assert response.status_code == 200
+    assert "Risk Audit" in response.text
+    assert "CIO Agent" in response.text
+    assert "Deep Research" in response.text
+    assert "Red Team Audit" not in response.text
+    assert "Chairman" not in response.text
+    assert "Perplexity" not in response.text
+    assert "data/red_team_audits" not in response.text
+
+
+def test_artifact_view_productizes_html_without_markdown_source(tmp_path, monkeypatch):
+    project_root = tmp_path
+    data_dir = project_root / "data"
+    report_dir = data_dir / "red_team_audits" / "20260515"
+    report_dir.mkdir(parents=True)
+    html_path = report_dir / "AUDIT-20260515-AM.html"
+    html_path.write_text(
+        "<html><body><h1>Red Team Audit</h1><p>Chairman data/red_team_audits/20260515 Perplexity</p></body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    response = TestClient(webui.app).get(
+        "/artifact/view",
+        params={"path": "data/red_team_audits/20260515/AUDIT-20260515-AM.html"},
+    )
+
+    assert response.status_code == 200
+    assert "Risk Audit" in response.text
+    assert "CIO Agent" in response.text
+    assert "Deep Research" in response.text
+    assert "报告中心" in response.text
+    assert "Red Team Audit" not in response.text
+    assert "Chairman" not in response.text
+    assert "Perplexity" not in response.text
+    assert "data/red_team_audits" not in response.text
 
 
 def test_active_rerun_process_detects_dated_trading_command(monkeypatch):
@@ -590,6 +674,30 @@ def test_artifact_endpoint_reads_project_markdown(tmp_path, monkeypatch):
     payload = response.json()
     assert payload["exists"] is True
     assert "晚间报告" in payload["content"]
+    assert payload["format"] == "markdown"
+
+
+def test_artifact_endpoint_reads_project_html(tmp_path, monkeypatch):
+    project_root = tmp_path / "app"
+    data_dir = project_root / "data"
+    brief_dir = data_dir / "briefs" / "20260513"
+    brief_dir.mkdir(parents=True)
+    (brief_dir / "BRIEF-20260513-PM.html").write_text(
+        "<!doctype html><html><body>精排报告</body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    response = TestClient(webui.app).get(
+        "/api/artifact",
+        params={"path": "data/briefs/20260513/BRIEF-20260513-PM.html"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["format"] == "html"
+    assert "精排报告" in payload["content"]
 
 
 def test_artifact_endpoint_rejects_path_traversal(tmp_path, monkeypatch):
@@ -817,6 +925,24 @@ def test_running_history_row_does_not_show_stale_date_artifacts(tmp_path, monkey
     )
 
     assert row["artifacts"] == {}
+
+
+def test_completed_history_row_prefers_html_artifacts(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    brief_dir = data_dir / "briefs" / "20260514"
+    audit_dir = data_dir / "red_team_audits" / "20260514"
+    brief_dir.mkdir(parents=True)
+    audit_dir.mkdir(parents=True)
+    (brief_dir / "BRIEF-20260514-AM.md").write_text("brief md", encoding="utf-8")
+    (brief_dir / "BRIEF-20260514-AM.html").write_text("brief html", encoding="utf-8")
+    (audit_dir / "AUDIT-20260514-AM.md").write_text("audit md", encoding="utf-8")
+    (audit_dir / "AUDIT-20260514-AM.html").write_text("audit html", encoding="utf-8")
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    artifacts = webui.find_run_artifacts("2026-05-14", "morning")
+
+    assert artifacts["brief"].endswith("BRIEF-20260514-AM.html")
+    assert artifacts["audit"].endswith("AUDIT-20260514-AM.html")
 
 
 def test_deep_research_rerun_stream_marks_cancelled_history(tmp_path, monkeypatch):

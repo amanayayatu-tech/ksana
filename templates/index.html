@@ -1,84 +1,165 @@
 {% extends "base.html" %}
-{% block title %}投委会 · Nepha AI IC{% endblock %}
+{% block title %}任务流 · WorldPay IC{% endblock %}
 
 {% block content %}
 <div class="ops-board">
-  <section class="command-banner">
-    <div>
+  <section class="workflow-hero">
+    <div class="workflow-copy">
       <div class="row">
         <span class="pill ok">{{ trial_status.mode }}</span>
-        <span class="pill">Provider：{{ env_status.llm_provider }}</span>
+        <span class="pill">Alpha Committee</span>
         <span id="runStatus" class="pill">待命</span>
       </div>
-      <h1 class="command-title mt">AI Native 投资公司</h1>
-      <p class="command-subtitle">K deep 研究总监、Perplexity 首席研究员、三位投资合伙人、Chairman CIO、Red Team 反对派合伙人。</p>
-      <div class="metric-strip mt">
-        <div class="metric-cell">
-          <div class="metric-label">Perplexity 待回填</div>
-          <div id="pendingMetric" class="metric-value">{{ trial_status.pending_perplexity }}</div>
-          <div class="metric-caption">研究质量门</div>
-        </div>
-        <div class="metric-cell">
-          <div class="metric-label">Perplexity 已回填</div>
-          <div id="filledMetric" class="metric-value">{{ trial_status.filled_perplexity }}</div>
-          <div class="metric-caption">进入投委会</div>
-        </div>
-        <div class="metric-cell">
-          <div class="metric-label">知识库条目</div>
-          <div id="knowledgeMetric" class="metric-value">-</div>
-          <div class="metric-caption">永久记忆</div>
-        </div>
-        <div class="metric-cell">
-          <div class="metric-label">股票池</div>
-          <div id="stockMetric" class="metric-value">-</div>
-          <div class="metric-caption">Nepha 管理</div>
+      <div>
+        <h1 class="command-title mt">ResearchOS 投研任务流</h1>
+        <p class="command-subtitle">
+          完整研报不是一次点击完成：先生成研究任务，再完成 Deep Research 回填，最后重跑 Partner Agents、CIO Agent 和 Risk Auditor，生成可阅读、可追踪、可复盘的投委会报告。
+        </p>
+      </div>
+      <div class="hero-actions workflow-actions">
+        <label>
+          日期
+          <input id="runDate" type="date" value="{{ today }}">
+        </label>
+        <div class="workflow-action-row">
+          <button id="runResearchScan" class="primary">1 生成研究任务</button>
+          <button id="jumpResearchGate">2 回填 Deep Research</button>
+          <button id="rerunFromHero">3 重跑完整研报</button>
         </div>
       </div>
     </div>
-    <div id="companyFlow" class="company-rail"></div>
+    <div class="workflow-steps" aria-label="ResearchOS 标准任务流">
+      <div class="workflow-step primary-flow"><span class="workflow-number">1</span><div><strong>生成研究任务</strong><span>扫描股票池，把异常信号转成 Deep Research 问题。</span></div></div>
+      <div class="workflow-step primary-flow"><span class="workflow-number">2</span><div><strong>回填 Deep Research</strong><span>补齐外部研究结论，这是完整研报的质量门。</span></div></div>
+      <div class="workflow-step primary-flow"><span class="workflow-number">3</span><div><strong>回填后重跑</strong><span>重跑 Partner、CIO 和 Risk Auditor 链路。</span></div></div>
+      <div class="workflow-step"><span class="workflow-number">4</span><div><strong>阅读完整报告</strong><span>打开 IC Brief 和 Risk Audit 的精排 HTML。</span></div></div>
+      <div class="workflow-step"><span class="workflow-number">5</span><div><strong>归档复盘</strong><span>把判断、触发器和反证沉淀到复盘库。</span></div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">本轮进度</h2>
+      <span class="pill ok">{{ trial_status.recommendation_output }}</span>
+    </div>
+    <div class="panel-body execution-panel">
+      <div id="runProgress" class="run-progress hidden">
+        <div class="run-progress-head">
+          <div>
+            <div id="runProgressTitle" class="run-progress-title">等待步骤写入报告中心</div>
+            <div id="runProgressMeta" class="run-progress-meta">未开始</div>
+          </div>
+          <span id="runProgressPill" class="pill">0%</span>
+        </div>
+        <div class="progress-track">
+          <div id="runProgressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="runProgressSteps" class="step-list"></div>
+      </div>
+      <pre id="logBox" class="terminal"></pre>
+    </div>
+  </section>
+
+  <section id="researchGate" class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">第二步：Deep Research 回填</h2>
+      <div class="row">
+        <span id="workflowQueuePill" class="pill">待加载</span>
+        <button id="refreshWorkflowPrompts">刷新队列</button>
+        <a class="pill" href="/deep-research">打开完整 Inbox</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="workflow-gate-grid">
+        <div>
+          <div class="workflow-gate-summary">
+            <div>
+              <span>待回填</span>
+              <strong id="workflowPendingCount">-</strong>
+            </div>
+            <div>
+              <span>已回填</span>
+              <strong id="workflowFilledCount">-</strong>
+            </div>
+            <div>
+              <span>可重跑</span>
+              <strong id="workflowReadyState">-</strong>
+            </div>
+          </div>
+          <div id="workflowPromptList" class="workflow-prompt-list"></div>
+        </div>
+
+        <div class="workflow-fill-card">
+          <div class="split-title">
+            <strong id="workflowPromptTitle">选择一个研究任务</strong>
+            <span id="workflowPromptStatus" class="pill">未选择</span>
+          </div>
+          <label>
+            Deep Research Prompt
+            <textarea id="workflowPromptText" class="workflow-prompt-textarea" readonly></textarea>
+          </label>
+          <label class="drop-zone workflow-answer-box">
+            Deep Research 结果
+            <textarea id="workflowAnswerText" placeholder="把 Deep Research 结果粘贴到这里；保存后会写入知识库，并进入第三步重跑。"></textarea>
+            <span class="drop-hint">首页只保留必需回填动作；复杂筛选和全量历史仍在 Deep Research Inbox。</span>
+          </label>
+          <div class="row">
+            <button id="workflowCopyPrompt">复制 Prompt</button>
+            <button id="workflowSaveAnswer" class="primary">保存回填</button>
+            <button id="workflowSkipPrompt">标记跳过</button>
+          </div>
+          <div class="workflow-rerun-strip">
+            <div>
+              <strong>第三步：回填后重跑完整研报</strong>
+              <span>待回填清零后，重跑 Value / Momentum / Quality Partner、CIO Agent 和 Risk Auditor。</span>
+            </div>
+            <button id="workflowRerun" class="primary">重跑生成完整研报</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="ops-layout">
     <section class="panel">
       <div class="panel-head">
-        <h2 class="panel-title">本轮调度</h2>
-        <span class="pill ok">{{ trial_status.recommendation_output }}</span>
+        <h2 class="panel-title">运行快照</h2>
+        <div class="row">
+          <span id="latestRunStatus" class="pill">运行档案</span>
+          <span id="verificationStatus" class="pill">复盘队列</span>
+        </div>
       </div>
-      <div class="panel-body execution-panel">
-        <div class="run-selector">
-          <label>
-            日期
-            <input id="runDate" type="date" value="{{ today }}">
-          </label>
-          <div class="grid two">
-            <button class="primary big-action" data-run="morning">早间投委会</button>
-            <button class="primary big-action" data-run="evening">晚间投委会</button>
+      <div class="panel-body">
+        <div class="metric-strip">
+          <div class="metric-cell">
+            <div class="metric-label">Deep Research 待补充</div>
+            <div id="pendingMetric" class="metric-value">{{ trial_status.pending_perplexity }}</div>
+            <div class="metric-caption">质量门</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">Deep Research 已沉淀</div>
+            <div id="filledMetric" class="metric-value">{{ trial_status.filled_perplexity }}</div>
+            <div class="metric-caption">进入知识库</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">知识库条目</div>
+            <div id="knowledgeMetric" class="metric-value">-</div>
+            <div class="metric-caption">复用记忆</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">股票池</div>
+            <div id="stockMetric" class="metric-value">-</div>
+            <div class="metric-caption">扫描范围</div>
           </div>
         </div>
-        <div id="runProgress" class="run-progress hidden">
-          <div class="run-progress-head">
-            <div>
-              <div id="runProgressTitle" class="run-progress-title">等待步骤写入运行档案</div>
-              <div id="runProgressMeta" class="run-progress-meta">未开始</div>
-            </div>
-            <span id="runProgressPill" class="pill">0%</span>
-          </div>
-          <div class="progress-track">
-            <div id="runProgressFill" class="progress-fill" style="width: 0%"></div>
-          </div>
-          <div id="runProgressSteps" class="step-list"></div>
-        </div>
-        <pre id="logBox" class="terminal"></pre>
+        <div id="companyFlow" class="company-rail mt"></div>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <h2 class="panel-title">公司记忆</h2>
-        <div class="row">
-          <span id="latestRunStatus" class="pill">运行档案</span>
-          <span id="verificationStatus" class="pill">复盘队列</span>
-        </div>
+        <h2 class="panel-title">知识库最近沉淀</h2>
+        <span class="pill">可复用研究</span>
       </div>
       <div class="panel-body">
         <div id="memoryLedger" class="memory-ledger"></div>
@@ -88,7 +169,7 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">CIO 裁决 / Red Team 反对</h2>
+      <h2 class="panel-title">报告中心快捷入口</h2>
       <div class="row">
         <input id="reportDate" type="date" value="{{ today }}">
         <div class="tabs">
@@ -102,14 +183,14 @@
       <div class="report-grid">
         <div class="report-column">
           <div class="split-title">
-            <strong>Chairman Brief</strong>
+            <strong>IC Brief</strong>
             <span id="briefPath" class="pill">未读取</span>
           </div>
           <article id="briefView" class="markdown mt"></article>
         </div>
         <div class="report-column">
           <div class="split-title">
-            <strong>Red Team Audit</strong>
+            <strong>Risk Audit</strong>
             <span id="auditPath" class="pill">未读取</span>
           </div>
           <article id="auditView" class="markdown mt"></article>
@@ -118,7 +199,7 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel advanced-panel">
     <div class="panel-head">
       <h2 class="panel-title">合伙人单步调度</h2>
       <span id="agentStatus" class="pill">待命</span>
@@ -128,12 +209,12 @@
         <label>
           角色
           <select id="agentName">
-            <option value="research">K deep 研究总监</option>
-            <option value="f_partner">F partner合伙人</option>
-            <option value="w_partner">W partner合伙人</option>
-            <option value="g_partner">G partner合伙人</option>
-            <option value="chairman">Chairman CIO</option>
-            <option value="red-team">Red Team</option>
+            <option value="research">异常扫描 Agent</option>
+            <option value="f_partner">Value Partner</option>
+            <option value="w_partner">Momentum Partner</option>
+            <option value="g_partner">Quality Partner</option>
+            <option value="chairman">CIO Agent</option>
+            <option value="red-team">Risk Auditor</option>
           </select>
         </label>
         <label>
@@ -168,13 +249,29 @@
   const runStatus = document.getElementById("runStatus");
   const agentStatus = document.getElementById("agentStatus");
   const runProgress = document.getElementById("runProgress");
+  const workflowPromptList = document.getElementById("workflowPromptList");
+  const workflowPromptStatus = document.getElementById("workflowPromptStatus");
+  const workflowPromptText = document.getElementById("workflowPromptText");
+  const workflowAnswerText = document.getElementById("workflowAnswerText");
   let reportType = "morning";
   let progressTimer = null;
   let progressRunId = "";
+  let workflowPrompts = [];
+  let selectedWorkflowPromptId = "";
 
   function setPill(node, text, kind = "") {
     node.className = `pill ${kind}`.trim();
     node.textContent = text;
+  }
+
+  function statusKind(status) {
+    if (status === "filled") return "ok";
+    if (status === "skipped") return "warn";
+    return "";
+  }
+
+  function currentWorkflowDate() {
+    return document.getElementById("runDate").value;
   }
 
   function appendLog(line) {
@@ -190,7 +287,7 @@
     const source = new EventSource(url);
     source.addEventListener("start", (event) => {
       const data = JSON.parse(event.data);
-      appendLog(`$ ${data.command}`);
+      appendLog(data.command ? "已启动 ResearchOS 任务流。" : "已启动。");
     });
     source.addEventListener("log", (event) => {
       appendLog(JSON.parse(event.data).line);
@@ -233,7 +330,7 @@
   function resetRunProgress() {
     progressRunId = "";
     runProgress.classList.add("hidden");
-    document.getElementById("runProgressTitle").textContent = "等待步骤写入运行档案";
+    document.getElementById("runProgressTitle").textContent = "等待步骤写入报告中心";
     document.getElementById("runProgressMeta").textContent = "未开始";
     setPill(document.getElementById("runProgressPill"), "0%");
     document.getElementById("runProgressFill").style.width = "0%";
@@ -306,16 +403,207 @@
     return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
   }
 
-  document.querySelectorAll("[data-run]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const type = button.dataset.run;
-      const date = document.getElementById("runDate").value;
-      document.getElementById("reportDate").value = date;
-      setReportType(type);
-      const url = `/api/run-stream?brief_type=${type}&date=${encodeURIComponent(date)}`;
-      stream(url, runStatus, () => loadReport());
+  document.getElementById("runResearchScan").addEventListener("click", () => {
+    const date = currentWorkflowDate();
+    document.getElementById("runDate").value = date;
+    document.getElementById("reportDate").value = date;
+    document.getElementById("agentDate").value = date;
+    setReportType("morning");
+    appendLog("开始扫描股票池并生成 Deep Research 任务；完成回填后再重跑完整研报。");
+    const params = new URLSearchParams({
+      agent: "research",
+      brief_type: "morning",
+      date,
+      no_llm: "false",
+    });
+    stream(`/api/agent-stream?${params.toString()}`, runStatus, () => {
+      loadWorkflowPrompts(false);
+      loadOpsDashboard();
+      document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
+
+  document.getElementById("runDate").addEventListener("change", () => {
+    const date = currentWorkflowDate();
+    document.getElementById("reportDate").value = date;
+    document.getElementById("agentDate").value = date;
+    loadWorkflowPrompts(false);
+  });
+
+  document.getElementById("jumpResearchGate").addEventListener("click", () => {
+    document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  document.getElementById("rerunFromHero").addEventListener("click", startWorkflowRerun);
+  document.getElementById("workflowRerun").addEventListener("click", startWorkflowRerun);
+  document.getElementById("refreshWorkflowPrompts").addEventListener("click", () => loadWorkflowPrompts(false));
+  document.getElementById("workflowCopyPrompt").addEventListener("click", async () => {
+    if (!selectedWorkflowPromptId) return;
+    await navigator.clipboard.writeText(workflowPromptText.value);
+    setPill(workflowPromptStatus, "已复制", "ok");
+  });
+  document.getElementById("workflowSaveAnswer").addEventListener("click", saveWorkflowAnswer);
+  document.getElementById("workflowSkipPrompt").addEventListener("click", skipWorkflowPrompt);
+
+  async function loadWorkflowPrompts(keepSelection = true) {
+    setPill(document.getElementById("workflowQueuePill"), "读取中", "warn");
+    const params = new URLSearchParams({ status: "all" });
+    const date = currentWorkflowDate();
+    if (date) params.set("date", date);
+    const res = await fetch(`/api/deep-research/prompts?${params.toString()}`);
+    if (!res.ok) {
+      workflowPrompts = [];
+      renderWorkflowPromptList();
+      setPill(document.getElementById("workflowQueuePill"), "读取失败", "error");
+      return;
+    }
+    const data = await res.json();
+    workflowPrompts = data.prompts || [];
+    renderWorkflowPromptList();
+    updateWorkflowGateSummary();
+    const stillSelected = keepSelection && workflowPrompts.some((item) => item.prompt_id === selectedWorkflowPromptId);
+    const nextPrompt = stillSelected
+      ? selectedWorkflowPromptId
+      : ((workflowPrompts.find((item) => item.status === "pending") || workflowPrompts[0] || {}).prompt_id || "");
+    if (nextPrompt) {
+      selectWorkflowPrompt(nextPrompt);
+    } else {
+      clearWorkflowPromptDetail();
+    }
+  }
+
+  function updateWorkflowGateSummary() {
+    const pending = workflowPrompts.filter((item) => item.status === "pending").length;
+    const filled = workflowPrompts.filter((item) => item.status === "filled").length;
+    const skipped = workflowPrompts.filter((item) => item.status === "skipped").length;
+    document.getElementById("workflowPendingCount").textContent = pending;
+    document.getElementById("workflowFilledCount").textContent = filled;
+    document.getElementById("workflowReadyState").textContent = workflowPrompts.length && pending === 0 ? "是" : "否";
+    if (!workflowPrompts.length) {
+      setPill(document.getElementById("workflowQueuePill"), "先生成研究任务");
+    } else if (pending > 0) {
+      setPill(document.getElementById("workflowQueuePill"), `待回填 ${pending} 条`, "warn");
+    } else {
+      setPill(document.getElementById("workflowQueuePill"), `可重跑 · 已处理 ${filled + skipped} 条`, "ok");
+    }
+  }
+
+  function renderWorkflowPromptList() {
+    if (!workflowPrompts.length) {
+      workflowPromptList.innerHTML = '<p class="muted">当前日期暂无 Deep Research 任务。先点击“生成研究任务”，完成扫描后这里会出现待回填问题。</p>';
+      return;
+    }
+    const ordered = [...workflowPrompts].sort((a, b) => {
+      const rank = { pending: 0, filled: 1, skipped: 2 };
+      return (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+    });
+    workflowPromptList.innerHTML = ordered.map((item) => `
+      <button class="workflow-prompt-card ${escapeHtml(item.status)} ${item.prompt_id === selectedWorkflowPromptId ? "active" : ""}" data-workflow-prompt="${escapeHtml(item.prompt_id)}">
+        <span class="workflow-prompt-head">
+          <span class="workflow-prompt-id">${escapeHtml(item.prompt_id)}</span>
+          <span class="pill ${statusKind(item.status)}">${escapeHtml(item.status_label)}</span>
+        </span>
+        <span class="workflow-prompt-text">${escapeHtml((item.prompt_text || "").slice(0, 168))}</span>
+      </button>
+    `).join("");
+    workflowPromptList.querySelectorAll("[data-workflow-prompt]").forEach((button) => {
+      button.addEventListener("click", () => selectWorkflowPrompt(button.dataset.workflowPrompt));
+    });
+  }
+
+  function selectWorkflowPrompt(promptId) {
+    selectedWorkflowPromptId = promptId;
+    renderWorkflowPromptList();
+    const item = workflowPrompts.find((prompt) => prompt.prompt_id === promptId);
+    if (!item) {
+      clearWorkflowPromptDetail();
+      return;
+    }
+    document.getElementById("workflowPromptTitle").textContent = item.prompt_id;
+    setPill(workflowPromptStatus, item.status_label, statusKind(item.status));
+    workflowPromptText.value = item.prompt_markdown || item.prompt_text || "";
+    workflowAnswerText.value = item.answer_text || "";
+  }
+
+  function clearWorkflowPromptDetail() {
+    selectedWorkflowPromptId = "";
+    document.getElementById("workflowPromptTitle").textContent = "选择一个研究任务";
+    setPill(workflowPromptStatus, "未选择");
+    workflowPromptText.value = "";
+    workflowAnswerText.value = "";
+  }
+
+  async function saveWorkflowAnswer() {
+    if (!selectedWorkflowPromptId) {
+      setPill(workflowPromptStatus, "先选择任务", "warn");
+      return;
+    }
+    const answer = workflowAnswerText.value.trim();
+    if (!answer) {
+      setPill(workflowPromptStatus, "先粘贴 Deep Research 结果", "warn");
+      return;
+    }
+    const res = await fetch("/api/deep-research/fill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt_id: selectedWorkflowPromptId, answer_text: answer }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      setPill(workflowPromptStatus, data.detail || "保存失败", "error");
+      return;
+    }
+    setPill(workflowPromptStatus, "已保存入库", "ok");
+    await loadWorkflowPrompts(false);
+    loadOpsDashboard();
+  }
+
+  async function skipWorkflowPrompt() {
+    if (!selectedWorkflowPromptId) {
+      setPill(workflowPromptStatus, "先选择任务", "warn");
+      return;
+    }
+    const res = await fetch("/api/deep-research/skip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt_id: selectedWorkflowPromptId,
+        reason: workflowAnswerText.value.trim() || "用户在首页工作流中标记跳过。",
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      setPill(workflowPromptStatus, data.detail || "标记失败", "error");
+      return;
+    }
+    setPill(workflowPromptStatus, "已标记跳过", "warn");
+    await loadWorkflowPrompts(false);
+    loadOpsDashboard();
+  }
+
+  function startWorkflowRerun() {
+    const pending = workflowPrompts.filter((item) => item.status === "pending").length;
+    if (!workflowPrompts.length) {
+      setPill(document.getElementById("workflowQueuePill"), "先生成研究任务", "warn");
+      document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (pending > 0) {
+      setPill(document.getElementById("workflowQueuePill"), `还有 ${pending} 条待回填`, "warn");
+      document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const date = currentWorkflowDate();
+    document.getElementById("reportDate").value = date;
+    setReportType("morning");
+    appendLog("Deep Research 已处理完成，开始重跑 Partner Agents → CIO Agent → Risk Auditor。");
+    const params = new URLSearchParams({ date, brief_type: "morning", no_llm: "false" });
+    stream(`/api/deep-research/rerun-stream?${params.toString()}`, runStatus, () => {
+      loadReport();
+      loadOpsDashboard();
+      loadWorkflowPrompts();
+    });
+  }
 
   function setReportType(type) {
     reportType = type;
@@ -334,22 +622,41 @@
     const date = document.getElementById("reportDate").value;
     const res = await fetch(`/api/report?date=${encodeURIComponent(date)}&brief_type=${reportType}`);
     const data = await res.json();
-    renderMarkdown("briefView", "briefPath", data.brief, "Chairman Brief 暂无内容");
-    renderMarkdown("auditView", "auditPath", data.audit, "Red Team Audit 暂无内容");
+    renderMarkdown("briefView", "briefPath", data.brief, "IC Brief 暂无内容");
+    renderMarkdown("auditView", "auditPath", data.audit, "Risk Audit 暂无内容");
   }
 
   function renderMarkdown(viewId, pathId, item, emptyText) {
     const view = document.getElementById(viewId);
     const path = document.getElementById(pathId);
+    const label = viewId === "briefView" ? "IC Brief" : "Risk Audit";
     if (!item.exists) {
       path.textContent = "未找到";
       path.className = "pill warn";
+      view.className = "markdown mt";
       view.innerHTML = `<p class="muted">${emptyText}</p>`;
       return;
     }
-    path.textContent = item.path;
+    path.textContent = basename(item.path);
     path.className = "pill ok";
+    if (["html", "markdown"].includes(item.format)) {
+      view.className = "mt";
+      view.innerHTML = `
+        <a class="report-link-card" href="/artifact/view?path=${encodeURIComponent(item.path)}" target="_blank" rel="noopener">
+          <strong>打开 ${label}</strong>
+          <span>精排 HTML 阅读版已准备好，完整正文在新窗口打开。</span>
+          <small>${escapeHtml(basename(item.path))}</small>
+        </a>
+      `;
+      return;
+    }
+    view.className = "markdown mt";
     view.innerHTML = DOMPurify.sanitize(marked.parse(item.content));
+  }
+
+  function basename(path) {
+    const parts = String(path || "").split("/");
+    return parts[parts.length - 1] || path;
   }
 
   document.getElementById("runAgent").addEventListener("click", () => {
@@ -454,5 +761,6 @@
 
   loadOpsDashboard();
   loadReport();
+  loadWorkflowPrompts();
 </script>
 {% endblock %}

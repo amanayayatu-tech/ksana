@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from business_agents._common.knowledge_store import delete_entry_for_prompt, ingest_filled_result
 from business_agents._common.llm_client import build_llm_client_from_env
@@ -30,6 +30,11 @@ from orchestrator.core.learning import (
 )
 from orchestrator.core.models import StepResult
 from orchestrator.persistence.run_log import RunLog
+from orchestrator.reporting.html_renderer import (
+    ReportPresentation,
+    productize_report_text,
+    render_report_html,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -55,52 +60,52 @@ LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
 RUNNING_RUN_STALE_SECONDS = 300
 RERUN_STEP_NAMES = {
-    "F partner Agent": "trading_f_partner",
-    "W partner Agent": "trading_w_partner",
-    "G partner Agent": "trading_g_partner",
-    "Chairman": "chairman",
-    "Red Team": "red_team",
+    "Value Partner Agent": "trading_f_partner",
+    "Momentum Partner Agent": "trading_w_partner",
+    "Quality Partner Agent": "trading_g_partner",
+    "CIO Agent": "chairman",
+    "Risk Auditor": "red_team",
 }
 FULL_RUN_STEP_PLAN = [
     {
         "step_name": "research_scan",
-        "label": "K deep 扫描股池与编排研究任务",
+        "label": "异常扫描 Agent 编排研究任务",
         "estimate_seconds": 120,
         "stage": "research",
     },
     {
         "step_name": "trading_f_partner",
-        "label": "F partner 投资建议",
+        "label": "Value Partner 策略分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "trading_w_partner",
-        "label": "W partner 投资建议",
+        "label": "Momentum Partner 策略分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "trading_g_partner",
-        "label": "G partner 投资建议",
+        "label": "Quality Partner 策略分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "perplexity_wait",
-        "label": "Perplexity 回填检查",
+        "label": "Deep Research Inbox 检查",
         "estimate_seconds": 15,
         "stage": "research_gate",
     },
     {
         "step_name": "chairman",
-        "label": "Chairman CIO 裁决",
+        "label": "CIO Agent 生成投委会报告",
         "estimate_seconds": 90,
         "stage": "cio",
     },
     {
         "step_name": "red_team",
-        "label": "Red Team 反对派审计",
+        "label": "Risk Auditor 生成风险审计",
         "estimate_seconds": 90,
         "stage": "red_team",
     },
@@ -115,37 +120,37 @@ TRADING_STEP_NAMES = {"trading_f_partner", "trading_w_partner", "trading_g_partn
 RERUN_RUN_STEP_PLAN = [
     {
         "step_name": "trading_f_partner",
-        "label": "F partner 重新生成投资建议",
+        "label": "Value Partner 重新分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "trading_w_partner",
-        "label": "W partner 重新生成投资建议",
+        "label": "Momentum Partner 重新分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "trading_g_partner",
-        "label": "G partner 重新生成投资建议",
+        "label": "Quality Partner 重新分析",
         "estimate_seconds": 240,
         "stage": "investment_committee",
     },
     {
         "step_name": "chairman",
-        "label": "Chairman CIO 二次裁决",
+        "label": "CIO Agent 二次报告",
         "estimate_seconds": 120,
         "stage": "cio",
     },
     {
         "step_name": "red_team",
-        "label": "Red Team 二次反对审计",
+        "label": "Risk Auditor 二次风险审计",
         "estimate_seconds": 120,
         "stage": "red_team",
     },
 ]
 
-app = FastAPI(title="Agent Trading System Web UI")
+app = FastAPI(title="ResearchOS")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 run_lock = asyncio.Lock()
 background_tasks: set[asyncio.Task[Any]] = set()
@@ -308,6 +313,43 @@ def api_artifact(path: str = Query(...)) -> dict[str, Any]:
     return read_markdown_result(artifact_path)
 
 
+@app.get("/artifact/view", response_class=HTMLResponse)
+def artifact_view(path: str = Query(...)) -> HTMLResponse:
+    artifact_path = resolve_artifact_path(path)
+    markdown_source = markdown_source_for_artifact(artifact_path)
+    if markdown_source:
+        return HTMLResponse(render_artifact_markdown(markdown_source, presentation_path=artifact_path))
+    html_content = artifact_path.read_text(encoding="utf-8")
+    return HTMLResponse(productize_report_text(html_content))
+
+
+def markdown_source_for_artifact(path: Path) -> Path | None:
+    if path.suffix.lower() == ".md":
+        return path
+    if path.suffix.lower() == ".html":
+        sibling = path.with_suffix(".md")
+        if sibling.exists():
+            return sibling
+    return None
+
+
+def render_artifact_markdown(path: Path, *, presentation_path: Path | None = None) -> str:
+    presentation_path = presentation_path or path
+    markdown = path.read_text(encoding="utf-8")
+    report_label = artifact_label_from_path(presentation_path)
+    if report_label in {"IC Brief", "Risk Audit"}:
+        markdown = humanize_investment_report(markdown)
+    return render_report_html(
+        markdown,
+        ReportPresentation(
+            title=path.stem,
+            report_label=report_label,
+            eyebrow="RESEARCHOS REPORT VIEW",
+            source_path=relative_path(presentation_path),
+        ),
+    )
+
+
 @app.get("/api/history")
 def api_history(tail: int = Query(10, ge=1, le=100)) -> dict[str, Any]:
     reconcile_stale_running_runs()
@@ -419,7 +461,7 @@ def api_save_env(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     api_key = str(payload.get("openai_api_key") or "")
     clear_api_key = bool(payload.get("clear_api_key"))
     if provider not in LLM_PROVIDERS:
-        raise HTTPException(status_code=400, detail="LLM Provider 只能是 local、openai 或 codex_cli。")
+        raise HTTPException(status_code=400, detail="模型通道只能是本地、OpenAI 或 Codex。")
     write_env_file(provider, model, api_key, clear_api_key)
     return {"ok": True, "message": ".env 已保存", "env": get_env_status()}
 
@@ -456,7 +498,7 @@ def api_fill_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     prompt = find_pull_request(prompt_id)
     answer_text = str(payload.get("answer_text") or "").strip()
     if not answer_text:
-        raise HTTPException(status_code=400, detail="Perplexity 答案不能为空。")
+        raise HTTPException(status_code=400, detail="Deep Research 结果不能为空。")
 
     result = {
         "prompt_id": prompt_id,
@@ -479,7 +521,7 @@ def api_fill_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
     knowledge_entry = ingest_filled_result(DATA_DIR, prompt_id, result_path=result_path)
     return {
         "ok": True,
-        "message": "Perplexity 答案已保存",
+        "message": "Deep Research 结果已保存",
         "prompt": shape_prompt_record(prompt["path"]),
         "synced_research_signals": [relative_path(path) for path in synced],
         "knowledge_entry": shape_knowledge_entry(knowledge_entry),
@@ -498,7 +540,7 @@ def api_skip_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
         "status": "skipped",
         "skipped_at": datetime.now().isoformat(timespec="seconds"),
         "prompt_text": prompt.get("prompt_text", ""),
-        "reason": reason or "Nepha 在 Web UI 中标记跳过。",
+        "reason": reason or "用户在 Web UI 中标记跳过。",
     }
     result_path = DATA_DIR / "perplexity_results" / f"{prompt_id}_skipped.yaml"
     result_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1263,9 +1305,18 @@ def build_deep_research_rerun_commands(
     no_llm: bool,
 ) -> list[tuple[str, list[str]]]:
     trading_commands = [
-        ("F partner Agent", ["uv", "run", "trading-f_partner", "run", "--date", date, "--data-dir", "data"]),
-        ("W partner Agent", ["uv", "run", "trading-w_partner", "run", "--date", date, "--data-dir", "data"]),
-        ("G partner Agent", ["uv", "run", "trading-g_partner", "run", "--date", date, "--data-dir", "data"]),
+        (
+            "Value Partner Agent",
+            ["uv", "run", "trading-f_partner", "run", "--date", date, "--data-dir", "data"],
+        ),
+        (
+            "Momentum Partner Agent",
+            ["uv", "run", "trading-w_partner", "run", "--date", date, "--data-dir", "data"],
+        ),
+        (
+            "Quality Partner Agent",
+            ["uv", "run", "trading-g_partner", "run", "--date", date, "--data-dir", "data"],
+        ),
     ]
     if no_llm:
         for _, command in trading_commands:
@@ -1301,8 +1352,8 @@ def build_deep_research_rerun_commands(
 
     return [
         *trading_commands,
-        ("Chairman", chairman_command),
-        ("Red Team", red_team_command),
+        ("CIO Agent", chairman_command),
+        ("Risk Auditor", red_team_command),
     ]
 
 
@@ -1318,6 +1369,7 @@ def output_files_for_rerun_step(step_name: str, date: str, brief_type: str) -> l
             path
             for path in (
                 DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.md",
+                DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.html",
                 DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.json",
             )
             if path.exists()
@@ -1327,6 +1379,7 @@ def output_files_for_rerun_step(step_name: str, date: str, brief_type: str) -> l
             path
             for path in (
                 DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.md",
+                DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.html",
                 DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.json",
             )
             if path.exists()
@@ -1395,11 +1448,17 @@ def normalize_date(value: str) -> str:
 
 
 def find_report_file(directory: Path, basename: str) -> Path | None:
-    exact = directory / f"{basename}.md"
-    if exact.exists():
-        return exact
-    candidates = sorted(directory.glob(f"{basename}*.md")) if directory.exists() else []
-    return candidates[-1] if candidates else None
+    for suffix in (".html", ".md"):
+        exact = directory / f"{basename}{suffix}"
+        if exact.exists():
+            return exact
+    if not directory.exists():
+        return None
+    for suffix in (".html", ".md"):
+        candidates = sorted(directory.glob(f"{basename}*{suffix}"))
+        if candidates:
+            return candidates[-1]
+    return None
 
 
 def read_markdown_result(
@@ -1408,15 +1467,28 @@ def read_markdown_result(
     humanize_investment_terms: bool = False,
 ) -> dict[str, Any]:
     if not path or not path.exists():
-        return {"exists": False, "path": "", "content": ""}
+        return {"exists": False, "path": "", "content": "", "format": ""}
     content = path.read_text(encoding="utf-8")
-    if humanize_investment_terms:
+    file_format = "html" if path.suffix.lower() == ".html" else "markdown"
+    if file_format == "html":
+        content = productize_report_text(content)
+    elif humanize_investment_terms:
         content = humanize_investment_report(content)
     return {
         "exists": True,
         "path": relative_path(path),
         "content": content,
+        "format": file_format,
     }
+
+
+def artifact_label_from_path(path: Path) -> str:
+    parts = set(path.parts)
+    if "red_team_audits" in parts:
+        return "Risk Audit"
+    if "briefs" in parts:
+        return "IC Brief"
+    return "Report"
 
 
 def humanize_investment_report(content: str) -> str:
@@ -1505,20 +1577,20 @@ def humanize_investment_report(content: str) -> str:
         lambda match: f"{match.group(1)}={direction_labels[match.group(2)]}",
         rendered,
     )
-    return rendered
+    return productize_report_text(rendered)
 
 
 def resolve_artifact_path(path_text: str) -> Path:
     if not path_text.strip():
-        raise HTTPException(status_code=400, detail="产物路径不能为空。")
+        raise HTTPException(status_code=400, detail="报告路径不能为空。")
     if Path(path_text).is_absolute():
         raise HTTPException(status_code=400, detail="只能读取项目内产物。")
     candidate = (PROJECT_ROOT / path_text).resolve()
     data_root = DATA_DIR.resolve()
     if not candidate.is_relative_to(data_root):
         raise HTTPException(status_code=400, detail="只能读取 data 目录下的产物。")
-    if candidate.suffix.lower() != ".md":
-        raise HTTPException(status_code=400, detail="当前只支持查看 Markdown 产物。")
+    if candidate.suffix.lower() not in {".md", ".html"}:
+        raise HTTPException(status_code=400, detail="当前只支持查看 Markdown / HTML 产物。")
     if not candidate.exists():
         raise HTTPException(status_code=404, detail="产物文件不存在。")
     return candidate
@@ -1589,7 +1661,7 @@ def build_prompt_markdown(
     prompt_text: str,
 ) -> str:
     lines = [
-        "# Perplexity 深度研究 Prompt",
+        "# Deep Research Prompt",
         "",
         f"- prompt_id: {prompt_id}",
         f"- related_signal_id: {related_signal_id or 'unknown'}",
@@ -1897,8 +1969,10 @@ def cleanup_deep_research_rerun_outputs(date: str, brief_type: str) -> list[str]
         DATA_DIR / "recommendations" / compact,
         DATA_DIR / "agent_logs" / compact,
         DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.md",
+        DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.html",
         DATA_DIR / "briefs" / compact / f"BRIEF-{compact}-{suffix}.json",
         DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.md",
+        DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.html",
         DATA_DIR / "red_team_audits" / compact / f"AUDIT-{compact}-{suffix}.json",
     ):
         remove_path(path, removed)
@@ -2279,14 +2353,21 @@ def find_recorded_run_artifacts(run_id: str) -> dict[str, str]:
             continue
         for path_text in paths:
             path = Path(str(path_text))
-            if path.suffix.lower() != ".md":
+            if path.suffix.lower() not in {".md", ".html"}:
                 continue
             path_parts = set(path.parts)
             if "briefs" in path_parts:
-                artifacts["brief"] = relative_path(path)
+                record_artifact_path(artifacts, "brief", path)
             elif "red_team_audits" in path_parts:
-                artifacts["audit"] = relative_path(path)
+                record_artifact_path(artifacts, "audit", path)
     return artifacts
+
+
+def record_artifact_path(artifacts: dict[str, str], key: str, path: Path) -> None:
+    current = artifacts.get(key)
+    if current and not (Path(current).suffix.lower() == ".md" and path.suffix.lower() == ".html"):
+        return
+    artifacts[key] = relative_path(path)
 
 
 def build_run_progress(run_id: str) -> dict[str, Any]:
@@ -2519,11 +2600,11 @@ def get_trial_status() -> dict[str, Any]:
     filled = [prompt for prompt in prompts if prompt["status"] == "filled"]
     skipped = [prompt for prompt in prompts if prompt["status"] == "skipped"]
     return {
-        "mode": "AI Native 投委会",
+        "mode": "ResearchOS",
         "long_disabled": False,
         "allowed_directions": "投资建议 / 观察 / 回避 / 暂不判断",
         "recommendation_output": "直接输出操作建议，不展示内部方向标签",
-        "data_scope": "公开价量/成交额初筛 + 手动 Perplexity 回填",
+        "data_scope": "公开异动扫描 + Deep Research Inbox",
         "total_perplexity": len(prompts),
         "pending_perplexity": len(pending),
         "filled_perplexity": len(filled),
@@ -2683,12 +2764,12 @@ def build_company_flow(trial: dict[str, Any]) -> list[dict[str, Any]]:
     pending = int(trial.get("pending_perplexity") or 0)
     filled = int(trial.get("filled_perplexity") or 0)
     return [
-        {"label": "K deep 研究总监", "metric": "Gate 1-7", "state": "框架追问"},
-        {"label": "Perplexity 研究员", "metric": f"{pending} 待回填", "state": "质量门"},
-        {"label": "知识库", "metric": f"{filled} 已回填", "state": "永久沉淀"},
-        {"label": "三位投资合伙人", "metric": "F partner / W partner / G partner", "state": "并行分析"},
-        {"label": "Chairman CIO", "metric": "投资建议", "state": "裁决"},
-        {"label": "Red Team", "metric": "反对意见", "state": "审计"},
+        {"label": "异常扫描", "metric": "Stock Pool", "state": "发现异动"},
+        {"label": "Deep Research Inbox", "metric": f"{pending} 待补充", "state": "质量门"},
+        {"label": "知识库", "metric": f"{filled} 已沉淀", "state": "复用记忆"},
+        {"label": "策略 Agent", "metric": "Value / Momentum / Quality", "state": "并行分析"},
+        {"label": "CIO Agent", "metric": "投委会报告", "state": "裁决导航"},
+        {"label": "Risk Auditor", "metric": "风险审计", "state": "反证检查"},
     ]
 
 

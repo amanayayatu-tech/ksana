@@ -1,87 +1,122 @@
 {% extends "base.html" %}
-{% block title %}使用指南 · Nepha AI IC{% endblock %}
+{% block title %}样例指南 · WorldPay IC{% endblock %}
 
 {% block content %}
 <div class="grid">
   <section class="guide-hero">
     <div>
       <div class="status-grid">
-        <span class="pill ok">操作手册</span>
-        <span class="pill">日频系统</span>
-        <span class="pill warn">Nepha 最终拍板</span>
+        <span class="pill ok">使用指南</span>
+        <span class="pill">样例报告</span>
+        <span class="pill warn">非买卖建议</span>
       </div>
-      <h1 class="guide-title">把 AI Native 投资公司当成每天的投研操作台</h1>
+      <h1 class="guide-title">让客户先看到输出质量，而不是系统内部</h1>
       <p class="guide-subtitle">
-        这个系统不是自动交易器。它每天帮你完成研究发现、Perplexity 深度研究回填、三位投资合伙人并行分析、Chairman CIO 裁决、Red Team 反对审计和知识沉淀。你的工作是维护股池、把控研究质量门、阅读操作建议，并决定是否继续跟踪、补研究或执行自己的投资动作。
+        ResearchOS 的外部体验围绕一条投研任务流展开：选股票池、跑扫描、补深度研究、生成 IC Brief、阅读 Risk Audit、归档复盘。报告会保留关键信息密度，但把重点结论、分歧、等待条件和风险触发器放在阅读路径最前面。
       </p>
     </div>
-    <div class="guide-visual" aria-label="系统运转示意图">
+    <div class="guide-visual" aria-label="ResearchOS 产品化示意图">
       <div class="guide-orbit"></div>
-      <div class="guide-core">Nepha GP<br>最终决策</div>
-      <div class="guide-node node-research">K deep<small>扫描股池，编排研究任务</small></div>
-      <div class="guide-node node-perplexity">Perplexity<small>人类提交，深度研究回填</small></div>
-      <div class="guide-node node-partners">F / W / G partner<small>三套方法论并行分析</small></div>
-      <div class="guide-node node-red">Red Team<small>反对意见与风险触发器</small></div>
+      <div class="guide-core">WorldPay IC<br>Alpha Committee</div>
+      <div class="guide-node node-research">Anomaly Scanner<small>把异动转成研究问题</small></div>
+      <div class="guide-node node-perplexity">Deep Research Inbox<small>承接高质量外部研究</small></div>
+      <div class="guide-node node-partners">Partner Agents<small>Value / Momentum / Quality</small></div>
+      <div class="guide-node node-red">Risk Auditor<small>反证、缺口和触发器</small></div>
     </div>
   </section>
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">每日运转链路</h2>
-      <span class="pill ok">从信号到操作建议</span>
+      <h2 class="panel-title">每日任务流</h2>
+      <span class="pill ok">从异动到可读报告</span>
     </div>
     <div class="panel-body">
       <div class="guide-flow">
-        <div class="flow-step"><strong>1. 维护股票池</strong><span>在“股票池”里维护 Nepha 真正关心的 HK/US 标的；系统只围绕这个池子工作。</span></div>
-        <div class="flow-step"><strong>2. 运行投委会</strong><span>早间或晚间触发 K deep 扫描；价量只是入口，核心是研究任务编排。</span></div>
-        <div class="flow-step"><strong>3. 回填 Perplexity</strong><span>进入“研究中枢”，把 Deep Research 导出的 Markdown 拖入回填区。</span></div>
-        <div class="flow-step"><strong>4. 重跑投委会</strong><span>回填后重跑 F / W / G partner、Chairman 和 Red Team，页面会显示实时步骤。</span></div>
-        <div class="flow-step"><strong>5. 阅读报告</strong><span>在“运行档案”打开 Brief 和 Red Team，重点看操作建议、等待条件和风险触发器。</span></div>
-        <div class="flow-step"><strong>6. 复盘沉淀</strong><span>知识库会保留研究结论、未关闭问题和相似案例，下一次先复用再追问。</span></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="guide-split">
-    <div class="panel">
-      <div class="panel-head">
-        <h2 class="panel-title">你每天该怎么用</h2>
-        <span class="pill">Nepha 工作流</span>
-      </div>
-      <div class="panel-body guide-checklist">
-        <div class="guide-item"><span class="guide-index">1</span><div><strong>先看是否有待回填研究</strong><span>研究中枢默认显示待回填任务。不要跳过 Perplexity 质量门，因为三位 partner 的分析质量取决于这份研究报告。</span></div></div>
-        <div class="guide-item"><span class="guide-index">2</span><div><strong>拖入 Perplexity Markdown</strong><span>把 Perplexity 导出的 `.md` 文件直接拖到答案窗口。系统会识别 prompt_id，保存回填，并抽取知识卡片。</span></div></div>
-        <div class="guide-item"><span class="guide-index">3</span><div><strong>点击重跑投委会链路</strong><span>重跑后不要盯终端。页面会显示当前步骤、预计耗时和运行档案；切到其他页面再回来也会续接。</span></div></div>
-        <div class="guide-item"><span class="guide-index">4</span><div><strong>读“操作建议汇总”</strong><span>不要再看 0% 仓位。真正该看的是建议动作、理由、等待条件、风险触发器，以及是否需要你人工拍板。</span></div></div>
-        <div class="guide-item"><span class="guide-index">5</span><div><strong>用 Red Team 反过来审自己</strong><span>Red Team 的价值不是格式检查，而是指出这次判断可能被什么证据推翻。</span></div></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2 class="panel-title">每个页面负责什么</h2>
-        <span class="pill ok">导航地图</span>
-      </div>
-      <div class="panel-body guide-map">
-        <div class="guide-item"><span class="guide-index">IC</span><div><strong>投委会</strong><span>触发早间/晚间系统运行，看公司记忆和最新报告入口。</span></div></div>
-        <div class="guide-item"><span class="guide-index">R</span><div><strong>研究中枢</strong><span>处理 Perplexity prompt、拖入 Markdown、保存回填、重跑投委会链路。</span></div></div>
-        <div class="guide-item"><span class="guide-index">H</span><div><strong>运行档案</strong><span>查看每一次 run 的状态、步骤进度、Brief 和 Red Team 审计报告。</span></div></div>
-        <div class="guide-item"><span class="guide-index">P</span><div><strong>股票池</strong><span>维护系统每日扫描和分析的对象边界。股池质量决定系统注意力质量。</span></div></div>
-        <div class="guide-item"><span class="guide-index">E</span><div><strong>环境</strong><span>检查 LLM provider、模型、Codex 登录状态和运行依赖。</span></div></div>
+        <div class="flow-step"><strong>1. 选择股票池</strong><span>限定今天的扫描范围，避免把注意力浪费在无关标的上。</span></div>
+        <div class="flow-step"><strong>2. 运行今日扫描</strong><span>识别公开异动，把价格变化转成非共识研究问题。</span></div>
+        <div class="flow-step"><strong>3. 查看异常信号</strong><span>确认哪些信号值得进入深度研究，哪些只需归档观察。</span></div>
+        <div class="flow-step"><strong>4. 填入深度研究</strong><span>把外部研究结论放入 Deep Research Inbox，沉淀成知识卡片。</span></div>
+        <div class="flow-step"><strong>5. 生成投委会报告</strong><span>CIO Agent 汇总三位 Partner 的分歧、等待条件和触发器。</span></div>
+        <div class="flow-step"><strong>6. 查看风险审计</strong><span>Risk Auditor 检查证据缺口、共识陷阱和反向情景。</span></div>
+        <div class="flow-step"><strong>7. 归档复盘</strong><span>把本次判断变成下一次研究可复用的历史样本。</span></div>
       </div>
     </div>
   </section>
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">如何读最终报告</h2>
-      <span class="pill warn">不替代你的决策</span>
+      <h2 class="panel-title">三份样例报告</h2>
+      <span class="pill">阅读者先抓重点</span>
     </div>
-    <div class="panel-body guide-checklist">
-      <div class="guide-item"><span class="guide-index">A</span><div><strong>先读 Chairman 裁决</strong><span>看 final verdict、CIO 路由和暂时更信任哪位 partner。它告诉你系统当前更倾向等待、补研究、回避还是行动候选。</span></div></div>
-      <div class="guide-item"><span class="guide-index">B</span><div><strong>再读操作建议汇总</strong><span>逐行看 F / W / G partner 的建议动作、理由、等待条件、风险触发器。这里是你第二天跟踪和提问的清单。</span></div></div>
-      <div class="guide-item"><span class="guide-index">C</span><div><strong>最后读 Red Team</strong><span>如果 Red Team 给出 block 或 challenge，就不要只看正方叙事；优先关闭反证和未验证项。</span></div></div>
-      <div class="guide-item"><span class="guide-index">D</span><div><strong>仓位由你自己定</strong><span>系统只给操作建议和风险边界，不给仓位百分比。任何真实交易动作都必须由 Nepha 结合账户、现金、风险预算和现实约束自行决定。</span></div></div>
+    <div class="panel-body">
+      <div class="sample-report-grid">
+        <article class="sample-report-card">
+          <span class="agent-tag">NVDA 异动研究报告</span>
+          <h3>AI 服务器预期再定价</h3>
+          <div class="sample-block"><h4>今日异动是什么</h4><p>成交额放大，股价跟随 AI 服务器链预期上修；市场在重新定价下一轮数据中心资本开支。</p></div>
+          <div class="sample-block"><h4>市场共识解释</h4><p>云厂商继续上调 AI 投入，Blackwell 需求强，供给紧张反而强化短期收入可见度。</p></div>
+          <div class="sample-block"><h4>非共识问题</h4><p>订单是否已经被过度提前反映？毛利率、供给瓶颈和客户集中度是否会压缩估值弹性？</p></div>
+          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 等估值回落；Momentum Partner 观察放量突破能否延续；Quality Partner 要确认毛利率和客户结构。</p></div>
+          <div class="sample-block"><h4>最终结论</h4><p>观察。等待条件是财报确认订单和毛利率；风险触发器是资本开支下修、交付瓶颈或核心客户延迟采购。</p></div>
+        </article>
+
+        <article class="sample-report-card">
+          <span class="agent-tag">BABA 投委会裁决报告</span>
+          <h3>低估值反弹还是基本面拐点</h3>
+          <div class="sample-block"><h4>今日异动是什么</h4><p>ADR 与港股同步放量反弹，回购、云业务和消费复苏叙事同时升温。</p></div>
+          <div class="sample-block"><h4>市场共识解释</h4><p>估值处于历史低位，监管预期趋稳，云与 AI 业务可能带来重新估值。</p></div>
+          <div class="sample-block"><h4>非共识问题</h4><p>消费复苏质量是否足够？云业务商业化能否抵消主业竞争？股东回报是否能改变长期折价？</p></div>
+          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 认为赔率开始改善；Momentum Partner 要等趋势确认；Quality Partner 关注治理、现金流和核心业务执行。</p></div>
+          <div class="sample-block"><h4>最终结论</h4><p>等待条件。需要看到云收入改善、回购持续和核心电商利润稳定；风险触发器是竞争加剧或政策预期反复。</p></div>
+        </article>
+
+        <article class="sample-report-card">
+          <span class="agent-tag">AMD Risk Auditor 风险审计报告</span>
+          <h3>AI 芯片追赶叙事的反证清单</h3>
+          <div class="sample-block"><h4>今日异动是什么</h4><p>AI 加速卡订单预期波动，市场在押注 MI 系列能否拿到更多数据中心份额。</p></div>
+          <div class="sample-block"><h4>市场共识解释</h4><p>客户希望引入第二供应商，AMD 可能受益于供应链分散和 AI 芯片需求扩张。</p></div>
+          <div class="sample-block"><h4>非共识问题</h4><p>软件生态、客户集中、交付节奏和毛利率是否足以支撑当前估值？</p></div>
+          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 谨慎看估值；Momentum Partner 看相对强弱和订单修正；Quality Partner 要求软件生态与执行证据。</p></div>
+          <div class="sample-block"><h4>最终结论</h4><p>观察。等待条件是大客户订单与毛利率确认；风险触发器是出货延迟、生态进展不及预期或指引下修。</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">三位 Partner Agent</h2>
+      <span class="pill warn">演示战绩为样例，不构成收益承诺</span>
+    </div>
+    <div class="panel-body">
+      <div class="partner-grid">
+        <article class="partner-card">
+          <span class="agent-tag">Value Partner</span>
+          <h3>低估值与安全边际</h3>
+          <div class="sample-block"><h4>过往战绩样例</h4><p>2023-2025 年跟踪 MSFT，在云业务增长与利润率改善确认后持续观察，样例区间回报约 +58%。</p></div>
+          <div class="sample-block"><h4>投资风格</h4><p>偏重现金流、估值分位、坏消息计入程度和下行保护，不追逐单日情绪。</p></div>
+          <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>估值低不等于便宜，必须解释价值回归路径。</li><li>安全边际优先于叙事强度。</li><li>缺少现金流证据时只输出观察或等待条件。</li></ul></div>
+          <div class="sample-block"><h4>个股分析样例：BABA</h4><p>核心问题不是“够不够便宜”，而是回购、云业务和主业利润能否共同关闭估值折价。等待条件：利润率稳定与股东回报持续。</p></div>
+        </article>
+
+        <article class="partner-card">
+          <span class="agent-tag">Momentum Partner</span>
+          <h3>趋势、修正与资金确认</h3>
+          <div class="sample-block"><h4>过往战绩样例</h4><p>2023-2024 年跟踪 NVDA，在业绩预期连续上修与放量趋势确认后保持强势观察，样例区间回报约 +210%。</p></div>
+          <div class="sample-block"><h4>投资风格</h4><p>关注趋势持续性、成交量、相对强弱、分析师预期修正和事件催化。</p></div>
+          <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>单日上涨不算趋势，必须有持续确认。</li><li>突破需要成交量和预期修正配合。</li><li>趋势破坏时优先降低结论强度。</li></ul></div>
+          <div class="sample-block"><h4>个股分析样例：NVDA</h4><p>如果放量突破后财报继续确认订单和毛利率，趋势仍有延续基础；若资本开支预期下修，则趋势信号失效。</p></div>
+        </article>
+
+        <article class="partner-card">
+          <span class="agent-tag">Quality Partner</span>
+          <h3>质量、护城河与执行</h3>
+          <div class="sample-block"><h4>过往战绩样例</h4><p>2022-2025 年跟踪 AMD，在数据中心业务扩张与执行改善阶段持续复核，样例区间回报约 +76%。</p></div>
+          <div class="sample-block"><h4>投资风格</h4><p>关注商业模式质量、客户黏性、产品周期、管理层执行和财务韧性。</p></div>
+          <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>增长必须能转化为利润质量。</li><li>客户集中和产品周期风险必须显式列出。</li><li>没有执行证据时不把好故事当成好公司。</li></ul></div>
+          <div class="sample-block"><h4>个股分析样例：AMD</h4><p>关键不是“能否追赶”，而是软件生态、客户订单和毛利率能否同时验证。等待条件：大客户复购与利润率改善。</p></div>
+        </article>
+      </div>
     </div>
   </section>
 </div>

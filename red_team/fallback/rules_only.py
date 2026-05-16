@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from chairman.models import Recommendation, ResearchSignal
+from orchestrator.reporting.html_renderer import ReportPresentation, render_report_html
 from red_team.core.audit_assembler import assemble_audit
 from red_team.output.json_metadata_renderer import render_json_metadata
 from red_team.output.markdown_renderer import render_markdown
@@ -36,10 +37,20 @@ def rules_only_fallback(
     output_dir = root / "red_team_audits" / compact
     output_dir.mkdir(parents=True, exist_ok=True)
     md_path = output_dir / f"{audit.audit_id}.md"
+    html_path = output_dir / f"{audit.audit_id}.html"
     json_path = output_dir / f"{audit.audit_id}.json"
-    md_path.write_text(
-        f"# ⚠️ Red Team LLM 失败，仅规则审计部分有效\n\n失败原因：{failure_reason}\n\n"
-        + render_markdown(audit),
+    markdown = f"# ⚠️ Risk Auditor 失败，仅规则审计部分有效\n\n失败原因：{failure_reason}\n\n" + render_markdown(audit)
+    md_path.write_text(markdown, encoding="utf-8")
+    html_path.write_text(
+        render_report_html(
+            markdown,
+            ReportPresentation(
+                title=f"Risk Auditor rules-only fallback — {audit.audit_id}",
+                report_label="Rules-only Audit",
+                eyebrow="RESEARCHOS RISK FALLBACK",
+                source_path=md_path.name,
+            ),
+        ),
         encoding="utf-8",
     )
     json_path.write_text(render_json_metadata(audit), encoding="utf-8")

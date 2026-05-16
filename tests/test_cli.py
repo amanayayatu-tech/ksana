@@ -62,4 +62,7 @@ def test_cli_validate_and_generate_three_brief_types(tmp_path):
         )
         assert result.exit_code == 0, result.output
         assert (data_dir / "briefs" / "20260513" / f"BRIEF-20260513-{suffix}.md").exists()
+        html_path = data_dir / "briefs" / "20260513" / f"BRIEF-20260513-{suffix}.html"
+        assert html_path.exists()
+        assert "report-hero" in html_path.read_text(encoding="utf-8")
         assert (data_dir / "briefs" / "20260513" / f"BRIEF-20260513-{suffix}.json").exists()

@@ -15,6 +15,17 @@ class NotOkLLM:
         return "NOT OK"
 
 
+def test_env_page_is_available_from_sidebar_meta():
+    response = TestClient(webui.app).get("/env")
+
+    assert response.status_code == 200
+    assert "LLM API 设置" in response.text
+    assert 'href="/env"' in response.text
+    assert "Codex 登录" in response.text
+    assert "OPENAI_API_KEY" in response.text
+    assert "检测 LLM 调用" in response.text
+
+
 def test_env_reports_codex_status(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     example_path = tmp_path / ".env.example"

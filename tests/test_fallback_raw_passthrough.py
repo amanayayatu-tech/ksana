@@ -35,7 +35,7 @@ recommendation:
     )
 
     content = output_path.read_text(encoding="utf-8")
-    assert "Chairman 失败" in content
+    assert "CIO Agent 失败" in content
     assert "原始建议转发" in content
     assert "R-FP-20260513-001" in content
     assert (data_dir / "errors" / "CHAIRMAN-FAIL-20260513-01.log").exists()

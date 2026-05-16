@@ -11,6 +11,7 @@ import yaml
 from chairman.core.brief_assembler import build_brief_id
 from chairman.core.input_validator import collect_input_files, load_yaml_file
 from chairman.models import BriefType
+from orchestrator.reporting.html_renderer import ReportPresentation, render_report_html
 
 
 def fallback_passthrough(
@@ -44,13 +45,23 @@ def fallback_passthrough(
     output_dir = root / "briefs" / compact_date
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{brief_id}.md"
-    output_path.write_text(
-        render_fallback_markdown(
-            brief_id=brief_id,
-            failure_reason=failure_reason,
-            error_log_id=error_log_id,
-            research_signals=research_signals,
-            recommendations=recommendations,
+    markdown = render_fallback_markdown(
+        brief_id=brief_id,
+        failure_reason=failure_reason,
+        error_log_id=error_log_id,
+        research_signals=research_signals,
+        recommendations=recommendations,
+    )
+    output_path.write_text(markdown, encoding="utf-8")
+    output_path.with_suffix(".html").write_text(
+        render_report_html(
+            markdown,
+            ReportPresentation(
+                title=f"CIO fallback — {brief_id}",
+                report_label="Fallback Brief",
+                eyebrow="RESEARCHOS FALLBACK REPORT",
+                source_path=output_path.name,
+            ),
         ),
         encoding="utf-8",
     )
@@ -68,9 +79,9 @@ def render_fallback_markdown(
     """Render raw passthrough fallback Markdown."""
 
     parts = [
-        f"# ⚠️ Chairman 失败 — 原始建议转发 {brief_id}",
+        f"# ⚠️ CIO Agent 失败 — 原始建议转发 {brief_id}",
         "",
-        "**注意**：Chairman 核心流程失败，以下是 3 个交易 Agent 的原始输出。",
+        "**注意**：CIO Agent 核心流程失败，以下是 3 个 Partner Agent 的原始输出。",
         "未做汇总、未做权重应用、未做分歧分析。请手动审查。",
         "",
         f"**失败原因**：{failure_reason}",
@@ -78,7 +89,7 @@ def render_fallback_markdown(
         "",
         "---",
         "",
-        "## K deep 研究信号原文",
+        "## 异常扫描信号原文",
         "",
     ]
     for signal in research_signals:
@@ -95,7 +106,7 @@ def render_fallback_markdown(
         [
             "---",
             "",
-            "> Chairman fallback v0.1。建议在修复 Chairman 后重新生成正式 brief。",
+            "> CIO Agent fallback v0.1。建议在修复后重新生成正式 IC Brief。",
             "",
         ]
     )

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}研究中枢 · Nepha AI IC{% endblock %}
+{% block title %}Deep Research Inbox · WorldPay IC{% endblock %}
 
 {% block content %}
 <div class="ops-board">
@@ -9,8 +9,8 @@
         <span id="promptStatus" class="pill">待加载</span>
         <span id="detailStatus" class="pill">未选择</span>
       </div>
-      <h1 class="command-title mt">研究任务编排台</h1>
-      <p class="command-subtitle">先看历史，再问新问题；Perplexity 回填后自动沉淀为公司记忆。</p>
+      <h1 class="command-title mt">Deep Research Inbox</h1>
+      <p class="command-subtitle">先看历史，再问新问题；深度研究回填后自动沉淀为知识库记忆。</p>
       <div class="metric-strip mt">
         <div class="metric-cell">
           <div class="metric-label">当前任务</div>
@@ -30,7 +30,7 @@
         <div class="metric-cell">
           <div class="metric-label">重跑链路</div>
           <div id="rerunMetric" class="metric-value">Agent</div>
-          <div class="metric-caption">Trading / CIO / Red Team</div>
+          <div class="metric-caption">Partner / CIO / Risk</div>
         </div>
       </div>
     </div>
@@ -41,12 +41,12 @@
         <div class="stage-state">先读</div>
       </div>
       <div class="stage-row">
-        <div class="stage-name">K deep Gate 1-7</div>
+        <div class="stage-name">Anomaly Gate 1-7</div>
         <div class="stage-metric">研究任务编排</div>
         <div class="stage-state">再问</div>
       </div>
       <div class="stage-row">
-        <div class="stage-name">Perplexity</div>
+        <div class="stage-name">Deep Research</div>
         <div class="stage-metric">Deep Research</div>
         <div class="stage-state">人工质量门</div>
       </div>
@@ -93,7 +93,7 @@
                 <th style="width: 150px;">signal</th>
                 <th style="width: 82px;">优先级</th>
                 <th style="width: 96px;">状态</th>
-                <th class="wrap">K deep 研究问题</th>
+                <th class="wrap">非共识研究问题</th>
               </tr>
             </thead>
             <tbody id="promptBody"></tbody>
@@ -114,13 +114,13 @@
       <div class="panel-body research-copy">
         <div class="textarea-duo">
           <label>
-            Perplexity Prompt
+            Deep Research Prompt
             <textarea id="promptText" class="textarea-large" readonly></textarea>
           </label>
           <label id="answerDropZone" class="drop-zone">
-            Perplexity 答案
-            <textarea id="answerText" class="textarea-large" placeholder="把 Perplexity 深度研究报告粘贴到这里"></textarea>
-            <span class="drop-hint">可直接拖入 Perplexity 导出的 .md 文件；识别到 prompt_id 会自动匹配任务。</span>
+            Deep Research 结果
+            <textarea id="answerText" class="textarea-large" placeholder="把深度研究报告粘贴到这里"></textarea>
+            <span class="drop-hint">可直接拖入 .md 文件；识别到 prompt_id 会自动匹配任务。</span>
           </label>
         </div>
         <div id="knowledgeReceipt" class="knowledge-receipt">
@@ -134,11 +134,11 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2 class="panel-title">回填后重跑投委会</h2>
+      <h2 class="panel-title">回填后重跑 Alpha Committee</h2>
       <span id="rerunStatus" class="pill">待命</span>
     </div>
     <div class="panel-body">
-      <p id="rerunHint" class="ops-note">Trading Agents → Chairman CIO → Red Team。</p>
+      <p id="rerunHint" class="ops-note">Partner Agents → CIO Agent → Risk Auditor。</p>
       <div class="control-grid mt">
         <label>
           日期
@@ -474,7 +474,7 @@
     source.addEventListener("start", (event) => {
       const data = JSON.parse(event.data);
       appendLog(`[${data.index}/${data.total}] ${data.step}`);
-      appendLog(`$ ${data.command}`);
+      appendLog("已启动当前步骤。");
     });
     source.addEventListener("log", (event) => appendLog(JSON.parse(event.data).line));
     source.addEventListener("status", (event) => {
@@ -498,7 +498,7 @@
         setPill(rerunStatus, "步骤跟踪中", "warn");
         if (data.run_id) {
           appendLog(`已创建运行档案：${data.run_id}`);
-          appendLog("页面将继续跟踪 Trading Agents、Chairman 和 Red Team 的实时步骤。");
+          appendLog("页面将继续跟踪 Partner Agents、CIO Agent 和 Risk Auditor 的实时步骤。");
           document.getElementById("rerunHint").innerHTML = `步骤跟踪中：<code>${escapeHtml(data.run_id)}</code>`;
           startRerunProgressPolling(data.run_id);
         }

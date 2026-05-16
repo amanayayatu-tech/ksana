@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}学习复盘 · Nepha AI IC{% endblock %}
+{% block title %}复盘库 · WorldPay IC{% endblock %}
 
 {% block content %}
 <div class="grid">
   <section class="panel">
     <div class="panel-head">
-      <h1 class="panel-title">学习复盘</h1>
+      <h1 class="panel-title">复盘库</h1>
       <div class="row">
         <span id="learningStatus" class="pill">待刷新</span>
         <button id="refreshTimelines">重建时间线</button>
@@ -72,7 +72,7 @@
             <tr>
               <th>日期</th>
               <th>股票</th>
-              <th>Chairman</th>
+              <th>CIO Agent</th>
               <th>方向</th>
               <th>共识</th>
               <th>时间线</th>
@@ -135,7 +135,7 @@
         <div><span class="pill">${escapeHtml(label)}</span></div>
         <div>
           <div class="memory-title">${escapeHtml(JSON.stringify(value))}</div>
-          <div class="memory-meta">用于 Chairman 权重和月度复盘，不反向污染 partner 方法论。</div>
+          <div class="memory-meta">用于 CIO Agent 权重和月度复盘，不反向污染 Partner 方法论。</div>
         </div>
       </div>
     `).join("");
