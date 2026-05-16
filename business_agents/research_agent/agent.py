@@ -10,10 +10,9 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader
 
 from business_agents._common.base_agent import AgentRunResult, BaseBusinessAgent, write_yaml
-from business_agents._common.llm_client import LLMClient
+from business_agents._common.llm_client import LLMClient, LLMError, build_llm_client_from_env
 from business_agents._common.knowledge_store import build_research_planning_context
 from business_agents._common.market_data.yfinance_client import YFinanceClient
-from business_agents._common.methodology_loader import MethodologyLoader
 from business_agents._common.output_validator import (
     OutputValidationError,
     validate_research_agent_output,
@@ -29,6 +28,7 @@ from business_agents.research_agent.methodology_profile import (
     build_gate_question_groups,
     build_methodology_profile_snapshot,
 )
+from business_agents.research_agent.cold_start_research_planner import build_cold_start_prompts
 
 
 class ResearchAgent(BaseBusinessAgent):
@@ -60,13 +60,17 @@ class ResearchAgent(BaseBusinessAgent):
         """Run deterministic public price/volume scan and write local artifacts."""
 
         stock_pool = StockPool.load(self.data_dir)
-        system_prompt = MethodologyLoader(self.project_root).load(self.methodology_id)
-        user_prompt = self.render_user_prompt(stock_pool, trigger_type)
-        llm_messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-        llm_used = False
-        _ = no_llm
+        _ = trigger_type
+        llm_client = self._cold_start_llm_client(no_llm=no_llm)
+        cold_start_llm_messages: list[dict[str, Any]] = []
 
-        payload = self.build_scan_payload(stock_pool)
+        payload = self.build_scan_payload(
+            stock_pool,
+            llm_client=llm_client,
+            cold_start_enabled=not no_llm,
+            cold_start_trace_messages=cold_start_llm_messages,
+        )
+        llm_used = bool(cold_start_llm_messages) or bool(payload.get("run_summary", {}).get("cold_start_llm_used"))
         try:
             result = validate_research_agent_output(payload, stock_pool)
         except OutputValidationError as exc:
@@ -88,12 +92,23 @@ class ResearchAgent(BaseBusinessAgent):
                 "llm_used": llm_used,
                 "scan_mode": "public_price_volume",
                 "signals_generated": len(result.research_signals),
-                "prompts_generated": len(result.perplexity_prompt_brief.prompts),
+                "prompts_generated": len(result.perplexity_prompt_brief.prompts)
+                + len(result.perplexity_prompt_brief.cold_start_prompts),
                 "output_files": [str(path) for path in output_files],
             },
-            llm_messages,
+            cold_start_llm_messages,
         )
         return AgentRunResult(run_id=self.run_id, output_files=output_files, llm_used=llm_used)
+
+    def _cold_start_llm_client(self, *, no_llm: bool) -> LLMClient | None:
+        if no_llm:
+            return None
+        if self.llm_client is not None:
+            return self.llm_client
+        try:
+            return build_llm_client_from_env()
+        except LLMError:
+            return None
 
     def render_user_prompt(self, stock_pool: StockPool, trigger_type: str) -> str:
         recent_market_data = self._recent_market_data(stock_pool)
@@ -110,16 +125,26 @@ class ResearchAgent(BaseBusinessAgent):
 
         return self.build_scan_payload(stock_pool)
 
-    def build_scan_payload(self, stock_pool: StockPool) -> dict[str, Any]:
+    def build_scan_payload(
+        self,
+        stock_pool: StockPool,
+        *,
+        llm_client: LLMClient | None = None,
+        cold_start_enabled: bool = True,
+        cold_start_trace_messages: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Scan every HK/US main-pool ticker and emit only rule-triggered signals."""
 
         today = self.compact_run_date
         emitted_at = datetime.now().astimezone().isoformat()
         signals: list[dict[str, Any]] = []
         prompts: list[dict[str, Any]] = []
+        cold_start_prompts: list[dict[str, Any]] = []
+        cold_start_errors: list[dict[str, Any]] = []
         no_signal_tickers: list[str] = []
         data_failures: list[dict[str, Any]] = []
         scanned_tickers: list[str] = []
+        active_llm_client = (llm_client if llm_client is not None else self.llm_client) if cold_start_enabled else None
 
         entries = [
             entry
@@ -186,6 +211,64 @@ class ResearchAgent(BaseBusinessAgent):
                 non_consensus_screener=non_consensus_screener,
             )
             methodology_profile = k_deep_question_set["methodology_profile"]
+            cold_start_prompt_records: list[dict[str, Any]] = []
+            if (
+                prompt_id
+                and not research_planning_context.get("history_found")
+                and not research_planning_context.get("cold_start_pending")
+                and active_llm_client is not None
+            ):
+                try:
+                    cold_start_items = build_cold_start_prompts(
+                        entry.ticker,
+                        entry.name,
+                        entry.market,
+                        triggers,
+                        features,
+                        active_llm_client,
+                        trace_messages=cold_start_trace_messages,
+                    )
+                    cold_start_prompt_records = build_cold_start_prompt_records(
+                        today=today,
+                        target_key=target_key,
+                        signal_id=signal_id,
+                        ticker=entry.ticker,
+                        name=entry.name,
+                        market=entry.market,
+                        cold_start_items=cold_start_items,
+                        research_planning_context=research_planning_context,
+                        research_task_plan=research_task_plan,
+                    )
+                except Exception as exc:
+                    cold_start_errors.append(
+                        {
+                            "ticker": entry.ticker,
+                            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                        }
+                    )
+            if cold_start_prompt_records:
+                pending_summaries = [
+                    cold_start_pending_summary(record) for record in cold_start_prompt_records
+                ]
+                research_planning_context["cold_start_pending"] = pending_summaries
+                research_planning_context.setdefault("prompt_directives", []).append(
+                    f"当前存在 {len(pending_summaries)} 条未完成的冷启动历史研究，Trading Agent 评估结论置信度不得超过 50%。"
+                )
+                research_task_plan.setdefault("memory_reuse_policy", {})[
+                    "cold_start_pending"
+                ] = pending_summaries
+                research_task_plan["focus_tracks"] = unique_preserve_order(
+                    ["cold_start_historical_research", *research_task_plan.get("focus_tracks", [])]
+                )
+                k_deep_question_set["research_planning_context"] = research_planning_context
+                k_deep_question_set["research_task_plan"] = research_task_plan
+                cold_start_prompts.extend(cold_start_prompt_records)
+            prompt_ids_requested = [prompt_id] if prompt_id else []
+            prompt_ids_requested.extend(record["prompt_id"] for record in cold_start_prompt_records)
+            prompt_ids_requested.extend(
+                cold_start_pending_prompt_ids(research_planning_context.get("cold_start_pending") or [])
+            )
+            prompt_ids_requested = unique_preserve_order(prompt_ids_requested)
             signal = {
                 "research_signal_id": signal_id,
                 "emitted_at": emitted_at,
@@ -275,10 +358,10 @@ class ResearchAgent(BaseBusinessAgent):
                     "delivery_notes": "file-system handoff",
                 },
                 "perplexity_research": {
-                    "prompts_requested": [prompt_id] if prompt_id else [],
+                    "prompts_requested": prompt_ids_requested,
                     "prompts_filled_back": [],
                     "prompts_skipped_by_nepha": [],
-                    "prompts_pending": [prompt_id] if prompt_id else [],
+                    "prompts_pending": prompt_ids_requested,
                     "results_summary": None,
                     "confidence_after_research": None,
                     "coverage_ratio": 0,
@@ -329,6 +412,7 @@ class ResearchAgent(BaseBusinessAgent):
             "perplexity_prompt_brief": {
                 "brief_id": f"PRBRIEF-{today}-001",
                 "prompts": prompts,
+                "cold_start_prompts": cold_start_prompts,
             },
             "run_summary": {
                 "run_id": self.run_id,
@@ -346,7 +430,14 @@ class ResearchAgent(BaseBusinessAgent):
                 "signals_generated": len(signals),
                 "no_signal_tickers": no_signal_tickers,
                 "data_failures": data_failures,
-                "perplexity_prompts_generated": len(prompts),
+                "perplexity_prompts_generated": len(prompts) + len(cold_start_prompts),
+                "cold_start_prompts_generated": len(cold_start_prompts),
+                "cold_start_llm_used": any(
+                    prompt.get("generation_source") == "llm_cold_start_planner"
+                    for prompt in cold_start_prompts
+                ),
+                "cold_start_llm_attempted": bool(cold_start_trace_messages),
+                "cold_start_errors": cold_start_errors,
             },
         }
 
@@ -359,7 +450,8 @@ class ResearchAgent(BaseBusinessAgent):
                     {"research_signal": signal},
                 )
             )
-        for prompt in payload["perplexity_prompt_brief"]["prompts"]:
+        prompt_brief = payload["perplexity_prompt_brief"]
+        for prompt in [*prompt_brief.get("prompts", []), *prompt_brief.get("cold_start_prompts", [])]:
             output_files.append(
                 write_yaml(self.data_dir / "pull_requests" / f"{prompt['prompt_id']}.yaml", prompt)
             )
@@ -386,6 +478,61 @@ class ResearchAgent(BaseBusinessAgent):
     def _write_error(self, message: str, payload: dict[str, Any]) -> None:
         path = self.data_dir / "errors" / f"{self.run_id}.json"
         write_yaml(path, {"error": message, "payload": payload})
+
+
+def build_cold_start_prompt_records(
+    *,
+    today: str,
+    target_key: str,
+    signal_id: str,
+    ticker: str,
+    name: str,
+    market: str,
+    cold_start_items: list[dict[str, Any]],
+    research_planning_context: dict[str, Any],
+    research_task_plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Shape LLM cold-start prompts as Deep Research pull-request records."""
+
+    records: list[dict[str, Any]] = []
+    for index, item in enumerate(cold_start_items[:5], start=1):
+        record = {
+            **item,
+            "prompt_id": f"PR-{today}-{target_key}-COLDSTART-{index}",
+            "related_signal_id": signal_id,
+            "priority": "P0",
+            "status": "pending_cold_start",
+            "ticker": ticker,
+            "market": market,
+            "company_name": name,
+            "research_planning_context": research_planning_context,
+            "research_task_plan": research_task_plan,
+        }
+        records.append(record)
+    return records
+
+
+def cold_start_pending_summary(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "prompt_id": record.get("prompt_id"),
+        "status": record.get("status", "pending_cold_start"),
+        "research_dimension": record.get("research_dimension"),
+        "research_dimension_label": record.get("research_dimension_label"),
+        "research_horizon": record.get("research_horizon"),
+        "priority_order": record.get("priority_order"),
+        "title": record.get("title"),
+    }
+
+
+def cold_start_pending_prompt_ids(items: list[Any]) -> list[str]:
+    prompt_ids: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        prompt_id = str(item.get("prompt_id") or "").strip()
+        if prompt_id:
+            prompt_ids.append(prompt_id)
+    return prompt_ids
 
 
 def build_price_volume_features(ticker: str, history: list[dict[str, Any]]) -> dict[str, Any]:
@@ -783,11 +930,14 @@ def build_non_consensus_screener(
 
 
 def render_research_planning_context_for_prompt(context: dict[str, Any]) -> str:
+    cold_start_pending = context.get("cold_start_pending") or []
     if not context or not context.get("history_found"):
-        return (
-            "- 知识库没有找到同标的可复用研究；本次报告必须建立第一份可沉淀股票档案。\n"
-            "- 输出时请明确哪些事实已验证、哪些问题仍未关闭、哪些结论需要设置有效期。"
-        )
+        lines = [
+            "- 知识库没有找到同标的可复用研究；本次报告必须建立第一份可沉淀股票档案。",
+            "- 输出时请明确哪些事实已验证、哪些问题仍未关闭、哪些结论需要设置有效期。",
+        ]
+        lines.extend(render_cold_start_pending_for_prompt(cold_start_pending))
+        return "\n".join(lines).strip()
     lines = ["- 已找到历史知识；请先复用，再提出新问题。"]
     lines.extend(render_prompt_list("已回答/已沉淀事实", context.get("answered_facts") or [], 5))
     lines.extend(render_prompt_list("不要重复研究", context.get("do_not_repeat") or [], 5))
@@ -801,8 +951,22 @@ def render_research_planning_context_for_prompt(context: dict[str, Any]) -> str:
                 f"- {case.get('prompt_id')} / {case.get('stock_code')}: "
                 f"{(case.get('event_summary') or case.get('company_conclusions') or ['未抽取摘要'])[0]}"
             )
+    lines.extend(render_cold_start_pending_for_prompt(cold_start_pending))
     lines.extend(render_prompt_list("本次优先刷新", context.get("questions_to_refresh") or [], 6))
     return "\n".join(lines).strip()
+
+
+def render_cold_start_pending_for_prompt(items: list[dict[str, Any]]) -> list[str]:
+    if not items:
+        return []
+    lines = ["冷启动历史研究待完成："]
+    for item in items[:5]:
+        label = item.get("research_dimension_label") or item.get("research_dimension") or "未分类"
+        lines.append(
+            f"- {item.get('prompt_id')}: {label} / {item.get('research_horizon') or 'unknown'} / "
+            f"priority {item.get('priority_order') or '?'}"
+        )
+    return lines
 
 
 def render_research_task_plan_for_prompt(plan: dict[str, Any]) -> str:

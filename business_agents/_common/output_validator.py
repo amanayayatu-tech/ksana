@@ -25,6 +25,7 @@ class PerplexityPrompt(BaseModel):
 class PerplexityPromptBrief(BaseModel):
     brief_id: str
     prompts: list[PerplexityPrompt] = Field(default_factory=list)
+    cold_start_prompts: list[PerplexityPrompt] = Field(default_factory=list)
 
 
 class ResearchAgentResult(BaseModel):

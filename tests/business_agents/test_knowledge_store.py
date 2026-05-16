@@ -155,6 +155,37 @@ def test_research_planning_context_reopens_history_gaps(tmp_path):
     assert any("历史冲突" in item for item in context["questions_to_refresh"])
 
 
+def test_research_planning_context_reports_pending_cold_start_prompts(tmp_path):
+    data_dir = tmp_path / "data"
+    pull_dir = data_dir / "pull_requests"
+    pull_dir.mkdir(parents=True)
+    (pull_dir / "PR-20260516-BABA-COLDSTART-1.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "prompt_id": "PR-20260516-BABA-COLDSTART-1",
+                "related_signal_id": "RS-20260516-BABA",
+                "status": "pending_cold_start",
+                "cold_start": True,
+                "ticker": "BABA",
+                "research_dimension": "business_model",
+                "research_dimension_label": "商业模式",
+                "research_horizon": "12m",
+                "priority_order": 1,
+                "prompt_text": "请研究 BABA 过去 12 个月商业模式变化。",
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    context = build_research_planning_context(data_dir, "BABA", as_of_date="2026-05-16")
+
+    assert context["history_found"] is False
+    assert context["cold_start_pending"][0]["prompt_id"] == "PR-20260516-BABA-COLDSTART-1"
+    assert any("置信度不得超过 50%" in item for item in context["prompt_directives"])
+
+
 def test_research_agent_prompt_uses_history_before_new_questions(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)

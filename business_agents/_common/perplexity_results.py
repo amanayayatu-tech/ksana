@@ -43,7 +43,7 @@ def collect_perplexity_context(data_dir: str | Path, signal: ResearchSignal) -> 
     for record in prompt_records:
         if record.get("status") == "filled":
             filled_ids.append(str(record["prompt_id"]))
-        elif record.get("status") == "skipped":
+        elif record.get("status") in {"skipped", "skip_cold_start"}:
             skipped_ids.append(str(record["prompt_id"]))
         else:
             pending_ids.append(str(record["prompt_id"]))
@@ -90,6 +90,10 @@ def sync_signal_perplexity_status(data_dir: str | Path, signal: ResearchSignal) 
     )
     payload = signal.model_dump(mode="json")
     payload["perplexity_research"] = current
+    payload["research_planning_context"] = sync_cold_start_planning_context(
+        payload.get("research_planning_context"),
+        closed_prompt_ids=set(context.filled_prompt_ids) | set(context.skipped_prompt_ids),
+    )
     return ResearchSignal.model_validate(payload)
 
 
@@ -155,6 +159,32 @@ def load_prompt_records(root: Path, signal: ResearchSignal) -> list[dict[str, An
     return [records[prompt_id] for prompt_id in sorted(records)]
 
 
+def sync_cold_start_planning_context(context: Any, *, closed_prompt_ids: set[str]) -> Any:
+    if not isinstance(context, dict) or not closed_prompt_ids:
+        return context
+    pending = []
+    for item in context.get("cold_start_pending") or []:
+        if not isinstance(item, dict):
+            continue
+        prompt_id = str(item.get("prompt_id") or "")
+        if prompt_id and prompt_id not in closed_prompt_ids:
+            pending.append(item)
+    if len(pending) == len(context.get("cold_start_pending") or []):
+        return context
+
+    updated = dict(context)
+    updated["cold_start_pending"] = pending
+    directives = [
+        str(item)
+        for item in updated.get("prompt_directives") or []
+        if "冷启动历史研究" not in str(item) or "置信度不得超过 50%" not in str(item)
+    ]
+    if pending:
+        directives.append(f"当前存在 {len(pending)} 条未完成的冷启动历史研究，Trading Agent 评估结论置信度不得超过 50%。")
+    updated["prompt_directives"] = directives
+    return updated
+
+
 def prompt_ids_for_signal(signal: ResearchSignal) -> set[str]:
     values = signal.perplexity_research or {}
     ids: set[str] = set()
@@ -199,7 +229,7 @@ def load_result_status(root: Path, record: dict[str, Any] | str) -> dict[str, An
                 "ignored_result_reason": mismatch,
             }
         return {
-            "status": "skipped",
+            "status": data.get("status") or "skipped",
             "result_path": str(skipped_path),
             "skipped_at": data.get("skipped_at") or data.get("created_at") or "",
             "skip_reason": data.get("reason") or data.get("skip_reason") or "",

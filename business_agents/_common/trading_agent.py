@@ -424,7 +424,51 @@ class TradingAgent(BaseBusinessAgent):
         payload["recommendation_id"] = self.recommendation_id_for_ticker(ticker)
         payload = normalize_payload_scalar_fields(payload)
         payload = self.normalize_upstream_research_refs(payload, signal, perplexity_context)
+        payload = self.apply_cold_start_guardrail(payload, signal, perplexity_context)
         return self.normalize_payload_data_points(payload, signal, ticker)
+
+    def apply_cold_start_guardrail(
+        self,
+        payload: dict[str, Any],
+        signal: ResearchSignal,
+        context: PerplexityContext,
+    ) -> dict[str, Any]:
+        pending = cold_start_pending_items(signal, context)
+        if not pending:
+            return payload
+
+        payload["confidence"] = min(parse_confidence(payload.get("confidence")), 50)
+        waiting_conditions = list(payload.get("waiting_conditions") or [])
+        waiting_conditions.extend(format_cold_start_waiting_conditions(pending))
+        payload["waiting_conditions"] = unique_text_items(waiting_conditions, limit=10)
+
+        gaps = list(payload.get("analysis_gaps") or [])
+        gaps.append(f"冷启动历史研究未完成：{len(pending)} 条")
+        payload["analysis_gaps"] = unique_text_items(gaps, limit=12)
+
+        payload["thesis"] = (
+            f"{payload.get('thesis', '')} 当前仍有 {len(pending)} 条新股票冷启动历史研究未完成，"
+            "本轮结论只能作为低置信度观察。"
+        ).strip()
+
+        refs = payload.get("upstream_research_signals") or []
+        if isinstance(refs, list):
+            for ref in refs:
+                if not isinstance(ref, dict):
+                    continue
+                ref["evidence_unverified_inherited"] = True
+                ref["confidence_ceiling_applied"] = 50
+                ref["red_team_priority_flag"] = "high"
+                ref["chairman_weight_multiplier"] = min(float(ref.get("chairman_weight_multiplier") or 1.0), 0.5)
+                ref["cold_start_pending"] = [
+                    {
+                        "prompt_id": item.get("prompt_id"),
+                        "research_dimension": item.get("research_dimension"),
+                        "priority_order": item.get("priority_order"),
+                    }
+                    for item in pending
+                ]
+        return payload
 
     def normalize_upstream_research_refs(
         self,
@@ -433,6 +477,8 @@ class TradingAgent(BaseBusinessAgent):
         perplexity_context: PerplexityContext | None = None,
     ) -> dict[str, Any]:
         context = perplexity_context or collect_perplexity_context(self.data_dir, signal)
+        pending_cold_start = cold_start_pending_items(signal, context)
+        confidence_ceiling = 50 if pending_cold_start else (None if context.has_filled_results else 70)
         current_refs = payload.get("upstream_research_signals") or [{}]
         if isinstance(current_refs, dict):
             current = dict(current_refs)
@@ -447,11 +493,11 @@ class TradingAgent(BaseBusinessAgent):
                 "pull_request_id": context.all_prompt_ids[0] if context.all_prompt_ids else None,
                 "used_perplexity_results": context.has_filled_results,
                 "perplexity_prompt_ids_consumed": context.filled_prompt_ids,
-                "evidence_unverified_inherited": not context.has_filled_results,
-                "confidence_ceiling_applied": None if context.has_filled_results else 70,
+                "evidence_unverified_inherited": bool(pending_cold_start) or not context.has_filled_results,
+                "confidence_ceiling_applied": confidence_ceiling,
                 "red_team_priority_flag": current.get("red_team_priority_flag")
-                or ("low" if context.has_filled_results else "medium"),
-                "chairman_weight_multiplier": 1.0 if context.has_filled_results else 0.7,
+                or ("high" if pending_cold_start else ("low" if context.has_filled_results else "medium")),
+                "chairman_weight_multiplier": 0.5 if pending_cold_start else (1.0 if context.has_filled_results else 0.7),
             }
         )
         current.setdefault("my_methodology_verdict", "partial")
@@ -701,11 +747,64 @@ def build_analysis_gaps(signal: ResearchSignal, context: PerplexityContext) -> l
     gaps: list[str] = []
     if not context.has_filled_results:
         gaps.append("缺 Perplexity 事件原因回填")
+    pending_cold_start = cold_start_pending_items(signal, context)
+    if pending_cold_start:
+        gaps.append(f"缺冷启动历史研究回填：{len(pending_cold_start)} 条")
     if not signal.data_points:
         gaps.append("缺公开价量 data_points")
     if signal.discontinuity_assessment.get("evidence_unverified"):
         gaps.append("K deep 证据仍标记为 evidence_unverified")
     return gaps
+
+
+def cold_start_pending_items(signal: ResearchSignal, context: PerplexityContext) -> list[dict[str, Any]]:
+    pending_ids = set(context.pending_prompt_ids)
+    closed_ids = set(context.filled_prompt_ids) | set(context.skipped_prompt_ids)
+    planning_context = getattr(signal, "research_planning_context", {}) or {}
+    items: list[dict[str, Any]] = []
+    if isinstance(planning_context, dict):
+        for item in planning_context.get("cold_start_pending") or []:
+            if not isinstance(item, dict):
+                continue
+            prompt_id = str(item.get("prompt_id") or "")
+            if prompt_id and prompt_id not in closed_ids:
+                items.append(dict(item))
+    known_ids = {str(item.get("prompt_id") or "") for item in items}
+    for prompt_id in sorted(prompt_id for prompt_id in pending_ids if "COLDSTART" in prompt_id):
+        if prompt_id in known_ids:
+            continue
+        items.append({"prompt_id": prompt_id, "status": "pending_cold_start"})
+    return items
+
+
+def format_cold_start_waiting_conditions(items: list[dict[str, Any]]) -> list[str]:
+    conditions: list[str] = []
+    for item in sorted(items, key=lambda value: safe_priority_order(value.get("priority_order"))):
+        label = item.get("research_dimension_label") or item.get("research_dimension") or "冷启动历史研究"
+        prompt_id = item.get("prompt_id") or "unknown"
+        conditions.append(f"需要先完成冷启动研究 {prompt_id}（{label}）再提高判断置信度")
+    return conditions
+
+
+def safe_priority_order(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 99
+
+
+def unique_text_items(items: list[Any], *, limit: int) -> list[str]:
+    seen: set[str] = set()
+    values: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        values.append(text)
+        if len(values) >= limit:
+            break
+    return values
 
 
 def build_repair_prompt(original_prompt: str, last_text: str, errors: list[str]) -> str:

@@ -1,0 +1,35 @@
+请为以下新股票生成冷启动历史研究 Prompt 队列。
+
+标的：
+- ticker: {{ ticker }}
+- company_name: {{ company_name or "unknown" }}
+- market: {{ market }}
+
+当日触发信息只作为背景，不要把它写成当日价量解释问题：
+```yaml
+{{ trigger_rules_yaml }}
+```
+
+近期价量特征只作为背景，不要围绕涨跌本身提问：
+```yaml
+{{ price_features_yaml }}
+```
+
+可选研究维度：
+```yaml
+{{ dimensions_yaml }}
+```
+
+K deep Gate 1-7 约束。你的每条历史研究议题都要能服务这些 Gate，但不要机械复述 Gate 文案：
+```yaml
+{{ gate_constraints_yaml }}
+```
+
+请输出严格 JSON：
+- `cold_start_prompts` 必须是数组。
+- 数组长度 3-5。
+- `priority_order` 从 1 开始，越小越先研究。
+- `prompt_text` 必须是完整中文 Perplexity Deep Research Prompt，要求来源链接、时间线、反证和结论可信度。
+- 至少一条聚焦过去 12 个月公司基本面/商业模式。
+- 至少一条聚焦过去 6-12 个月竞争格局或行业结构。
+- 至少一条聚焦过去 6-12 个月资本市场预期差。

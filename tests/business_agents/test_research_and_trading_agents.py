@@ -50,6 +50,46 @@ class FailingTradingLLM:
         raise LLMError("codex timed out")
 
 
+class ColdStartResearchLLM:
+    def complete(self, **_):
+        return json.dumps(
+            {
+                "cold_start_prompts": [
+                    {
+                        "title": "商业模式补课",
+                        "research_horizon": "12m",
+                        "research_dimension": "business_model",
+                        "priority_order": 1,
+                        "cold_start_rationale": "新股票没有历史档案，先补收入结构和利润率变化。",
+                        "prompt_text": "请研究 BABA Alibaba 过去 12 个月收入结构、毛利率和经营杠杆变化，提供来源、反证和结论可信度。",
+                    },
+                    {
+                        "title": "竞争格局补课",
+                        "research_horizon": "6m",
+                        "research_dimension": "competitive_position",
+                        "priority_order": 2,
+                        "cold_start_rationale": "需要确认竞争者动作是否改变护城河。",
+                        "prompt_text": "请研究 BABA Alibaba 过去 6 个月竞争格局、竞品动作和市场份额变化，提供来源、反证和结论可信度。",
+                    },
+                    {
+                        "title": "预期差补课",
+                        "research_horizon": "9m",
+                        "research_dimension": "capital_market_expectation",
+                        "priority_order": 3,
+                        "cold_start_rationale": "需要识别卖方和机构持仓是否已经形成一致叙事。",
+                        "prompt_text": "请研究 BABA Alibaba 过去 9 个月卖方预期、机构持仓和主流叙事变化，提供来源、反证和结论可信度。",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+
+class MalformedColdStartResearchLLM:
+    def complete(self, **_):
+        return "not json"
+
+
 def test_research_agent_scans_all_main_pool_tickers_when_triggered(tmp_path):
     data_dir = tmp_path / "data"
     write_stock_pool(data_dir)
@@ -77,6 +117,60 @@ def test_research_prompt_ids_include_ticker_to_avoid_rerun_collisions(tmp_path):
     assert "PR-20260514-BABA.yaml" in prompt_names
     assert "RS-20260514-0700-HK.yaml" in signal_names
     assert "RS-20260514-BABA.yaml" in signal_names
+
+
+def test_research_agent_generates_cold_start_prompts_for_new_ticker(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+
+    result = ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        llm_client=ColdStartResearchLLM(),
+        run_date="2026-05-14",
+    ).run()
+
+    prompt_names = {path.name for path in result.output_files if path.parent.name == "pull_requests"}
+    assert "PR-20260514-BABA-COLDSTART-1.yaml" in prompt_names
+    assert "PR-20260514-BABA-COLDSTART-2.yaml" in prompt_names
+    assert "PR-20260514-BABA-COLDSTART-3.yaml" in prompt_names
+
+    cold_prompt = yaml.safe_load(
+        (data_dir / "pull_requests" / "PR-20260514-BABA-COLDSTART-1.yaml").read_text(encoding="utf-8")
+    )
+    assert cold_prompt["status"] == "pending_cold_start"
+    assert cold_prompt["cold_start"] is True
+    assert cold_prompt["research_dimension"] == "business_model"
+    assert "过去 12 个月" in cold_prompt["prompt_text"]
+
+    signal_data = yaml.safe_load(
+        (data_dir / "research_signals" / "RS-20260514-BABA.yaml").read_text(encoding="utf-8")
+    )["research_signal"]
+    assert "PR-20260514-BABA-COLDSTART-1" in signal_data["perplexity_research"]["prompts_pending"]
+    assert len(signal_data["research_planning_context"]["cold_start_pending"]) == 3
+    assert "置信度不得超过 50%" in "\n".join(signal_data["research_planning_context"]["prompt_directives"])
+
+    llm_log = next((data_dir / "agent_logs").glob("*/research_agent/*.llm.log"))
+    assert "cold_start_research_planning" in llm_log.read_text(encoding="utf-8")
+
+
+def test_research_agent_falls_back_when_cold_start_llm_returns_bad_json(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        llm_client=MalformedColdStartResearchLLM(),
+        run_date="2026-05-14",
+    ).run()
+
+    cold_prompts = sorted((data_dir / "pull_requests").glob("PR-20260514-BABA-COLDSTART-*.yaml"))
+
+    assert len(cold_prompts) == 3
+    first_prompt = yaml.safe_load(cold_prompts[0].read_text(encoding="utf-8"))
+    assert first_prompt["generation_source"] == "fallback_template_after_llm_parse_error"
+    assert first_prompt["status"] == "pending_cold_start"
 
 
 def test_research_prompt_uses_k_deep_question_framework(tmp_path):
@@ -164,6 +258,94 @@ def test_trading_agent_evidence_unverified_propagates(tmp_path):
 
     assert "evidence_unverified_inherited: true" in content
     assert "confidence: 62" in content
+
+
+def test_trading_agent_caps_confidence_when_cold_start_pending(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        llm_client=ColdStartResearchLLM(),
+        run_date="2026-05-14",
+    ).run()
+
+    result = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14").run(no_llm=True)
+    baba_path = next(path for path in result.output_files if path.name == "R-FP-20260514-BABA.yaml")
+    content = baba_path.read_text(encoding="utf-8")
+
+    assert "confidence: 50" in content
+    assert "confidence_ceiling_applied: 50" in content
+    assert "waiting_conditions" in content
+    assert "PR-20260514-BABA-COLDSTART-1" in content
+
+
+def test_existing_cold_start_pending_carries_into_next_scan(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        llm_client=ColdStartResearchLLM(),
+        run_date="2026-05-14",
+    ).run()
+
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        run_date="2026-05-15",
+    ).run(no_llm=True)
+
+    signal_data = yaml.safe_load(
+        (data_dir / "research_signals" / "RS-20260515-BABA.yaml").read_text(encoding="utf-8")
+    )["research_signal"]
+    pending = signal_data["perplexity_research"]["prompts_pending"]
+    assert "PR-20260515-BABA" in pending
+    assert "PR-20260514-BABA-COLDSTART-1" in pending
+
+    result = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-15").run(no_llm=True)
+    baba_path = next(path for path in result.output_files if path.name == "R-FP-20260515-BABA.yaml")
+    content = baba_path.read_text(encoding="utf-8")
+
+    assert "confidence: 50" in content
+    assert "confidence_ceiling_applied: 50" in content
+    assert "PR-20260514-BABA-COLDSTART-1" in content
+
+
+def test_closed_cold_start_prompts_are_removed_from_planning_context(tmp_path):
+    data_dir = tmp_path / "data"
+    write_stock_pool(data_dir)
+    ResearchAgent(
+        data_dir=data_dir,
+        market_client=TriggerMarketClient(),
+        llm_client=ColdStartResearchLLM(),
+        run_date="2026-05-14",
+    ).run()
+    results_dir = data_dir / "perplexity_results"
+    results_dir.mkdir(parents=True)
+    for index in range(1, 4):
+        prompt_id = f"PR-20260514-BABA-COLDSTART-{index}"
+        (results_dir / f"{prompt_id}_skipped.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "prompt_id": prompt_id,
+                    "related_signal_id": "RS-20260514-BABA",
+                    "status": "skip_cold_start",
+                    "prompt_text": yaml.safe_load(
+                        (data_dir / "pull_requests" / f"{prompt_id}.yaml").read_text(encoding="utf-8")
+                    )["prompt_text"],
+                },
+                allow_unicode=True,
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+    signals = FPartnerTradingAgent(data_dir=data_dir, run_date="2026-05-14").load_research_signals()
+    baba_signal = next(signal for signal in signals if signal.research_signal_id == "RS-20260514-BABA")
+
+    assert baba_signal.research_planning_context["cold_start_pending"] == []
+    assert "置信度不得超过 50%" not in "\n".join(baba_signal.research_planning_context["prompt_directives"])
 
 
 def test_trading_agent_consumes_filled_perplexity_result(tmp_path):

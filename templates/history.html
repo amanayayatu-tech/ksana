@@ -50,7 +50,11 @@
       <button id="closeRunProgress">关闭</button>
     </div>
     <div class="modal-body">
-      <div class="run-progress">
+      <div class="tabs run-detail-tabs" role="tablist" aria-label="运行详情">
+        <button id="runProgressTab" class="tab active" data-run-detail-tab="progress" type="button">运行进度</button>
+        <button id="runUsageTab" class="tab" data-run-detail-tab="usage" type="button">LLM Token 成本</button>
+      </div>
+      <div id="runProgressPanel" class="run-progress run-detail-panel">
         <div class="run-progress-head">
           <div>
             <div id="historyProgressTitle" class="run-progress-title">读取运行状态</div>
@@ -62,6 +66,33 @@
           <div id="historyProgressFill" class="progress-fill" style="width: 0%"></div>
         </div>
         <div id="historyProgressSteps" class="step-list"></div>
+      </div>
+      <div id="runUsagePanel" class="run-usage run-detail-panel hidden">
+        <div class="run-progress-head">
+          <div>
+            <div id="runUsageTitle" class="run-progress-title">读取 LLM 用量</div>
+            <div id="runUsageMeta" class="run-progress-meta">按 GPT-5.5 标准 API 价格折算</div>
+          </div>
+          <span id="runUsagePill" class="pill warn">估算</span>
+        </div>
+        <div id="runUsageSummary" class="usage-summary-grid"></div>
+        <p id="runUsageNote" class="muted usage-note"></p>
+        <div class="data-shell usage-table-shell">
+          <table class="usage-table">
+            <thead>
+              <tr>
+                <th>步骤</th>
+                <th>LLM</th>
+                <th>输入 tokens</th>
+                <th>输出 tokens</th>
+                <th>总 tokens</th>
+                <th>GPT-5.5 成本</th>
+                <th>口径</th>
+              </tr>
+            </thead>
+            <tbody id="runUsageSteps"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -175,9 +206,12 @@
     document.getElementById("historyProgressFill").style.width = "0%";
     setPill(document.getElementById("historyProgressPill"), "0%", "warn");
     document.getElementById("historyProgressSteps").innerHTML = "";
+    resetRunUsage();
+    activateRunDetailTab("progress");
     document.getElementById("runProgressModal").classList.remove("hidden");
     clearProgressPolling();
     await loadRunProgress(runId);
+    await loadRunUsage(runId);
     progressTimer = setInterval(() => loadRunProgress(runId), 2500);
   }
 
@@ -226,6 +260,105 @@
     `).join("");
   }
 
+  async function loadRunUsage(runId) {
+    const title = document.getElementById("runUsageTitle");
+    const meta = document.getElementById("runUsageMeta");
+    const summary = document.getElementById("runUsageSummary");
+    const steps = document.getElementById("runUsageSteps");
+    try {
+      const res = await fetch(`/api/run-llm-usage?run_id=${encodeURIComponent(runId)}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        title.textContent = "LLM 用量读取失败";
+        meta.textContent = escapeHtml(data.detail || "没有可用的 token 档案");
+        setPill(document.getElementById("runUsagePill"), "无数据", "error");
+        return;
+      }
+      renderRunUsage(data.usage || {});
+    } catch (error) {
+      title.textContent = "LLM 用量读取失败";
+      meta.textContent = "浏览器请求失败";
+      summary.innerHTML = "";
+      steps.innerHTML = "";
+      setPill(document.getElementById("runUsagePill"), "失败", "error");
+    }
+  }
+
+  function renderRunUsage(usage) {
+    const totals = usage.totals || {};
+    const pricing = usage.pricing || {};
+    document.getElementById("runUsageTitle").textContent = `LLM Token & 成本 · ${usage.run_id || ""}`;
+    document.getElementById("runUsageMeta").textContent = [
+      usage.model || "gpt-5.5",
+      `输入 $${formatRate(pricing.input_usd_per_1m)} / 1M`,
+      `输出 $${formatRate(pricing.output_usd_per_1m)} / 1M`,
+      usage.pricing?.basis === "standard_api_non_cached" ? "标准非缓存口径" : ""
+    ].filter(Boolean).join(" · ");
+    setPill(document.getElementById("runUsagePill"), "估算", "warn");
+    document.getElementById("runUsageSummary").innerHTML = `
+      <div><strong>${formatNumber(totals.input_tokens)}</strong><span>输入 tokens</span></div>
+      <div><strong>${formatNumber(totals.output_tokens)}</strong><span>输出 tokens</span></div>
+      <div><strong>${formatNumber(totals.total_tokens)}</strong><span>总 tokens</span></div>
+      <div><strong>$${formatUsd(totals.estimated_cost_usd)}</strong><span>按 GPT-5.5 估算</span></div>
+    `;
+    const source = pricing.source
+      ? `价格来源：<a href="${escapeHtml(pricing.source)}" target="_blank" rel="noreferrer">OpenAI API Pricing</a>。`
+      : "";
+    document.getElementById("runUsageNote").innerHTML = `${escapeHtml(usage.accuracy_note || "")} ${source}`;
+    const rows = usage.steps || [];
+    document.getElementById("runUsageSteps").innerHTML = rows.length ? rows.map((step) => `
+      <tr>
+        <td>${escapeHtml(step.label || step.step_name || "")}</td>
+        <td>${step.llm_used ? '<span class="pill ok">是</span>' : '<span class="pill">否</span>'}</td>
+        <td>${formatNumber(step.input_tokens)}</td>
+        <td>${formatNumber(step.output_tokens)}</td>
+        <td>${formatNumber(step.total_tokens)}</td>
+        <td>$${formatUsd(step.estimated_cost_usd)}</td>
+        <td class="wrap">${escapeHtml(methodLabel(step.method || ""))}</td>
+      </tr>
+    `).join("") : '<tr><td colspan="7" class="muted">暂无 LLM 步骤记录</td></tr>';
+  }
+
+  function resetRunUsage() {
+    document.getElementById("runUsageTitle").textContent = "读取 LLM 用量";
+    document.getElementById("runUsageMeta").textContent = "按 GPT-5.5 标准 API 价格折算";
+    document.getElementById("runUsageSummary").innerHTML = "";
+    document.getElementById("runUsageNote").textContent = "";
+    document.getElementById("runUsageSteps").innerHTML = '<tr><td colspan="7" class="muted">读取中</td></tr>';
+    setPill(document.getElementById("runUsagePill"), "估算", "warn");
+  }
+
+  function activateRunDetailTab(name) {
+    document.querySelectorAll("[data-run-detail-tab]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.runDetailTab === name);
+    });
+    document.getElementById("runProgressPanel").classList.toggle("hidden", name !== "progress");
+    document.getElementById("runUsagePanel").classList.toggle("hidden", name !== "usage");
+  }
+
+  function methodLabel(value) {
+    const labels = {
+      agent_llm_log_and_outputs: "本地 agent prompt 日志 + 产物估算",
+      report_artifact_estimate: "报告输入/产物估算",
+      agent_no_llm: "该 agent 未调用 LLM",
+      report_no_llm: "该报告步骤未调用 LLM",
+      no_llm_or_not_recorded: "未记录 LLM 调用"
+    };
+    return labels[value] || value;
+  }
+
+  function formatNumber(value) {
+    return Number(value || 0).toLocaleString("en-US");
+  }
+
+  function formatUsd(value) {
+    return Number(value || 0).toFixed(6);
+  }
+
+  function formatRate(value) {
+    return Number(value || 0).toFixed(2);
+  }
+
   function setPill(element, text, kind = "") {
     element.className = `pill ${kind}`.trim();
     element.textContent = text;
@@ -267,6 +400,9 @@
   document.getElementById("refreshHistory").addEventListener("click", loadHistory);
   document.getElementById("closeArtifact").addEventListener("click", closeArtifact);
   document.getElementById("closeRunProgress").addEventListener("click", closeRunProgress);
+  document.querySelectorAll("[data-run-detail-tab]").forEach((button) => {
+    button.addEventListener("click", () => activateRunDetailTab(button.dataset.runDetailTab));
+  });
   document.getElementById("artifactModal").addEventListener("click", (event) => {
     if (event.target.id === "artifactModal") closeArtifact();
   });

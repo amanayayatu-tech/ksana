@@ -35,6 +35,7 @@ from orchestrator.reporting.html_renderer import (
     productize_report_text,
     render_report_html,
 )
+from orchestrator.reporting.llm_usage import build_run_llm_usage
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -55,7 +56,7 @@ STOCK_CATEGORIES = (
     "a_stocks_reference_only",
     "watchlist",
 )
-DEEP_RESEARCH_STATUSES = {"all", "pending", "filled", "skipped"}
+DEEP_RESEARCH_STATUSES = {"all", "pending", "pending_cold_start", "filled", "skipped", "skip_cold_start"}
 LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
 RUNNING_RUN_STALE_SECONDS = 300
@@ -486,6 +487,14 @@ def api_run_progress(run_id: str = Query(...)) -> dict[str, Any]:
     return {"ok": True, "progress": progress}
 
 
+@app.get("/api/run-llm-usage")
+def api_run_llm_usage(run_id: str = Query(...)) -> dict[str, Any]:
+    usage = build_run_llm_usage(DATA_DIR, run_id)
+    if not usage:
+        raise HTTPException(status_code=404, detail=f"找不到 LLM 用量档案：{run_id}")
+    return {"ok": True, "usage": usage}
+
+
 @app.post("/api/env")
 def api_save_env(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     provider = str(payload.get("llm_provider") or "local").strip()
@@ -519,7 +528,7 @@ def api_deep_research_prompts(
 ) -> dict[str, Any]:
     date = normalize_date(run_date) if run_date else None
     if status not in DEEP_RESEARCH_STATUSES:
-        raise HTTPException(status_code=400, detail="状态只能是 all、pending、filled 或 skipped。")
+        raise HTTPException(status_code=400, detail="状态只能是 all、pending、pending_cold_start、filled、skipped 或 skip_cold_start。")
     prompts = load_deep_research_prompts(date_filter=date, status_filter=status)
     return {"ok": True, "prompts": prompts}
 
@@ -569,7 +578,7 @@ def api_skip_deep_research(payload: dict[str, Any] = Body(...)) -> dict[str, Any
         "prompt_id": prompt_id,
         "related_signal_id": prompt.get("related_signal_id", ""),
         "priority": prompt.get("priority", ""),
-        "status": "skipped",
+        "status": "skip_cold_start" if prompt.get("cold_start") else "skipped",
         "skipped_at": datetime.now().isoformat(timespec="seconds"),
         "prompt_text": prompt.get("prompt_text", ""),
         "reason": reason or "用户在 Web UI 中标记跳过。",
@@ -1646,7 +1655,7 @@ def load_deep_research_prompts(
     if date_filter:
         prompts = [prompt for prompt in prompts if prompt_matches_date(prompt, date_filter)]
     if status_filter != "all":
-        prompts = [prompt for prompt in prompts if prompt["status"] == status_filter]
+        prompts = [prompt for prompt in prompts if prompt_matches_status(prompt, status_filter)]
     return prompts
 
 
@@ -1657,17 +1666,52 @@ def shape_prompt_record(path: Path) -> dict[str, Any]:
     related_signal_id = str(prompt.get("related_signal_id") or "")
     priority = str(prompt.get("priority") or "")
     prompt_text = str(prompt.get("prompt_text") or "")
-    status_payload = deep_research_status(prompt_id, prompt_text=prompt_text, related_signal_id=related_signal_id)
+    is_cold_start = bool(prompt.get("cold_start"))
+    status_payload = deep_research_status(
+        prompt_id,
+        prompt_text=prompt_text,
+        related_signal_id=related_signal_id,
+        prompt_status=str(prompt.get("status") or ""),
+        cold_start=is_cold_start,
+    )
     record = {
         "prompt_id": prompt_id,
         "related_signal_id": related_signal_id,
         "priority": priority,
+        "status_declared": str(prompt.get("status") or ""),
+        "cold_start": is_cold_start,
+        "research_horizon": prompt.get("research_horizon") or "",
+        "research_dimension": prompt.get("research_dimension") or "",
+        "research_dimension_label": prompt.get("research_dimension_label") or "",
+        "priority_order": prompt.get("priority_order"),
+        "cold_start_rationale": prompt.get("cold_start_rationale") or "",
+        "title": prompt.get("title") or "",
+        "generation_source": prompt.get("generation_source") or "",
         "prompt_text": prompt_text,
-        "prompt_markdown": build_prompt_markdown(prompt_id, related_signal_id, priority, prompt_text),
+        "prompt_markdown": build_prompt_markdown(
+            prompt_id,
+            related_signal_id,
+            priority,
+            prompt_text,
+            cold_start=is_cold_start,
+            research_dimension_label=str(prompt.get("research_dimension_label") or ""),
+            research_horizon=str(prompt.get("research_horizon") or ""),
+            priority_order=prompt.get("priority_order"),
+            cold_start_rationale=str(prompt.get("cold_start_rationale") or ""),
+        ),
         "path_display": relative_path(path),
     }
     record.update(status_payload)
     return record
+
+
+def prompt_matches_status(prompt: dict[str, Any], status_filter: str) -> bool:
+    status = prompt["status"]
+    if status_filter == "pending":
+        return status in {"pending", "pending_cold_start"}
+    if status_filter == "skipped":
+        return status in {"skipped", "skip_cold_start"}
+    return status == status_filter
 
 
 def shape_knowledge_entry(entry: Any) -> dict[str, Any] | None:
@@ -1698,6 +1742,12 @@ def build_prompt_markdown(
     related_signal_id: str,
     priority: str,
     prompt_text: str,
+    *,
+    cold_start: bool = False,
+    research_dimension_label: str = "",
+    research_horizon: str = "",
+    priority_order: Any = None,
+    cold_start_rationale: str = "",
 ) -> str:
     lines = [
         "# Deep Research Prompt",
@@ -1705,11 +1755,19 @@ def build_prompt_markdown(
         f"- prompt_id: {prompt_id}",
         f"- related_signal_id: {related_signal_id or 'unknown'}",
         f"- priority: {priority or 'unknown'}",
-        "",
-        "## 研究问题",
-        "",
-        prompt_text,
     ]
+    if cold_start:
+        lines.extend(
+            [
+                "- cold_start: true",
+                f"- research_dimension: {research_dimension_label or 'unknown'}",
+                f"- research_horizon: {research_horizon or 'unknown'}",
+                f"- priority_order: {priority_order or 'unknown'}",
+            ]
+        )
+        if cold_start_rationale:
+            lines.extend(["", "## 冷启动理由", "", cold_start_rationale])
+    lines.extend(["", "## 研究问题", "", prompt_text])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -1727,6 +1785,8 @@ def deep_research_status(
     *,
     prompt_text: str = "",
     related_signal_id: str = "",
+    prompt_status: str = "",
+    cold_start: bool = False,
 ) -> dict[str, Any]:
     results_dir = DATA_DIR / "perplexity_results"
     filled_path = results_dir / f"{prompt_id}_filled.yaml"
@@ -1768,16 +1828,17 @@ def deep_research_status(
                 "ignored_result_reason": mismatch,
             }
         return {
-            "status": "skipped",
-            "status_label": "已跳过",
+            "status": str(data.get("status") or "skipped"),
+            "status_label": "已跳过冷启动" if str(data.get("status") or "") == "skip_cold_start" else "已跳过",
             "result_path": relative_path(skipped_path),
             "answer_text": "",
             "updated_at": str(data.get("skipped_at") or data.get("created_at") or ""),
             "skip_reason": str(data.get("reason") or data.get("skip_reason") or ""),
         }
+    pending_status = "pending_cold_start" if cold_start or prompt_status == "pending_cold_start" else "pending"
     return {
-        "status": "pending",
-        "status_label": "待回填",
+        "status": pending_status,
+        "status_label": "冷启动待补课" if pending_status == "pending_cold_start" else "待回填",
         "result_path": "",
         "answer_text": "",
         "updated_at": "",
@@ -1818,6 +1879,8 @@ def find_pull_request(prompt_id: str) -> dict[str, Any]:
                 "prompt_id": current_id,
                 "related_signal_id": str(prompt.get("related_signal_id") or ""),
                 "priority": str(prompt.get("priority") or ""),
+                "status": str(prompt.get("status") or ""),
+                "cold_start": bool(prompt.get("cold_start")),
                 "prompt_text": str(prompt.get("prompt_text") or ""),
             }
     raise HTTPException(status_code=404, detail=f"找不到 Prompt：{prompt_id}")
@@ -2663,9 +2726,10 @@ def build_run_progress_message(
 
 def get_trial_status() -> dict[str, Any]:
     prompts = load_deep_research_prompts(status_filter="all")
-    pending = [prompt for prompt in prompts if prompt["status"] == "pending"]
+    pending = [prompt for prompt in prompts if prompt["status"] in {"pending", "pending_cold_start"}]
     filled = [prompt for prompt in prompts if prompt["status"] == "filled"]
-    skipped = [prompt for prompt in prompts if prompt["status"] == "skipped"]
+    skipped = [prompt for prompt in prompts if prompt["status"] in {"skipped", "skip_cold_start"}]
+    cold_start_pending = [prompt for prompt in prompts if prompt["status"] == "pending_cold_start"]
     return {
         "mode": "ResearchOS",
         "long_disabled": False,
@@ -2674,6 +2738,7 @@ def get_trial_status() -> dict[str, Any]:
         "data_scope": "公开异动扫描 + Deep Research Inbox",
         "total_perplexity": len(prompts),
         "pending_perplexity": len(pending),
+        "pending_cold_start_perplexity": len(cold_start_pending),
         "filled_perplexity": len(filled),
         "skipped_perplexity": len(skipped),
     }

@@ -73,11 +73,67 @@ def test_deep_research_fill_and_skip_round_trip(tmp_path, monkeypatch):
     assert count == 0
 
 
+def test_deep_research_cold_start_prompts_are_grouped_and_skippable(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    pull_dir = data_dir / "pull_requests"
+    pull_dir.mkdir(parents=True)
+    (pull_dir / "PR-20260516-BABA-COLDSTART-1.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "prompt_id": "PR-20260516-BABA-COLDSTART-1",
+                "related_signal_id": "RS-20260516-BABA",
+                "priority": "P0",
+                "status": "pending_cold_start",
+                "cold_start": True,
+                "ticker": "BABA",
+                "research_horizon": "12m",
+                "research_dimension": "business_model",
+                "research_dimension_label": "商业模式",
+                "priority_order": 1,
+                "cold_start_rationale": "先补历史。",
+                "prompt_text": "请研究 BABA 过去 12 个月的核心收入结构变化。",
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    client = TestClient(webui.app)
+
+    page = client.get("/deep-research")
+    assert page.status_code == 200
+    assert "历史研究补课（新股票冷启动）" in page.text
+
+    list_response = client.get("/api/deep-research/prompts?date=2026-05-16&status=pending")
+    prompt = list_response.json()["prompts"][0]
+    assert prompt["status"] == "pending_cold_start"
+    assert prompt["cold_start"] is True
+    assert prompt["research_dimension_label"] == "商业模式"
+    assert "cold_start: true" in prompt["prompt_markdown"]
+
+    skip_response = client.post(
+        "/api/deep-research/skip",
+        json={"prompt_id": "PR-20260516-BABA-COLDSTART-1", "reason": "暂时跳过冷启动补课。"},
+    )
+    assert skip_response.status_code == 200
+    skipped = yaml.safe_load(
+        (data_dir / "perplexity_results" / "PR-20260516-BABA-COLDSTART-1_skipped.yaml").read_text(encoding="utf-8")
+    )
+    assert skipped["status"] == "skip_cold_start"
+
+    skipped_response = client.get("/api/deep-research/prompts?status=skipped")
+    assert skipped_response.json()["prompts"][0]["status"] == "skip_cold_start"
+
+
 def test_guide_page_is_available():
     response = TestClient(webui.app).get("/guide")
 
     assert response.status_code == 200
-    assert "使用指南" in response.text
+    assert "使用说明" in response.text
+    assert "样例指南" in response.text
+    assert "新股票冷启动补课" in response.text
+    assert "AI Native OPC 投资公司标准" in response.text
     assert "NVDA 异动研究报告" in response.text
     assert "Value Partner" in response.text
 
@@ -211,6 +267,56 @@ def test_history_row_exposes_pipeline_metadata(tmp_path, monkeypatch):
 
     assert row["pipeline_type"] == "deep_research_rerun"
     assert row["source"] == "deep_research_rerun"
+
+
+def test_run_llm_usage_estimates_tokens_and_gpt55_cost(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="deep_research_rerun",
+        trigger_source="manual",
+        metadata={"date": "2026-05-16", "brief_type": "morning", "source": "deep_research_rerun"},
+    )
+    rec_path = data_dir / "recommendations" / "20260516" / "f_partner" / "R-FP-20260516-AMD.yaml"
+    rec_path.parent.mkdir(parents=True)
+    rec_path.write_text("recommendation:\n  thesis: AMD 输出结论\n", encoding="utf-8")
+    stdout_path = data_dir / "orchestrator" / "logs" / run_id / "trading_f_partner-1.out"
+    stdout_path.parent.mkdir(parents=True)
+    stdout_path.write_text(f"generated: {rec_path}\n", encoding="utf-8")
+    agent_log = data_dir / "agent_logs" / "20260517" / "trading_f_partner" / "trading_f_partner-20260517-abc.json"
+    agent_log.parent.mkdir(parents=True)
+    agent_log.write_text(
+        json.dumps({"llm_used": True, "output_files": [str(rec_path)]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    agent_log.with_suffix(".llm.log").write_text(
+        "- role: system\n  content: 你是投资 Agent\n- role: user\n  content: 请分析 AMD\n",
+        encoding="utf-8",
+    )
+    run_log.record_step(
+        run_id,
+        webui.StepResult(
+            step_name="trading_f_partner",
+            status="success",
+            exit_code=0,
+            attempts=1,
+            stdout_path=stdout_path,
+            output_files=[rec_path],
+        ),
+    )
+
+    response = TestClient(webui.app).get(f"/api/run-llm-usage?run_id={run_id}")
+
+    assert response.status_code == 200
+    usage = response.json()["usage"]
+    assert usage["model"] == "gpt-5.5"
+    assert usage["pricing"]["input_usd_per_1m"] == 5.0
+    assert usage["pricing"]["output_usd_per_1m"] == 30.0
+    assert usage["totals"]["input_tokens"] > 0
+    assert usage["totals"]["output_tokens"] > 0
+    assert usage["totals"]["estimated_cost_usd"] > 0
+    assert usage["steps"][0]["method"] == "agent_llm_log_and_outputs"
 
 
 def test_history_reconciles_stale_running_rerun(tmp_path, monkeypatch):

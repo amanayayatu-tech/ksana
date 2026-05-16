@@ -269,6 +269,7 @@ def build_research_planning_context(
     closed_questions = summary.get("closed_questions", []) or []
     conflicts = summary.get("historical_conflicts", []) or []
     expired_entries = collect_expired_entries(raw_entries, as_of_date=as_of_date)
+    cold_start_pending = collect_pending_cold_start_prompts(root, ticker)
     trigger_tags = set((signal_fingerprint or {}).get("trigger_rules") or [])
     trigger_tags.update((signal_fingerprint or {}).get("tags") or [])
     questions_to_refresh = build_questions_to_refresh(
@@ -291,6 +292,7 @@ def build_research_planning_context(
         "historical_conflicts": conflicts[:6],
         "expired_entries": expired_entries[:5],
         "questions_to_refresh": questions_to_refresh[:10],
+        "cold_start_pending": cold_start_pending,
         "do_not_repeat": build_do_not_repeat_items(answered_facts, closed_questions)[:8],
         "prompt_directives": build_research_prompt_directives(
             has_history=bool(entries),
@@ -298,6 +300,7 @@ def build_research_planning_context(
             conflicts=conflicts,
             expired_entries=expired_entries,
             similar_cases=similar_cases,
+            cold_start_pending=cold_start_pending,
         ),
     }
 
@@ -866,6 +869,7 @@ def build_research_prompt_directives(
     conflicts: list[str],
     expired_entries: list[dict[str, Any]],
     similar_cases: list[dict[str, Any]],
+    cold_start_pending: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     directives = [
         "先复用历史知识，再提出新问题；不要重复询问已确认事实。",
@@ -873,6 +877,10 @@ def build_research_prompt_directives(
     ]
     if not has_history:
         directives.append("知识库没有同标的历史研究，必须建立第一份可复用股票档案。")
+    if cold_start_pending:
+        directives.append(
+            f"当前存在 {len(cold_start_pending)} 条未完成的冷启动历史研究，Trading Agent 评估结论置信度不得超过 50%。"
+        )
     if open_questions:
         directives.append("优先追问历史未关闭问题，并判断是否已经被新公开信息关闭。")
     if conflicts:
@@ -882,6 +890,82 @@ def build_research_prompt_directives(
     if similar_cases:
         directives.append("参考相似历史案例，但必须说明相似点和不相似点。")
     return directives
+
+
+def collect_pending_cold_start_prompts(root: Path, ticker: str) -> list[dict[str, Any]]:
+    """Return pending cold-start PR records for the same ticker."""
+
+    prompt_dir = root / "pull_requests"
+    if not prompt_dir.exists():
+        return []
+    pending: list[dict[str, Any]] = []
+    for path in sorted(prompt_dir.glob("*-COLDSTART-*.y*ml")):
+        data = read_yaml(path)
+        prompt = data.get("prompt", data) if isinstance(data, dict) else {}
+        if not isinstance(prompt, dict) or not prompt.get("cold_start"):
+            continue
+        if not cold_start_prompt_matches_ticker(prompt, path, ticker):
+            continue
+        prompt_id = str(prompt.get("prompt_id") or path.stem)
+        if cold_start_prompt_is_closed(root, prompt_id):
+            continue
+        status = str(prompt.get("status") or "pending_cold_start")
+        if status not in {"pending_cold_start", "pending"}:
+            continue
+        pending.append(
+            {
+                "prompt_id": prompt_id,
+                "status": "pending_cold_start",
+                "research_dimension": prompt.get("research_dimension"),
+                "research_dimension_label": prompt.get("research_dimension_label"),
+                "research_horizon": prompt.get("research_horizon"),
+                "priority_order": prompt.get("priority_order"),
+                "title": prompt.get("title"),
+                "path": str(path),
+            }
+        )
+    return sorted(pending, key=lambda item: safe_priority_order(item.get("priority_order")))
+
+
+def cold_start_prompt_matches_ticker(prompt: dict[str, Any], path: Path, ticker: str) -> bool:
+    candidates = {
+        ticker.upper(),
+        safe_filename(ticker).upper(),
+        ticker.upper().replace(".", "-"),
+    }
+    prompt_ticker = str(prompt.get("ticker") or "").upper()
+    if prompt_ticker and prompt_ticker in candidates:
+        return True
+    haystack = " ".join(
+        str(value or "")
+        for value in (
+            prompt.get("prompt_id"),
+            prompt.get("related_signal_id"),
+            prompt.get("prompt_text"),
+            path.stem,
+        )
+    ).upper()
+    return any(candidate and candidate in haystack for candidate in candidates)
+
+
+def cold_start_prompt_is_closed(root: Path, prompt_id: str) -> bool:
+    results_dir = root / "perplexity_results"
+    filled_path = results_dir / f"{prompt_id}_filled.yaml"
+    skipped_path = results_dir / f"{prompt_id}_skipped.yaml"
+    if filled_path.exists():
+        return True
+    if not skipped_path.exists():
+        return False
+    skipped = read_yaml(skipped_path)
+    status = str(skipped.get("status") or "skipped") if isinstance(skipped, dict) else "skipped"
+    return status in {"skipped", "skip_cold_start"}
+
+
+def safe_priority_order(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 99
 
 
 def infer_ticker_and_company(prompt_id: str, prompt_text: str, answer_text: str) -> tuple[str, str]:

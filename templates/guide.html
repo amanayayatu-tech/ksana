@@ -1,19 +1,25 @@
 {% extends "base.html" %}
-{% block title %}样例指南 · WorldPay IC{% endblock %}
+{% block title %}使用说明 & 样例指南 · WorldPay IC{% endblock %}
 
 {% block content %}
 <div class="grid">
   <section class="guide-hero">
-    <div>
+    <div class="guide-copy">
       <div class="status-grid">
-        <span class="pill ok">使用指南</span>
-        <span class="pill">样例报告</span>
+        <span class="pill ok">使用说明</span>
+        <span class="pill">样例指南</span>
         <span class="pill warn">非买卖建议</span>
       </div>
-      <h1 class="guide-title">让客户先看到输出质量，而不是系统内部</h1>
+      <p class="guide-kicker">AI Native One-Person Investment Company</p>
+      <h1 class="guide-title">把一个人的投资工作，做成一家公司级别的投研流程</h1>
       <p class="guide-subtitle">
-        ResearchOS 的外部体验围绕一条投研任务流展开：选股票池、跑扫描、补深度研究、生成 IC Brief、阅读 Risk Audit、归档复盘。报告会保留关键信息密度，但把重点结论、分歧、等待条件和风险触发器放在阅读路径最前面。
+        ResearchOS 不是股票筛选器，也不是自动交易机器人。它是一套面向普通投资人的 AI native 投资公司操作系统：先把异动转成研究问题，再通过 Deep Research、三位 Partner Agent、CIO Agent、Risk Auditor 和复盘库，把一次判断沉淀成可追踪、可质疑、可复用的投资档案。
       </p>
+      <div class="guide-proof-strip" aria-label="ResearchOS 能力摘要">
+        <div><strong>3-5</strong><span>新股票冷启动深研题</span></div>
+        <div><strong>50%</strong><span>冷启动未完成置信度上限</span></div>
+        <div><strong>7</strong><span>从异动到复盘的任务流</span></div>
+      </div>
     </div>
     <div class="guide-visual" aria-label="ResearchOS 产品化示意图">
       <div class="guide-orbit"></div>
@@ -22,6 +28,37 @@
       <div class="guide-node node-perplexity">Deep Research Inbox<small>承接高质量外部研究</small></div>
       <div class="guide-node node-partners">Partner Agents<small>Value / Momentum / Quality</small></div>
       <div class="guide-node node-red">Risk Auditor<small>反证、缺口和触发器</small></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">普通投资人怎么使用</h2>
+      <span class="pill ok">从问题到档案</span>
+    </div>
+    <div class="panel-body">
+      <div class="guide-explain-grid">
+        <article class="explain-card">
+          <span class="agent-tag">1. 先定范围</span>
+          <h3>选择股票池</h3>
+          <p>每天先限定 HK / US 主股池或观察池，避免被市场噪音拖走注意力。系统只扫描你明确关心的标的。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">2. 再定问题</span>
+          <h3>把涨跌变成研究题</h3>
+          <p>公开价量只作为触发器。Research Agent 会把异动转成商业模式、竞争格局、监管、资金面和预期差问题。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">3. 人在回路</span>
+          <h3>手动跑 Deep Research</h3>
+          <p>系统不替你偷偷联网下结论，而是把最值得查的问题放进 Inbox，由你在 Perplexity 深度研究后回填。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">4. 公司化输出</span>
+          <h3>生成投委会报告</h3>
+          <p>三位 Partner 给出分歧，CIO Agent 汇总等待条件，Risk Auditor 找反证，最终形成可阅读报告和复盘记录。</p>
+        </article>
+      </div>
     </div>
   </section>
 
@@ -45,6 +82,34 @@
 
   <section class="panel">
     <div class="panel-head">
+      <h2 class="panel-title">新股票冷启动补课</h2>
+      <span class="pill warn">无历史先补历史</span>
+    </div>
+    <div class="panel-body">
+      <div class="cold-start-system">
+        <div class="cold-start-copy">
+          <span class="agent-tag">Cold Start Research Planner</span>
+          <h3>新股票不能直接复盘，就先建立第一份历史研究队列</h3>
+          <p>
+            当知识库里没有这只股票的历史回填时，系统不会假装自己已经理解它。Research Agent 会调用冷启动研究规划器，生成至少 3 条、最多 5 条过去 6-12 个月的 Perplexity 深研 prompt，优先覆盖公司基本面、行业与竞争格局、资本市场预期差。
+          </p>
+          <p>
+            在这些补课任务没有完成前，Trading Agent 的判断置信度会被压到 50% 以内，并在等待条件里明确写出还需要完成哪些冷启动研究。这是普通投资人最容易忽略、但专业投委会必须有的安全带。
+          </p>
+        </div>
+        <div class="cold-start-flow">
+          <article class="cold-start-card"><strong>1. 生成历史研究题</strong><span><code>cold_start_research_planner.py</code> 输出 3-5 条 6-12 个月深研 prompt。</span></article>
+          <article class="cold-start-card"><strong>2. 写入冷启动 PR</strong><span><code>PR-YYYYMMDD-TICKER-COLDSTART-n.yaml</code> 进入 Deep Research 队列。</span></article>
+          <article class="cold-start-card"><strong>3. Planning Context 记账</strong><span><code>knowledge_store.py</code> 统计 <code>pending_cold_start</code>，告诉下游历史补课未完成。</span></article>
+          <article class="cold-start-card"><strong>4. 投资判断降置信度</strong><span><code>trading_agent.py</code> 强制 confidence 不超过 50，并输出 <code>waiting_conditions</code>。</span></article>
+          <article class="cold-start-card"><strong>5. Inbox 独立分区</strong><span>Deep Research Inbox 显示“历史研究补课”，支持回填或 <code>skip_cold_start</code>。</span></article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
       <h2 class="panel-title">三份样例报告</h2>
       <span class="pill">阅读者先抓重点</span>
     </div>
@@ -54,30 +119,27 @@
           <span class="agent-tag">NVDA 异动研究报告</span>
           <h3>AI 服务器预期再定价</h3>
           <div class="sample-block"><h4>今日异动是什么</h4><p>成交额放大，股价跟随 AI 服务器链预期上修；市场在重新定价下一轮数据中心资本开支。</p></div>
-          <div class="sample-block"><h4>市场共识解释</h4><p>云厂商继续上调 AI 投入，Blackwell 需求强，供给紧张反而强化短期收入可见度。</p></div>
-          <div class="sample-block"><h4>非共识问题</h4><p>订单是否已经被过度提前反映？毛利率、供给瓶颈和客户集中度是否会压缩估值弹性？</p></div>
-          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 等估值回落；Momentum Partner 观察放量突破能否延续；Quality Partner 要确认毛利率和客户结构。</p></div>
-          <div class="sample-block"><h4>最终结论</h4><p>观察。等待条件是财报确认订单和毛利率；风险触发器是资本开支下修、交付瓶颈或核心客户延迟采购。</p></div>
+          <div class="sample-block"><h4>非共识问题</h4><p>Blackwell 交付、CoWoS 产能、云厂商 CapEx 和中国出口管制，哪一个才是真正改变未来一年盈利的变量？</p></div>
+          <div class="sample-block"><h4>投委会读法</h4><p>Value Partner 等估值回落；Momentum Partner 观察放量突破能否延续；Quality Partner 要确认毛利率和客户结构。</p></div>
+          <div class="sample-block"><h4>最终输出</h4><p>观察。等待财报确认订单和毛利率；风险触发器是资本开支下修、交付瓶颈或核心客户延迟采购。</p></div>
         </article>
 
         <article class="sample-report-card">
           <span class="agent-tag">BABA 投委会裁决报告</span>
           <h3>低估值反弹还是基本面拐点</h3>
           <div class="sample-block"><h4>今日异动是什么</h4><p>ADR 与港股同步放量反弹，回购、云业务和消费复苏叙事同时升温。</p></div>
-          <div class="sample-block"><h4>市场共识解释</h4><p>估值处于历史低位，监管预期趋稳，云与 AI 业务可能带来重新估值。</p></div>
-          <div class="sample-block"><h4>非共识问题</h4><p>消费复苏质量是否足够？云业务商业化能否抵消主业竞争？股东回报是否能改变长期折价？</p></div>
-          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 认为赔率开始改善；Momentum Partner 要等趋势确认；Quality Partner 关注治理、现金流和核心业务执行。</p></div>
-          <div class="sample-block"><h4>最终结论</h4><p>等待条件。需要看到云收入改善、回购持续和核心电商利润稳定；风险触发器是竞争加剧或政策预期反复。</p></div>
+          <div class="sample-block"><h4>非共识问题</h4><p>低估值是否只是估值修复，还是云业务、股东回报、核心电商利润率共同关闭折价？</p></div>
+          <div class="sample-block"><h4>投委会读法</h4><p>Value Partner 看赔率；Momentum Partner 等趋势确认；Quality Partner 关注治理、现金流和核心业务执行。</p></div>
+          <div class="sample-block"><h4>最终输出</h4><p>等待条件。需要看到云收入改善、回购持续和核心电商利润稳定；风险触发器是竞争加剧或政策预期反复。</p></div>
         </article>
 
         <article class="sample-report-card">
           <span class="agent-tag">AMD Risk Auditor 风险审计报告</span>
           <h3>AI 芯片追赶叙事的反证清单</h3>
           <div class="sample-block"><h4>今日异动是什么</h4><p>AI 加速卡订单预期波动，市场在押注 MI 系列能否拿到更多数据中心份额。</p></div>
-          <div class="sample-block"><h4>市场共识解释</h4><p>客户希望引入第二供应商，AMD 可能受益于供应链分散和 AI 芯片需求扩张。</p></div>
           <div class="sample-block"><h4>非共识问题</h4><p>软件生态、客户集中、交付节奏和毛利率是否足以支撑当前估值？</p></div>
-          <div class="sample-block"><h4>三个 Agent 分歧</h4><p>Value Partner 谨慎看估值；Momentum Partner 看相对强弱和订单修正；Quality Partner 要求软件生态与执行证据。</p></div>
-          <div class="sample-block"><h4>最终结论</h4><p>观察。等待条件是大客户订单与毛利率确认；风险触发器是出货延迟、生态进展不及预期或指引下修。</p></div>
+          <div class="sample-block"><h4>投委会读法</h4><p>Value Partner 谨慎看估值；Momentum Partner 看订单修正；Quality Partner 要求软件生态与执行证据。</p></div>
+          <div class="sample-block"><h4>最终输出</h4><p>观察。等待大客户订单与毛利率确认；风险触发器是出货延迟、生态进展不及预期或指引下修。</p></div>
         </article>
       </div>
     </div>
@@ -93,16 +155,14 @@
         <article class="partner-card">
           <span class="agent-tag">Value Partner</span>
           <h3>低估值与安全边际</h3>
-          <div class="sample-block"><h4>过往战绩样例</h4><p>2023-2025 年跟踪 MSFT，在云业务增长与利润率改善确认后持续观察，样例区间回报约 +58%。</p></div>
           <div class="sample-block"><h4>投资风格</h4><p>偏重现金流、估值分位、坏消息计入程度和下行保护，不追逐单日情绪。</p></div>
           <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>估值低不等于便宜，必须解释价值回归路径。</li><li>安全边际优先于叙事强度。</li><li>缺少现金流证据时只输出观察或等待条件。</li></ul></div>
-          <div class="sample-block"><h4>个股分析样例：BABA</h4><p>核心问题不是“够不够便宜”，而是回购、云业务和主业利润能否共同关闭估值折价。等待条件：利润率稳定与股东回报持续。</p></div>
+          <div class="sample-block"><h4>个股分析样例：BABA</h4><p>核心问题不是“够不够便宜”，而是回购、云业务和主业利润能否共同关闭估值折价。</p></div>
         </article>
 
         <article class="partner-card">
           <span class="agent-tag">Momentum Partner</span>
           <h3>趋势、修正与资金确认</h3>
-          <div class="sample-block"><h4>过往战绩样例</h4><p>2023-2024 年跟踪 NVDA，在业绩预期连续上修与放量趋势确认后保持强势观察，样例区间回报约 +210%。</p></div>
           <div class="sample-block"><h4>投资风格</h4><p>关注趋势持续性、成交量、相对强弱、分析师预期修正和事件催化。</p></div>
           <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>单日上涨不算趋势，必须有持续确认。</li><li>突破需要成交量和预期修正配合。</li><li>趋势破坏时优先降低结论强度。</li></ul></div>
           <div class="sample-block"><h4>个股分析样例：NVDA</h4><p>如果放量突破后财报继续确认订单和毛利率，趋势仍有延续基础；若资本开支预期下修，则趋势信号失效。</p></div>
@@ -111,11 +171,27 @@
         <article class="partner-card">
           <span class="agent-tag">Quality Partner</span>
           <h3>质量、护城河与执行</h3>
-          <div class="sample-block"><h4>过往战绩样例</h4><p>2022-2025 年跟踪 AMD，在数据中心业务扩张与执行改善阶段持续复核，样例区间回报约 +76%。</p></div>
           <div class="sample-block"><h4>投资风格</h4><p>关注商业模式质量、客户黏性、产品周期、管理层执行和财务韧性。</p></div>
           <div class="sample-block"><h4>主要规则</h4><ul class="rules-list"><li>增长必须能转化为利润质量。</li><li>客户集中和产品周期风险必须显式列出。</li><li>没有执行证据时不把好故事当成好公司。</li></ul></div>
-          <div class="sample-block"><h4>个股分析样例：AMD</h4><p>关键不是“能否追赶”，而是软件生态、客户订单和毛利率能否同时验证。等待条件：大客户复购与利润率改善。</p></div>
+          <div class="sample-block"><h4>个股分析样例：AMD</h4><p>关键不是“能否追赶”，而是软件生态、客户订单和毛利率能否同时验证。</p></div>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">AI Native OPC 投资公司标准</h2>
+      <span class="pill ok">一人公司化</span>
+    </div>
+    <div class="panel-body">
+      <div class="investor-standard-grid">
+        <div class="standard-item"><strong>研究队列</strong><span>每个问题都有 prompt、状态、回填、跳过、沉淀路径。</span></div>
+        <div class="standard-item"><strong>证据账本</strong><span>知识库保存结论、反证、未关闭问题和有效期，而不是只保存聊天记录。</span></div>
+        <div class="standard-item"><strong>投委会分工</strong><span>Value、Momentum、Quality、CIO、Risk Auditor 分别承担不同职责，避免单一叙事统治判断。</span></div>
+        <div class="standard-item"><strong>安全约束</strong><span>冷启动、未回填、证据缺口都会自动降低置信度，并写入等待条件。</span></div>
+        <div class="standard-item"><strong>复盘学习</strong><span>每次决策进入时间线和 outcome snapshot，让系统下一次更懂这只股票。</span></div>
+        <div class="standard-item"><strong>人保留最终边界</strong><span>系统负责研究、质疑、归档和提醒；最终是否行动仍由投资人决定。</span></div>
       </div>
     </div>
   </section>

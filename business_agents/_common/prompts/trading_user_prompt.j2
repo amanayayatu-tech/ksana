@@ -32,6 +32,7 @@ K deep 的初步判断：{{ signal_summary }}
 
 1. 输出 abstain 时必须填 abstain_reason
 2. 上游 evidence_unverified_inherited 时 confidence 上限 70
+2.1 如果上游 research_planning_context.cold_start_pending 非空，confidence 上限 50，并在 waiting_conditions 写清楚必须先完成哪些冷启动历史研究
 3. 第一阶段试运行禁止 long / short / leverage / put / hedge
 4. direction 只能是 watch / avoid / abstain；如果你的方法论倾向 long，也必须输出 watch，并在 trial_run_policy.downgrade_reason 里说明 first_phase_long_disabled
 5. 所有 watch / avoid / abstain 都必须有 thesis、证据引用、缺口说明

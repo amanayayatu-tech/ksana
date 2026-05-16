@@ -389,6 +389,21 @@
       box-shadow: 0 18px 42px var(--shadow);
     }
 
+    .guide-copy {
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .guide-kicker {
+      margin: 4px 0 -2px;
+      color: var(--accent-2);
+      font: 760 11px/1.3 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
     .guide-title {
       margin: 0;
       color: var(--paper);
@@ -400,9 +415,39 @@
 
     .guide-subtitle {
       max-width: 700px;
-      margin: 14px 0 0;
+      margin: 0;
       color: var(--muted);
       line-height: 1.72;
+    }
+
+    .guide-proof-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .guide-proof-strip div {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(6, 12, 16, 0.72);
+    }
+
+    .guide-proof-strip strong {
+      display: block;
+      color: var(--paper);
+      font: 820 22px/1 var(--mono);
+    }
+
+    .guide-proof-strip span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
     }
 
     .guide-visual {
@@ -470,16 +515,25 @@
 
     .guide-flow {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
     }
 
     .flow-step {
-      min-height: 118px;
-      padding: 12px;
+      position: relative;
+      grid-column: span 3;
+      min-height: 132px;
+      padding: 14px;
       border: 1px solid var(--line-soft);
       border-top: 3px solid var(--accent);
-      background: rgba(10, 12, 9, 0.74);
+      background:
+        linear-gradient(180deg, rgba(66, 215, 164, 0.055), transparent 72px),
+        rgba(10, 12, 9, 0.74);
+    }
+
+    .guide-flow .flow-step:nth-child(n + 5) {
+      grid-column: span 4;
+      min-height: 116px;
     }
 
     .flow-step strong {
@@ -494,6 +548,108 @@
       color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
+    }
+
+    .guide-explain-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .explain-card,
+    .cold-start-card,
+    .standard-item {
+      min-width: 0;
+      border: 1px solid var(--line-soft);
+      background:
+        linear-gradient(180deg, rgba(66, 215, 164, 0.045), transparent 78px),
+        rgba(7, 13, 19, 0.56);
+    }
+
+    .explain-card {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      min-height: 188px;
+      padding: 14px;
+      border-top: 3px solid var(--accent);
+      border-radius: var(--radius);
+    }
+
+    .explain-card h3,
+    .cold-start-copy h3 {
+      margin: 0;
+      color: var(--paper);
+      line-height: 1.28;
+    }
+
+    .explain-card p,
+    .cold-start-copy p,
+    .cold-start-card span,
+    .standard-item span {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.58;
+    }
+
+    .cold-start-system {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .cold-start-copy {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent-2);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(215, 189, 114, 0.09), transparent 58%),
+        rgba(10, 12, 9, 0.74);
+    }
+
+    .cold-start-flow {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .cold-start-card {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      padding: 13px;
+      border-radius: 8px;
+    }
+
+    .cold-start-card:nth-child(5) {
+      grid-column: 1 / -1;
+    }
+
+    .cold-start-card strong,
+    .standard-item strong {
+      color: var(--paper);
+      line-height: 1.35;
+    }
+
+    .investor-standard-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .standard-item {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      min-height: 112px;
+      padding: 14px;
+      border-left: 3px solid rgba(66, 215, 164, 0.7);
+      border-radius: 8px;
     }
 
     .guide-split {
@@ -597,6 +753,15 @@
     .workflow-step.primary-flow {
       border-left-color: var(--accent);
       background: rgba(18, 48, 48, 0.42);
+    }
+
+    .workflow-steps .workflow-step:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+      min-height: 78px;
+      align-items: center;
+      background:
+        linear-gradient(90deg, rgba(66, 215, 164, 0.11), transparent 64%),
+        rgba(8, 12, 15, 0.68);
     }
 
     .workflow-number {
@@ -921,6 +1086,17 @@
         rgba(7, 12, 18, 0.78);
     }
 
+    .run-detail-tabs {
+      width: max-content;
+      max-width: 100%;
+      margin-bottom: 14px;
+    }
+
+    .run-detail-panel {
+      display: grid;
+      gap: 14px;
+    }
+
     .run-progress-head {
       display: flex;
       align-items: flex-start;
@@ -1017,6 +1193,50 @@
     .step-item.running .step-state { color: var(--amber); }
     .step-item.failed .step-state,
     .step-item.cancelled .step-state { color: var(--danger); }
+
+    .usage-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .usage-summary-grid div {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(66, 215, 164, 0.05), transparent 72px),
+        rgba(7, 13, 19, 0.62);
+    }
+
+    .usage-summary-grid strong {
+      display: block;
+      color: var(--paper);
+      font: 800 21px/1.1 var(--mono);
+      overflow-wrap: anywhere;
+    }
+
+    .usage-summary-grid span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .usage-note {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    .usage-note a {
+      color: var(--accent);
+    }
+
+    .usage-table-shell table {
+      min-width: max(980px, 100%);
+    }
 
     .report-grid {
       display: grid;
@@ -1773,16 +1993,29 @@
       .control-grid,
       .agent-control-grid,
       .guide-hero,
+      .guide-proof-strip,
       .guide-split,
       .guide-flow,
+      .guide-explain-grid,
+      .cold-start-system,
+      .cold-start-flow,
+      .investor-standard-grid,
       .workflow-hero,
       .workflow-steps,
       .hero-actions,
       .workflow-action-row,
       .workflow-gate-summary,
+      .usage-summary-grid,
       .sample-report-grid,
       .partner-grid {
         grid-template-columns: 1fr;
+      }
+
+      .guide-flow .flow-step,
+      .guide-flow .flow-step:nth-child(n + 5),
+      .cold-start-card:nth-child(5),
+      .workflow-steps .workflow-step:last-child:nth-child(odd) {
+        grid-column: auto;
       }
 
       .workflow-rerun-strip {
@@ -1842,7 +2075,7 @@
         <a class="{% if active_page == 'history' %}active{% endif %}" href="/history">报告中心</a>
         <a class="{% if active_page == 'stock_pool' %}active{% endif %}" href="/stock-pool">股票池</a>
         <a class="{% if active_page == 'learning' %}active{% endif %}" href="/learning">复盘库</a>
-        <a class="{% if active_page == 'guide' %}active{% endif %}" href="/guide">样例指南</a>
+        <a class="{% if active_page == 'guide' %}active{% endif %}" href="/guide">使用说明</a>
       </nav>
       <div class="sidebar-meta">
         <a class="sidebar-settings {% if active_page == 'env' %}active{% endif %}" href="/env">

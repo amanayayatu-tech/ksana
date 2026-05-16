@@ -201,8 +201,17 @@
 
   function statusKind(status) {
     if (status === "filled") return "ok";
-    if (status === "skipped") return "warn";
+    if (status === "skipped" || status === "skip_cold_start") return "warn";
+    if (status === "pending_cold_start") return "warn";
     return "";
+  }
+
+  function isPendingStatus(status) {
+    return status === "pending" || status === "pending_cold_start";
+  }
+
+  function isSkippedStatus(status) {
+    return status === "skipped" || status === "skip_cold_start";
   }
 
   async function loadPrompts() {
@@ -229,18 +238,38 @@
       promptBody.innerHTML = '<tr><td colspan="5" class="muted">暂无深度研究 Prompt</td></tr>';
       return;
     }
-    promptBody.innerHTML = prompts.map((item) => `
-      <tr class="${item.prompt_id === selectedPromptId ? "active-row" : ""}" data-select="${escapeHtml(item.prompt_id)}">
-        <td><code>${escapeHtml(item.prompt_id)}</code></td>
-        <td>${escapeHtml(item.related_signal_id || "")}</td>
-        <td>${escapeHtml(item.priority || "")}</td>
-        <td><span class="pill ${statusKind(item.status)}">${escapeHtml(item.status_label)}</span></td>
-        <td class="wrap">${escapeHtml((item.prompt_text || "").slice(0, 150))}</td>
-      </tr>
-    `).join("");
+    const coldStart = prompts
+      .filter((item) => item.cold_start)
+      .sort((a, b) => Number(a.priority_order || 99) - Number(b.priority_order || 99));
+    const regular = prompts.filter((item) => !item.cold_start);
+    const rows = [];
+    if (coldStart.length) {
+      rows.push('<tr class="section-row"><td colspan="5"><strong>📚 历史研究补课（新股票冷启动）</strong></td></tr>');
+      rows.push(...coldStart.map(renderPromptRow));
+    }
+    if (regular.length) {
+      if (coldStart.length) rows.push('<tr class="section-row"><td colspan="5"><strong>当日触发研究</strong></td></tr>');
+      rows.push(...regular.map(renderPromptRow));
+    }
+    promptBody.innerHTML = rows.join("");
     promptBody.querySelectorAll("[data-select]").forEach((row) => {
       row.addEventListener("click", () => selectPrompt(row.dataset.select));
     });
+  }
+
+  function renderPromptRow(item) {
+    const dimension = item.cold_start
+      ? `${escapeHtml(item.research_dimension_label || item.research_dimension || "冷启动")} · #${escapeHtml(item.priority_order || "")}`
+      : escapeHtml(item.priority || "");
+    return `
+      <tr class="${item.prompt_id === selectedPromptId ? "active-row" : ""}" data-select="${escapeHtml(item.prompt_id)}">
+        <td><code>${escapeHtml(item.prompt_id)}</code></td>
+        <td>${escapeHtml(item.related_signal_id || "")}</td>
+        <td>${dimension}</td>
+        <td><span class="pill ${statusKind(item.status)}">${escapeHtml(item.status_label)}</span></td>
+        <td class="wrap">${escapeHtml((item.prompt_text || "").slice(0, 150))}</td>
+      </tr>
+    `;
   }
 
   function selectPrompt(promptId) {
@@ -251,7 +280,9 @@
       clearDetail();
       return;
     }
-    document.getElementById("detailTitle").textContent = item.prompt_id;
+    document.getElementById("detailTitle").textContent = item.cold_start
+      ? `${item.prompt_id} · ${item.research_dimension_label || item.research_dimension || "冷启动"}`
+      : item.prompt_id;
     document.getElementById("selectedMetric").textContent = item.prompt_id.replace("PR-", "");
     setPill(detailStatus, item.status_label, statusKind(item.status));
     document.getElementById("promptText").value = item.prompt_markdown || item.prompt_text || "";
@@ -273,7 +304,7 @@
 
   function renderKnowledgeReceipt(item = {}) {
     const root = document.getElementById("knowledgeReceipt");
-    const status = item.status === "filled" ? "已入库" : item.status === "skipped" ? "已跳过" : "等待回填";
+    const status = item.status === "filled" ? "已入库" : isSkippedStatus(item.status) ? "已跳过" : "等待回填";
     const resultPath = item.result_path || item.path_display || "未保存";
     root.innerHTML = `
       <div class="receipt-line"><span>入库状态</span><strong>${escapeHtml(status)}</strong></div>
@@ -330,7 +361,7 @@
   }
 
   function updateQueueMetric() {
-    const pending = prompts.filter((item) => item.status === "pending").length;
+    const pending = prompts.filter((item) => isPendingStatus(item.status)).length;
     const filled = prompts.filter((item) => item.status === "filled").length;
     document.getElementById("queueMetric").textContent = `${pending}/${filled}`;
   }
