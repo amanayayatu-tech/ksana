@@ -89,10 +89,11 @@ def test_index_shows_partner_dispatch_without_collapsed_details():
     assert "完整研报不是一次点击完成" in response.text
     assert "1 生成研究任务" in response.text
     assert "runResearchScan" in response.text
+    assert "/api/research-scan-stream" in response.text
     assert "/api/agent-stream" in response.text
-    assert 'agent: "research"' in response.text
     assert "/api/run-stream" not in response.text
     assert "data-run" not in response.text
+    assert "resumeLatestRunProgress" in response.text
     assert "第二步：Deep Research 回填" in response.text
     assert "第三步：回填后重跑完整研报" in response.text
     assert "workflowPromptList" in response.text
@@ -241,6 +242,66 @@ def test_history_reconciles_stale_running_rerun(tmp_path, monkeypatch):
     assert row[0] == "cancelled"
     assert '"cancelled": true' in row[1]
     assert '"cancelled_reason": "stale_running_without_backend_process"' in row[1]
+
+
+def test_history_reconciles_stale_running_research_scan(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: False)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="research_scan",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-16",
+            "brief_type": "morning",
+            "source": "research_scan",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    updated = webui.reconcile_stale_running_runs()
+
+    assert updated == [run_id]
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        row = conn.execute("SELECT status, metadata_json FROM pipeline_runs").fetchone()
+    assert row[0] == "cancelled"
+    assert '"source": "research_scan"' in row[1]
+    assert '"cancelled_reason": "stale_running_without_backend_process"' in row[1]
+
+
+def test_ops_dashboard_reconciles_stale_research_scan_before_resume(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "has_active_rerun_process", lambda: False)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="research_scan",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-16",
+            "brief_type": "morning",
+            "source": "research_scan",
+            "no_llm": False,
+        },
+    )
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00+08:00", run_id),
+        )
+
+    response = TestClient(webui.app).get("/api/ops-dashboard")
+
+    assert response.status_code == 200
+    latest_run = response.json()["dashboard"]["latest_run"]
+    assert latest_run["run_id"] == run_id
+    assert latest_run["status"] == "cancelled"
 
 
 def test_history_does_not_reconcile_while_rerun_process_exists(tmp_path, monkeypatch):
@@ -402,6 +463,49 @@ def test_run_progress_uses_rerun_step_plan(tmp_path, monkeypatch):
     assert progress["steps"][0]["state"] == "running"
     assert "异常扫描" not in progress["current_step_label"]
     assert "Value Partner" in progress["current_step_label"]
+
+
+def test_run_progress_uses_research_scan_step_plan(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    run_log = webui.RunLog(data_dir / "orchestrator" / "runs.db")
+    run_id = run_log.create_run(
+        pipeline_type="research_scan",
+        trigger_source="manual",
+        metadata={
+            "date": "2026-05-16",
+            "brief_type": "morning",
+            "source": "research_scan",
+            "background": True,
+        },
+    )
+    client = TestClient(webui.app)
+
+    progress = client.get(f"/api/run-progress?run_id={run_id}").json()["progress"]
+
+    assert progress["pipeline_type"] == "research_scan"
+    assert [step["step_name"] for step in progress["steps"]] == ["research_scan"]
+    assert progress["steps"][0]["state"] == "running"
+    assert "异常扫描" in progress["current_step_label"]
+
+    run_log.record_step(
+        run_id,
+        webui.StepResult(
+            step_name="research_scan",
+            status="success",
+            exit_code=0,
+            attempts=1,
+        ),
+    )
+    run_log.finish_run(
+        run_id,
+        "completed",
+        {"date": "2026-05-16", "brief_type": "morning", "source": "research_scan"},
+    )
+
+    completed = client.get(f"/api/run-progress?run_id={run_id}").json()["progress"]
+    assert completed["steps"][0]["state"] == "completed"
+    assert completed["message"] == "研究任务已生成，请继续回填 Deep Research。"
 
 
 def test_run_progress_advances_rerun_steps_sequentially(tmp_path, monkeypatch):
@@ -582,6 +686,16 @@ def test_active_rerun_process_detects_dated_trading_command(monkeypatch):
     class ProcessList:
         returncode = 0
         stdout = "uv run trading-f_partner run --date 2026-05-14 --data-dir data\n"
+
+    monkeypatch.setattr(webui.subprocess, "run", lambda *args, **kwargs: ProcessList())
+
+    assert webui.has_active_rerun_process() is True
+
+
+def test_active_rerun_process_detects_research_scan_command(monkeypatch):
+    class ProcessList:
+        returncode = 0
+        stdout = "uv run research-agent run --type scan --date 2026-05-16 --data-dir data\n"
 
     monkeypatch.setattr(webui.subprocess, "run", lambda *args, **kwargs: ProcessList())
 
@@ -850,6 +964,54 @@ def test_background_command_start_returns_history_run_id(tmp_path, monkeypatch):
     assert row[0] == "completed"
     assert '"brief_type": "morning"' in row[1]
     assert not webui.run_lock.locked()
+
+
+def test_research_scan_background_run_is_resumable_without_rerun_cleanup(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    brief_dir = data_dir / "briefs" / "20260516"
+    brief_dir.mkdir(parents=True)
+    stale_brief = brief_dir / "BRIEF-20260516-AM.md"
+    stale_brief.write_text("old brief should not be removed by research scan", encoding="utf-8")
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+    monkeypatch.setattr(webui, "run_lock", asyncio.Lock())
+    monkeypatch.setattr(webui, "background_tasks", set())
+
+    async def start_background() -> list[str]:
+        events = [
+            chunk
+            async for chunk in webui.stream_background_command_sequence_start(
+                [("research_scan", [sys.executable, "-c", "print('scan-ok')"])],
+                {},
+                history={
+                    "pipeline_type": "research_scan",
+                    "trigger_source": "manual",
+                    "date": "2026-05-16",
+                    "brief_type": "morning",
+                    "source": "research_scan",
+                    "no_llm": False,
+                },
+            )
+        ]
+        await asyncio.wait_for(asyncio.gather(*list(webui.background_tasks)), timeout=5)
+        return events
+
+    events = asyncio.run(start_background())
+
+    assert any('"status": "running"' in event for event in events)
+    assert any('"run_id": "RUN-20260516-' in event for event in events)
+    assert stale_brief.exists()
+    with sqlite3.connect(data_dir / "orchestrator" / "runs.db") as conn:
+        run_row = conn.execute("SELECT run_id, status, metadata_json FROM pipeline_runs").fetchone()
+        step_row = conn.execute("SELECT step_name, status, stdout_path FROM step_executions").fetchone()
+    assert run_row[1] == "completed"
+    assert '"source": "research_scan"' in run_row[2]
+    assert '"source": "deep_research_rerun"' not in run_row[2]
+    assert step_row[0] == "research_scan"
+    assert step_row[1] == "success"
+    assert "scan-ok" in Path(step_row[2]).read_text(encoding="utf-8")
+    progress = webui.build_run_progress(run_row[0])
+    assert progress["pipeline_type"] == "research_scan"
+    assert [step["step_name"] for step in progress["steps"]] == ["research_scan"]
 
 
 def test_deep_research_background_rerun_cleans_stale_downstream_outputs(tmp_path, monkeypatch):

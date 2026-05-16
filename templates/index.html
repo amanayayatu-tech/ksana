@@ -345,6 +345,8 @@
   }
 
   function startProgressPolling(runId, afterDone) {
+    if (progressRunId === runId && progressTimer) return;
+    clearProgressPolling();
     progressRunId = runId;
     runProgress.classList.remove("hidden");
     loadRunProgress(runId, afterDone);
@@ -411,12 +413,11 @@
     setReportType("morning");
     appendLog("开始扫描股票池并生成 Deep Research 任务；完成回填后再重跑完整研报。");
     const params = new URLSearchParams({
-      agent: "research",
       brief_type: "morning",
       date,
       no_llm: "false",
     });
-    stream(`/api/agent-stream?${params.toString()}`, runStatus, () => {
+    stream(`/api/research-scan-stream?${params.toString()}`, runStatus, () => {
       loadWorkflowPrompts(false);
       loadOpsDashboard();
       document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -749,6 +750,26 @@
       `${row.status || ""} · ${row.run_id}`,
       row.status === "completed" ? "ok" : row.status === "failed" ? "error" : "warn"
     );
+    resumeLatestRunProgress(row);
+  }
+
+  function resumeLatestRunProgress(row) {
+    if (!row.run_id || row.status !== "running" || progressRunId === row.run_id) return;
+    const afterDone = row.pipeline_type === "research_scan"
+      ? () => {
+        loadWorkflowPrompts(false);
+        loadOpsDashboard();
+      }
+      : row.pipeline_type === "deep_research_rerun"
+        ? () => {
+          loadReport();
+          loadWorkflowPrompts();
+          loadOpsDashboard();
+        }
+        : null;
+    if (!logBox.textContent.trim()) appendLog(`已恢复运行进度：${row.run_id}`);
+    setPill(runStatus, "运行中", "warn");
+    startProgressPolling(row.run_id, afterDone);
   }
 
   function escapeHtml(value) {

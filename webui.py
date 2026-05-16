@@ -149,6 +149,14 @@ RERUN_RUN_STEP_PLAN = [
         "stage": "red_team",
     },
 ]
+RESEARCH_SCAN_STEP_PLAN = [
+    {
+        "step_name": "research_scan",
+        "label": "异常扫描 Agent 编排研究任务",
+        "estimate_seconds": 120,
+        "stage": "research",
+    },
+]
 
 app = FastAPI(title="ResearchOS")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
@@ -282,6 +290,29 @@ async def agent_stream(
     date = normalize_date(run_date)
     command = build_agent_command(agent, brief_type, date, no_llm)
     return stream_command_response(command, {})
+
+
+@app.get("/api/research-scan-stream")
+async def research_scan_stream(
+    brief_type: str = Query("morning"),
+    run_date: str = Query(..., alias="date"),
+    no_llm: bool = Query(False),
+) -> StreamingResponse:
+    validate_brief_type(brief_type)
+    date = normalize_date(run_date)
+    command = build_agent_command("research", brief_type, date, no_llm)
+    return stream_background_command_sequence_response(
+        [("research_scan", command)],
+        {},
+        history={
+            "pipeline_type": "research_scan",
+            "trigger_source": "manual",
+            "date": date,
+            "brief_type": brief_type,
+            "source": "research_scan",
+            "no_llm": no_llm,
+        },
+    )
 
 
 @app.get("/api/report")
@@ -443,6 +474,7 @@ def api_trial_status() -> dict[str, Any]:
 
 @app.get("/api/ops-dashboard")
 def api_ops_dashboard() -> dict[str, Any]:
+    reconcile_stale_running_runs()
     return {"ok": True, "dashboard": build_ops_dashboard()}
 
 
@@ -769,7 +801,7 @@ async def stream_background_command_sequence_start(
     await run_lock.acquire()
     lock_transferred = False
     try:
-        run_log, run_id, history_metadata, logs_dir = create_rerun_history(history)
+        run_log, run_id, history_metadata, logs_dir = create_background_history(history)
         task = asyncio.create_task(
             run_background_command_sequence(
                 commands,
@@ -1032,15 +1064,16 @@ async def stream_command_sequence(
             await stop_process(active_process)
 
 
-def create_rerun_history(history: dict[str, Any]) -> tuple[RunLog, str, dict[str, Any], Path]:
+def create_background_history(history: dict[str, Any]) -> tuple[RunLog, str, dict[str, Any], Path]:
     run_log = RunLog(DATA_DIR / "orchestrator" / "runs.db")
     history_metadata = {
         "brief_type": history["brief_type"],
         "date": history["date"],
-        "source": "deep_research_rerun",
-        "no_llm": history["no_llm"],
+        "source": history.get("source") or history["pipeline_type"],
         "background": True,
     }
+    if "no_llm" in history:
+        history_metadata["no_llm"] = history["no_llm"]
     run_id = run_log.create_run(
         pipeline_type=history["pipeline_type"],
         trigger_source=history["trigger_source"],
@@ -1049,6 +1082,11 @@ def create_rerun_history(history: dict[str, Any]) -> tuple[RunLog, str, dict[str
     logs_dir = DATA_DIR / "orchestrator" / "logs" / run_id
     logs_dir.mkdir(parents=True, exist_ok=True)
     return run_log, run_id, history_metadata, logs_dir
+
+
+def create_rerun_history(history: dict[str, Any]) -> tuple[RunLog, str, dict[str, Any], Path]:
+    history = {**history, "source": "deep_research_rerun"}
+    return create_background_history(history)
 
 
 async def run_background_command_sequence(
@@ -1065,11 +1103,12 @@ async def run_background_command_sequence(
     active_stdout_lines: list[str] = []
     run_finished = False
     try:
-        cleanup_removed = cleanup_deep_research_rerun_outputs(
-            history_metadata.get("date", ""),
-            history_metadata.get("brief_type", ""),
-        )
-        history_metadata["cleanup_removed_count"] = len(cleanup_removed)
+        if history_metadata.get("source") == "deep_research_rerun":
+            cleanup_removed = cleanup_deep_research_rerun_outputs(
+                history_metadata.get("date", ""),
+                history_metadata.get("brief_type", ""),
+            )
+            history_metadata["cleanup_removed_count"] = len(cleanup_removed)
         for label, command in commands:
             step_name = RERUN_STEP_NAMES.get(
                 label,
@@ -1822,16 +1861,18 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
 
     now = datetime.now().astimezone()
     cancelled_run_ids: list[str] = []
-    rerun_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    tracked_rows: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     for row in rows:
         metadata = parse_metadata_json(row.get("metadata_json", ""))
-        if row.get("pipeline_type") != "deep_research_rerun" and metadata.get("source") != "deep_research_rerun":
+        tracked_type = resumable_background_run_type(row, metadata)
+        if not tracked_type:
             continue
-        rerun_rows.append((row, metadata))
+        tracked_rows.append((row, metadata, tracked_type))
 
-    duplicate_groups: dict[tuple[str, str], list[tuple[dict[str, Any], dict[str, Any]]]] = {}
-    for row, metadata in rerun_rows:
+    duplicate_groups: dict[tuple[str, str, str], list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for row, metadata, tracked_type in tracked_rows:
         key = (
+            tracked_type,
             str(metadata.get("date") or row.get("started_at", "")[:10]),
             str(metadata.get("brief_type") or ""),
         )
@@ -1840,7 +1881,11 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
     for group in duplicate_groups.values():
         if len(group) <= 1:
             continue
-        group.sort(key=lambda item: parse_datetime(item[0].get("started_at", "")) or datetime.min.replace(tzinfo=now.tzinfo), reverse=True)
+        group.sort(
+            key=lambda item: parse_datetime(item[0].get("started_at", ""))
+            or datetime.min.replace(tzinfo=now.tzinfo),
+            reverse=True,
+        )
         keeper = group[0][0]
         for row, metadata in group[1:]:
             cancelled_metadata = dict(metadata)
@@ -1852,7 +1897,7 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
             cancelled_run_ids.append(row["run_id"])
 
     stale_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for row, metadata in rerun_rows:
+    for row, metadata, _tracked_type in tracked_rows:
         if row["run_id"] in cancelled_run_ids:
             continue
         started_at = parse_datetime(row.get("started_at", ""))
@@ -1871,6 +1916,15 @@ def reconcile_stale_running_runs(max_age_seconds: int = RUNNING_RUN_STALE_SECOND
         run_log.finish_run(row["run_id"], "cancelled", cancelled_metadata)
         cancelled_run_ids.append(row["run_id"])
     return cancelled_run_ids
+
+
+def resumable_background_run_type(row: dict[str, Any], metadata: dict[str, Any]) -> str:
+    pipeline_type = str(row.get("pipeline_type") or "")
+    source = str(metadata.get("source") or "")
+    for tracked_type in ("deep_research_rerun", "research_scan"):
+        if pipeline_type == tracked_type or source == tracked_type:
+            return tracked_type
+    return ""
 
 
 def has_active_background_rerun_task() -> bool:
@@ -1899,6 +1953,7 @@ def parse_datetime(value: str) -> datetime | None:
 
 def has_active_rerun_process() -> bool:
     process_markers = (
+        ("research-agent", "run", "--type", "scan", "--data-dir"),
         ("trading-f_partner", "run", "--data-dir"),
         ("trading-w_partner", "run", "--data-dir"),
         ("trading-g_partner", "run", "--data-dir"),
@@ -2407,7 +2462,11 @@ def build_run_progress(run_id: str) -> dict[str, Any]:
         "estimated_total_seconds": total_estimate,
         "estimated_remaining_seconds": remaining_estimate,
         "current_step_label": " / ".join(step["label"] for step in active_steps),
-        "message": build_run_progress_message(row.get("status") or "", active_steps),
+        "message": build_run_progress_message(
+            row.get("status") or "",
+            active_steps,
+            row.get("pipeline_type") or "",
+        ),
         "steps": steps,
     }
 
@@ -2417,6 +2476,8 @@ def run_step_plan(
     metadata: dict[str, Any],
 ) -> list[dict[str, Any]]:
     pipeline_type = str(run_row.get("pipeline_type") or "")
+    if pipeline_type == "research_scan" or metadata.get("source") == "research_scan":
+        return RESEARCH_SCAN_STEP_PLAN
     if pipeline_type == "deep_research_rerun" or metadata.get("source") == "deep_research_rerun":
         return RERUN_RUN_STEP_PLAN
     return FULL_RUN_STEP_PLAN
@@ -2582,8 +2643,14 @@ def elapsed_between(started_at: datetime | None, ended_at: datetime | None) -> i
     return max(0, round((end - started_at).total_seconds()))
 
 
-def build_run_progress_message(status: str, active_steps: list[dict[str, Any]]) -> str:
+def build_run_progress_message(
+    status: str,
+    active_steps: list[dict[str, Any]],
+    pipeline_type: str = "",
+) -> str:
     if status == "completed":
+        if pipeline_type == "research_scan":
+            return "研究任务已生成，请继续回填 Deep Research。"
         return "本轮投委会已完成，报告可读取。"
     if status in {"failed", "partial_success"}:
         return "本轮运行未完全成功，请查看运行档案和步骤状态。"
