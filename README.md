@@ -1,6 +1,6 @@
 # WorldPay IC / ResearchOS
 
-WorldPay IC is a ResearchOS workspace for equity research teams that need a repeatable Alpha Committee workflow. It turns market anomalies into research tasks, turns deep research into reusable knowledge, and turns committee reports into auditable review records.
+WorldPay IC is a local ResearchOS workspace for one-person or small-team equity research. It turns market anomalies into research tasks, turns deep research into reusable knowledge, and turns committee reports into auditable review records.
 
 The system does not place trades, manage portfolios, or reduce decisions to simple buy/sell calls. Its output focuses on observation, waiting conditions, missing evidence, risk triggers, and reviewable decision logic.
 
@@ -15,6 +15,38 @@ Most AI research tools stop at a long narrative report. ResearchOS is designed a
 - Produce an Opportunity Memo and a separate Risk Audit.
 - Preserve decision cases, evidence gaps, and follow-up triggers for later review.
 - Show estimated LLM token usage and GPT-5.5-equivalent cost for each recorded run.
+
+## Local Quick Start
+
+Install dependencies:
+
+```bash
+uv sync --extra dev --extra webui
+```
+
+Start the web workspace:
+
+```bash
+uv run python webui.py
+```
+
+Open the local app:
+
+```text
+http://127.0.0.1:7777
+```
+
+Important pages:
+
+| Page | URL | Purpose |
+| --- | --- | --- |
+| Task Flow | `http://127.0.0.1:7777/` | Run the daily research workflow. |
+| Deep Research Inbox | `http://127.0.0.1:7777/deep-research` | Fill or skip generated research prompts. |
+| Report Center | `http://127.0.0.1:7777/history` | Read Opportunity Memo, Risk Audit, run progress, and token cost. |
+| Stock Pool | `http://127.0.0.1:7777/stock-pool` | Edit the active research universe. |
+| Review Library | `http://127.0.0.1:7777/learning` | Review decision cases, timelines, and learning summaries. |
+| Usage Guide | `http://127.0.0.1:7777/guide` | See the workflow guide, cold-start rules, and sample reports. |
+| LLM API Settings | `http://127.0.0.1:7777/env` | Check provider setup and LLM usage visibility. |
 
 ## Workflow
 
@@ -90,12 +122,14 @@ discard / watch / research_priority / trial_candidate / conviction_candidate / h
 
 `trial_candidate` and `conviction_candidate` are not trading instructions. They mean the opportunity is ready for human review, paper tracking, or a human-approved tracking position with Red Team risk-budget limits.
 
+`discard`, `watch`, and `research_priority` are research or monitoring states only. The Risk Auditor assigns them zero real initial-position budget. `human_override_required` is used when the model sees a possible opportunity but the evidence is too conflicted for an automatic committee conclusion, so a human must decide whether to continue.
+
 Reports are rendered as polished HTML reading views. The layout prioritizes summary density first, then full evidence and appendices for auditability.
 
 The guide page includes three sample report formats:
 
 - NVDA anomaly research report
-- BABA investment committee decision report
+- BABA Opportunity Memo
 - AMD Risk Auditor report
 
 ## Product Surface
@@ -122,13 +156,7 @@ The Report Center includes an `LLM Token Cost` tab for each run. It shows:
 
 Historical runs may not include provider-native `usage` fields, so the ledger estimates usage from local `.llm.log` prompt records and generated artifacts. The pricing basis is stored with the result so cost estimates remain auditable.
 
-## Developer Setup
-
-Install dependencies:
-
-```bash
-uv sync --extra dev --extra webui
-```
+## Developer Checks
 
 Run quality checks:
 
@@ -136,14 +164,6 @@ Run quality checks:
 uv run ruff check
 uv run pytest -q
 ```
-
-Start the web workspace:
-
-```bash
-uv run python webui.py
-```
-
-The server prints the local URL when it starts.
 
 ## Design Principles
 
