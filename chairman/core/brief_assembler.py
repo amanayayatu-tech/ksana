@@ -29,6 +29,42 @@ from chairman.models import (
     ResearchSignal,
     WPartnerRecommendation,
 )
+from chairman.opportunity.non_consensus import build_non_consensus_view, consensus_view_label
+from chairman.opportunity.scoring import (
+    classify_reason_types,
+    numeric_values,
+    numeric_values_from_recommendations,
+    score_business_quality,
+    score_catalyst,
+    score_expectation_gap,
+    score_investment_attractiveness,
+    score_positioning,
+    score_risk_pressure,
+    score_valuation,
+)
+from chairman.opportunity.screener import (
+    build_human_decision_checklist,
+    build_kill_conditions,
+    build_opportunity_screener,
+    next_step_from_score,
+    priority_from_score,
+)
+from chairman.opportunity.status_router import (
+    action_route_for_opportunity_status,
+    choose_opportunity_status,
+)
+from chairman.opportunity.utils import (
+    as_list,
+    clamp_score,
+    collect_recommendation_texts,
+    count_markers,
+    dedupe_preserve_order,
+    first_avoid_thesis,
+    first_long_thesis,
+    first_non_empty,
+    first_text_from_extras,
+    infer_time_horizon,
+)
 from orchestrator.core.learning import load_chairman_learning_context
 from orchestrator.core.partner_performance import load_partner_performance_context
 
@@ -45,6 +81,40 @@ DECISIONS_APPLIED = [
     "DEC-014",
     "DEC-016",
     "DEC-019",
+]
+
+__all__ = [
+    "assemble_brief",
+    "build_chairman_verdict",
+    "choose_opportunity_status",
+    "action_route_for_opportunity_status",
+    "build_opportunity_screener",
+    "score_business_quality",
+    "score_expectation_gap",
+    "score_valuation",
+    "score_catalyst",
+    "score_risk_pressure",
+    "score_positioning",
+    "score_investment_attractiveness",
+    "classify_reason_types",
+    "numeric_values_from_recommendations",
+    "numeric_values",
+    "collect_recommendation_texts",
+    "as_list",
+    "count_markers",
+    "clamp_score",
+    "infer_time_horizon",
+    "first_text_from_extras",
+    "first_long_thesis",
+    "first_avoid_thesis",
+    "first_non_empty",
+    "consensus_view_label",
+    "build_non_consensus_view",
+    "build_kill_conditions",
+    "priority_from_score",
+    "next_step_from_score",
+    "build_human_decision_checklist",
+    "dedupe_preserve_order",
 ]
 
 
@@ -281,485 +351,6 @@ def build_chairman_verdict(
             "second_chairman_review_required": True,
         },
     }
-
-
-def choose_opportunity_status(
-    *,
-    consensus_level: str,
-    opportunity_score: int,
-    has_perplexity: bool,
-    pending_prompts: list[Any],
-    open_questions_count: int,
-    has_high_escalation: bool,
-) -> str:
-    """Map committee evidence into the new human-in-the-loop opportunity states."""
-
-    if opportunity_score < 35:
-        return "discard"
-    if consensus_level in {"full_consensus_avoid", "majority_avoid"} and opportunity_score < 60:
-        return "discard"
-    if consensus_level == "split_long_vs_avoid" or has_high_escalation:
-        return "human_override_required" if opportunity_score >= 60 else "watch"
-    if consensus_level == "all_abstain" or (not has_perplexity and pending_prompts):
-        return "research_priority" if opportunity_score >= 55 else "watch"
-    if consensus_level in {"full_consensus_long", "majority_long"} and has_perplexity:
-        if opportunity_score >= 85 and open_questions_count <= 1:
-            return "conviction_candidate"
-        if opportunity_score >= 65:
-            return "trial_candidate"
-    if opportunity_score >= 70:
-        return "research_priority"
-    if opportunity_score >= 50:
-        return "watch"
-    return "discard"
-
-
-def action_route_for_opportunity_status(status: str) -> str:
-    mapping = {
-        "discard": "drop_or_require_new_signal",
-        "watch": "watchlist_monitor",
-        "research_priority": "run_or_update_perplexity_research",
-        "trial_candidate": "human_review_for_trial_candidate",
-        "conviction_candidate": "human_review_for_conviction_candidate",
-        "human_override_required": "human_override_required",
-    }
-    return mapping.get(status, "watchlist_monitor")
-
-
-def build_opportunity_screener(
-    recommendations: list[Recommendation],
-    consensus: dict[str, Any],
-    historical_knowledge: dict[str, Any],
-    research_signal: ResearchSignal | None,
-    escalation_items: list[dict[str, Any]],
-    learning_context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Score whether a ticker deserves human research time before final judgment."""
-
-    learning_context = learning_context or {}
-    texts = collect_recommendation_texts(recommendations)
-    signal_text = research_signal.signal_summary if research_signal else ""
-    combined_text = "\n".join([*texts, signal_text]).lower()
-    open_questions = historical_knowledge.get("open_questions", []) or []
-    historical_conflicts = historical_knowledge.get("historical_conflicts", []) or []
-    similar_cases = historical_knowledge.get("similar_cases", []) or []
-    has_perplexity = any(
-        ref.used_perplexity_results for rec in recommendations for ref in rec.upstream_research_signals
-    )
-
-    business_quality_score = score_business_quality(recommendations)
-    expectation_gap_score = score_expectation_gap(recommendations, research_signal, combined_text)
-    valuation_score = score_valuation(recommendations, combined_text)
-    catalyst_score = score_catalyst(recommendations, research_signal, has_perplexity, combined_text)
-    risk_score = score_risk_pressure(
-        recommendations,
-        open_questions=open_questions,
-        historical_conflicts=historical_conflicts,
-        escalation_items=escalation_items,
-    )
-    positioning_score = score_positioning(combined_text, consensus, similar_cases)
-    investment_attractiveness_score = score_investment_attractiveness(
-        recommendations,
-        expectation_gap_score=expectation_gap_score,
-        valuation_score=valuation_score,
-        catalyst_score=catalyst_score,
-        risk_score=risk_score,
-    )
-    opportunity_score = clamp_score(
-        expectation_gap_score * 0.24
-        + valuation_score * 0.18
-        + catalyst_score * 0.18
-        + investment_attractiveness_score * 0.22
-        + positioning_score * 0.10
-        + business_quality_score * 0.08
-        - max(0, risk_score - 55) * 0.18
-    )
-    reason_type = classify_reason_types(
-        expectation_gap_score=expectation_gap_score,
-        valuation_score=valuation_score,
-        catalyst_score=catalyst_score,
-        business_quality_score=business_quality_score,
-        positioning_score=positioning_score,
-        combined_text=combined_text,
-    )
-
-    return {
-        "ticker": recommendations[0].ticker if recommendations else "",
-        "opportunity_score": opportunity_score,
-        "reason_type": reason_type,
-        "business_quality_score": business_quality_score,
-        "investment_attractiveness_score": investment_attractiveness_score,
-        "expectation_gap_score": expectation_gap_score,
-        "valuation_score": valuation_score,
-        "catalyst_score": catalyst_score,
-        "risk_score": risk_score,
-        "positioning_score": positioning_score,
-        "time_horizon": infer_time_horizon(recommendations),
-        "why_now": first_non_empty(
-            signal_text,
-            first_text_from_extras(recommendations, "catalysts"),
-            first_long_thesis(recommendations),
-            "当前异动需要先验证是否存在预期差或催化错配。",
-        ),
-        "consensus_view": consensus_view_label(consensus),
-        "non_consensus_view": build_non_consensus_view(reason_type, recommendations, signal_text),
-        "upside_path": first_non_empty(
-            first_long_thesis(recommendations),
-            "预期差被公开数据确认后，估值、盈利或叙事可能重新定价。",
-        ),
-        "downside_path": first_non_empty(
-            first_text_from_extras(recommendations, "thesis_kill_criteria"),
-            open_questions[0] if open_questions else "",
-            historical_conflicts[0] if historical_conflicts else "",
-            first_avoid_thesis(recommendations),
-            "核心催化无法被公开证据验证，或风险比当前价格反映得更严重。",
-        ),
-        "kill_conditions": build_kill_conditions(recommendations, open_questions, historical_conflicts),
-        "research_priority": priority_from_score(opportunity_score),
-        "recommended_next_step": next_step_from_score(opportunity_score, has_perplexity, open_questions),
-        "learning_feedback": {
-            "prior_cases_count": learning_context.get("prior_cases_count", 0),
-            "outcome_status_counts": learning_context.get("outcome_status_counts", {}),
-        },
-    }
-
-
-def score_business_quality(recommendations: list[Recommendation]) -> int:
-    values = numeric_values_from_recommendations(
-        recommendations,
-        ("quality", "moat", "business", "model", "selection", "rating", "evolution"),
-    )
-    if values:
-        return clamp_score(sum(values) / len(values))
-    directional = [
-        rec.confidence
-        for rec in recommendations
-        if rec.direction in {Direction.LONG, Direction.WATCH}
-    ]
-    if directional:
-        return clamp_score(sum(directional) / len(directional) - 5)
-    return 50
-
-
-def score_expectation_gap(
-    recommendations: list[Recommendation],
-    research_signal: ResearchSignal | None,
-    combined_text: str,
-) -> int:
-    values = numeric_values_from_recommendations(
-        recommendations,
-        ("dislocation", "gap", "mispricing", "expectation", "odds", "bayesian"),
-    )
-    score = max(values) if values else 48
-    if research_signal and research_signal.signal_type in {"mispricing", "bayesian_shift", "discontinuity"}:
-        score = max(score, 72)
-    marker_hits = count_markers(
-        combined_text,
-        ("预期差", "错定价", "mispricing", "non-consensus", "反共识", "未被定价", "边际变化"),
-    )
-    score += marker_hits * 6
-    return clamp_score(score)
-
-
-def score_valuation(recommendations: list[Recommendation], combined_text: str) -> int:
-    values = numeric_values_from_recommendations(
-        recommendations,
-        ("valuation", "value", "odds", "margin", "safety", "估值", "安全边际"),
-    )
-    score = max(values) if values else 50
-    score += count_markers(combined_text, ("估值", "回购", "valuation", "buyback", "reset")) * 5
-    return clamp_score(score)
-
-
-def score_catalyst(
-    recommendations: list[Recommendation],
-    research_signal: ResearchSignal | None,
-    has_perplexity: bool,
-    combined_text: str,
-) -> int:
-    catalyst_count = sum(len(as_list((rec.model_extra or {}).get("catalysts"))) for rec in recommendations)
-    score = 48 + min(20, catalyst_count * 5)
-    if research_signal and research_signal.research_stage in {"special_attention", "deep_research", "trade_ready"}:
-        score += 8
-    if has_perplexity:
-        score += 8
-    score += count_markers(combined_text, ("催化", "why now", "财报", "监管", "回购", "AI", "margin")) * 3
-    return clamp_score(score)
-
-
-def score_risk_pressure(
-    recommendations: list[Recommendation],
-    *,
-    open_questions: list[str],
-    historical_conflicts: list[str],
-    escalation_items: list[dict[str, Any]],
-) -> int:
-    avoid_count = sum(1 for rec in recommendations if rec.direction == Direction.AVOID)
-    abstain_count = sum(1 for rec in recommendations if rec.direction == Direction.ABSTAIN)
-    hard_failures = sum(1 for rec in recommendations if rec.deployment_compliance.any_failure_must_abstain)
-    high_escalations = sum(1 for item in escalation_items if item.get("priority") in {"critical", "high"})
-    return clamp_score(
-        32
-        + avoid_count * 12
-        + abstain_count * 6
-        + hard_failures * 18
-        + high_escalations * 14
-        + min(18, len(open_questions) * 4)
-        + min(20, len(historical_conflicts) * 7)
-    )
-
-
-def score_positioning(
-    combined_text: str,
-    consensus: dict[str, Any],
-    similar_cases: list[dict[str, Any]],
-) -> int:
-    score = 48
-    score += count_markers(
-        combined_text,
-        ("positioning", "crowded", "拥挤", "资金", "持仓", "无人关注", "情绪", "叙事"),
-    ) * 6
-    if str(consensus.get("consensus_level")) == "split_long_vs_avoid":
-        score += 10
-    if similar_cases:
-        score += 4
-    return clamp_score(score)
-
-
-def score_investment_attractiveness(
-    recommendations: list[Recommendation],
-    *,
-    expectation_gap_score: int,
-    valuation_score: int,
-    catalyst_score: int,
-    risk_score: int,
-) -> int:
-    direction_scores = {
-        Direction.LONG: 82,
-        Direction.WATCH: 55,
-        Direction.ABSTAIN: 42,
-        Direction.AVOID: 20,
-        Direction.SHORT: 25,
-    }
-    if recommendations:
-        directional = sum(direction_scores[rec.direction] for rec in recommendations) / len(recommendations)
-        confidence = sum(rec.confidence for rec in recommendations) / len(recommendations)
-    else:
-        directional = 45
-        confidence = 45
-    return clamp_score(
-        directional * 0.35
-        + confidence * 0.20
-        + expectation_gap_score * 0.18
-        + valuation_score * 0.14
-        + catalyst_score * 0.13
-        - max(0, risk_score - 55) * 0.25
-    )
-
-
-def classify_reason_types(
-    *,
-    expectation_gap_score: int,
-    valuation_score: int,
-    catalyst_score: int,
-    business_quality_score: int,
-    positioning_score: int,
-    combined_text: str,
-) -> list[str]:
-    reasons: list[str] = []
-    if expectation_gap_score >= 65:
-        reasons.append("expectation_gap")
-    if valuation_score >= 65:
-        reasons.append("valuation_reset")
-    if catalyst_score >= 65:
-        reasons.append("catalyst_mispriced")
-    if business_quality_score >= 68 and expectation_gap_score >= 58:
-        reasons.append("quality_recovery")
-    if positioning_score >= 65:
-        reasons.append("positioning_extreme")
-    if count_markers(combined_text, ("叙事", "narrative", "拐点", "shift")):
-        reasons.append("narrative_shift")
-    return reasons or ["needs_human_screening"]
-
-
-def numeric_values_from_recommendations(
-    recommendations: list[Recommendation],
-    key_fragments: tuple[str, ...],
-) -> list[float]:
-    values: list[float] = []
-    for rec in recommendations:
-        payload = rec.model_dump(mode="json")
-        values.extend(numeric_values(payload, key_fragments))
-    return [value for value in values if 0 <= value <= 100]
-
-
-def numeric_values(value: Any, key_fragments: tuple[str, ...], current_key: str = "") -> list[float]:
-    matches: list[float] = []
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            matches.extend(numeric_values(nested, key_fragments, str(key).lower()))
-    elif isinstance(value, list):
-        for item in value:
-            matches.extend(numeric_values(item, key_fragments, current_key))
-    elif isinstance(value, (int, float)) and any(fragment in current_key for fragment in key_fragments):
-        matches.append(float(value))
-    return matches
-
-
-def collect_recommendation_texts(recommendations: list[Recommendation]) -> list[str]:
-    texts: list[str] = []
-    for rec in recommendations:
-        extra = rec.model_extra or {}
-        texts.append(str(rec.thesis or ""))
-        texts.append(str(rec.one_liner_thesis or ""))
-        for key in ("catalysts", "thesis_kill_criteria", "waiting_conditions", "analysis_gaps"):
-            for item in as_list(extra.get(key)):
-                texts.append(str(item))
-    return [text for text in texts if text]
-
-
-def as_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if value:
-        return [value]
-    return []
-
-
-def count_markers(text: str, markers: tuple[str, ...]) -> int:
-    lowered = text.lower()
-    return sum(1 for marker in markers if marker.lower() in lowered)
-
-
-def clamp_score(value: float) -> int:
-    return max(0, min(100, round(value)))
-
-
-def infer_time_horizon(recommendations: list[Recommendation]) -> str:
-    for rec in recommendations:
-        extra = rec.model_extra or {}
-        for key in ("time_horizon", "holding_period", "investment_horizon"):
-            if extra.get(key):
-                return str(extra[key])
-        if isinstance(getattr(rec, "time_box", None), dict):
-            time_box = getattr(rec, "time_box")
-            if time_box.get("max_wait"):
-                return str(time_box["max_wait"])
-    return "3-12 months"
-
-
-def first_text_from_extras(recommendations: list[Recommendation], key: str) -> str:
-    for rec in recommendations:
-        for item in as_list((rec.model_extra or {}).get(key)):
-            if isinstance(item, dict):
-                text = item.get("text") or item.get("reason") or item.get("condition") or item.get("gap")
-                if text:
-                    return str(text)
-            elif item:
-                return str(item)
-    return ""
-
-
-def first_long_thesis(recommendations: list[Recommendation]) -> str:
-    for rec in recommendations:
-        if rec.direction == Direction.LONG and (rec.one_liner_thesis or rec.thesis):
-            return str(rec.one_liner_thesis or rec.thesis)
-    return ""
-
-
-def first_avoid_thesis(recommendations: list[Recommendation]) -> str:
-    for rec in recommendations:
-        if rec.direction == Direction.AVOID and (rec.one_liner_thesis or rec.thesis):
-            return str(rec.one_liner_thesis or rec.thesis)
-    return ""
-
-
-def first_non_empty(*values: Any) -> str:
-    for value in values:
-        text = str(value or "").strip()
-        if text:
-            return text
-    return ""
-
-
-def consensus_view_label(consensus: dict[str, Any]) -> str:
-    level = str(consensus.get("consensus_level") or "other")
-    mapping = {
-        "full_consensus_long": "三位 Agent 已形成买入候选共识，需警惕是否只是主流共识复述。",
-        "majority_long": "多数 Agent 支持机会，但仍有保留观点。",
-        "split_long_vs_avoid": "Agent 明显分歧，可能是风险也可能是非共识机会来源。",
-        "mixed_long_watch": "买入候选与观察混合，市场证据尚未完全闭环。",
-        "full_consensus_avoid": "三位 Agent 一致回避，除非机会分异常高，否则不进入人工高优先级。",
-        "majority_avoid": "多数 Agent 回避，机会假设需要更强反证。",
-        "all_abstain": "全员暂不判断，当前主要任务是补证据。",
-    }
-    return mapping.get(level, f"共识类型为 {level}，需要人工判断其投资含义。")
-
-
-def build_non_consensus_view(
-    reason_type: list[str],
-    recommendations: list[Recommendation],
-    signal_text: str,
-) -> str:
-    reason_text = ", ".join(reason_type)
-    thesis = first_long_thesis(recommendations) or signal_text
-    if thesis:
-        return f"潜在非共识点：{reason_text}；核心假设是 {thesis}"
-    return f"潜在非共识点：{reason_text}；仍需补足可验证 thesis。"
-
-
-def build_kill_conditions(
-    recommendations: list[Recommendation],
-    open_questions: list[str],
-    historical_conflicts: list[str],
-) -> list[str]:
-    conditions: list[str] = []
-    for rec in recommendations:
-        for item in as_list((rec.model_extra or {}).get("thesis_kill_criteria")):
-            conditions.append(str(item.get("condition") if isinstance(item, dict) else item))
-    conditions.extend(str(item) for item in open_questions[:2])
-    conditions.extend(str(item) for item in historical_conflicts[:2])
-    if not conditions:
-        conditions = [
-            "核心催化剂无法被财报、监管文件、管理层电话会或主流媒体交叉验证。",
-            "后续价格/基本面表现显示本次异动只是短期流动性或指数因素。",
-        ]
-    return dedupe_preserve_order(conditions)[:5]
-
-
-def priority_from_score(score: int) -> str:
-    if score >= 75:
-        return "high"
-    if score >= 55:
-        return "medium"
-    return "low"
-
-
-def next_step_from_score(score: int, has_perplexity: bool, open_questions: list[str]) -> str:
-    if score >= 75 and has_perplexity and not open_questions:
-        return "human_ic_review"
-    if score >= 55:
-        return "deep_research" if not has_perplexity or open_questions else "paper_track"
-    return "discard_or_wait_for_new_signal"
-
-
-def build_human_decision_checklist(opportunity_screener: dict[str, Any]) -> list[str]:
-    kill_conditions = opportunity_screener.get("kill_conditions") or []
-    downside = opportunity_screener.get("downside_path") or "主要下行路径尚未写清。"
-    return [
-        f"非共识 thesis 是否真的不同于市场共识？{opportunity_screener.get('non_consensus_view', '')}",
-        f"如果错了，最可能错在什么地方？{downside}",
-        f"行动前必须人工确认的证伪条件：{kill_conditions[0] if kill_conditions else '暂无'}",
-    ]
-
-
-def dedupe_preserve_order(items: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for item in items:
-        text = " ".join(str(item or "").split())
-        if text and text not in deduped:
-            deduped.append(text)
-    return deduped
 
 
 def select_lead_agent(

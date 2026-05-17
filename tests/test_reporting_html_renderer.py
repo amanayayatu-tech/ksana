@@ -159,3 +159,30 @@ def test_editorial_digest_prefers_opportunity_memo_status():
     assert "机会状态" in rendered
     assert "需人工拍板" in rendered
     assert "核心判断" in rendered
+
+
+def test_report_html_keeps_why_market_might_be_wrong():
+    markdown = "\n".join(
+        [
+            "# Opportunity Memo — BRIEF-20260516-AM",
+            "",
+            "## 每条建议详情",
+            "#### Opportunity Memo",
+            "- **市场共识视角**：市场认为增长已经充分定价。",
+            "- **非共识 thesis**：系统认为 AI 催化仍被低估。",
+            "**市场可能错在哪里**：",
+            "- 市场可能低估了 AI 催化兑现速度。",
+        ]
+    )
+
+    rendered = render_report_html(
+        markdown,
+        ReportPresentation(
+            title="BRIEF-20260516-AM",
+            report_label="Opportunity Memo",
+            eyebrow="RESEARCHOS REPORT VIEW",
+        ),
+    )
+
+    assert "市场可能错在哪里" in rendered
+    assert "市场可能低估了 AI 催化兑现速度" in rendered

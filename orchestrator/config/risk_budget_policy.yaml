@@ -1,0 +1,48 @@
+statuses:
+  discard:
+    risk_budget_allowed_pct: 0
+    max_initial_position_pct: 0
+    budget_scope: not_eligible_for_position
+  research_priority:
+    risk_budget_allowed_pct: 0
+    max_initial_position_pct: 0
+    budget_scope: deep_research_only
+  watch:
+    risk_budget_allowed_pct: 0
+    max_initial_position_pct: 0
+    budget_scope: watchlist_or_paper_tracking_only
+  human_override_required:
+    risk_budget_allowed_pct: 0.5
+    max_initial_position_pct: 0.25
+    budget_scope: human_override_only
+red_team_verdicts:
+  challenge:
+    risk_budget_allowed_pct: 0.5
+    max_initial_position_pct: 0.25
+    budget_scope: paper_trade_or_human_approved_tracking_position
+  monitor:
+    risk_budget_allowed_pct: 1.0
+    max_initial_position_pct: 0.5
+    budget_scope: paper_trade_or_human_approved_tracking_position
+  no_major_objection:
+    risk_budget_allowed_pct: 1.5
+    max_initial_position_pct: 0.75
+    budget_scope: paper_trade_or_human_approved_tracking_position
+conviction_candidate_no_major_objection:
+  risk_budget_allowed_pct: 2.0
+  max_initial_position_pct: 1.0
+  budget_scope: paper_trade_or_human_approved_tracking_position
+fatal_flaw:
+  risk_budget_allowed_pct: 0
+  max_initial_position_pct: 0
+  budget_scope: blocked_by_fatal_flaw
+high_consensus_risk_cap:
+  risk_budget_allowed_pct: 0.5
+  max_initial_position_pct: 0.25
+must_not_buy_if:
+  - 核心财务数据或关键催化无法确认
+  - 管理层指引、监管文件或财报电话会与 thesis 明显相反
+position_requires:
+  - 记录人工决策理由
+  - 设置复查日期
+  - 跟踪至少两个 kill indicators

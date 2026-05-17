@@ -5,6 +5,7 @@ import json
 from chairman.core.brief_assembler import assemble_brief
 from chairman.persistence.archive import archive_brief
 from orchestrator.core.learning import (
+    build_opportunity_evaluation_snapshot,
     load_chairman_learning_context,
     rebuild_learning_from_archived_briefs,
     refresh_outcome_snapshots,
@@ -40,6 +41,14 @@ def test_archive_writes_learning_case_and_stock_timeline(tmp_path):
     assert cases[0]["case_id"] == "DC-BRIEF-20260513-AM-MOCK"
     assert cases[0]["future_data_allowed"] is False
     assert cases[0]["available_context_cutoff"] == "2026-05-13"
+    snapshot = cases[0]["opportunity_evaluation_snapshot"]
+    assert snapshot["snapshot_version"] == "opportunity_evaluation_snapshot_v1"
+    assert snapshot["ticker"] == "MOCK"
+    assert snapshot["decision_date"] == "2026-05-13"
+    assert snapshot["opportunity_score"] == cases[0]["opportunity_screener"]["opportunity_score"]
+    assert snapshot["risk_pressure_score"] == cases[0]["opportunity_screener"]["risk_pressure_score"]
+    assert snapshot["1m_return"] is None
+    assert snapshot["future_data_allowed"] is False
     assert (data_dir / "learning" / "stock_timelines" / "MOCK.json").exists()
     assert (data_dir / "learning" / "monthly_reviews" / "LEARNING-REVIEW-202605.json").exists()
 
@@ -116,3 +125,30 @@ def test_chairman_learning_context_is_time_safe(tmp_path):
 
     assert context["prior_cases_count"] == 1
     assert context["latest_case_id"] == "DC-BRIEF-20260513-AM-MOCK"
+
+
+def test_opportunity_evaluation_snapshot_can_be_built_from_summary():
+    summary = {
+        "ticker": "MOCK",
+        "opportunity_screener": {
+            "opportunity_score": 72,
+            "business_quality_score": 70,
+            "investment_attractiveness_score": 68,
+            "expectation_gap_score": 80,
+            "valuation_score": 65,
+            "catalyst_score": 60,
+            "risk_pressure_score": 42,
+            "positioning_score": 55,
+        },
+        "chairman_verdict": {"final_verdict": "research_priority", "legacy_verdict": "wait"},
+    }
+
+    snapshot = build_opportunity_evaluation_snapshot(summary, as_of_date="2026-05-13")
+
+    assert snapshot["ticker"] == "MOCK"
+    assert snapshot["memo_date"] == "2026-05-13"
+    assert snapshot["opportunity_score"] == 72
+    assert snapshot["risk_pressure_score"] == 42
+    assert snapshot["final_verdict"] == "research_priority"
+    assert snapshot["human_decision"] is None
+    assert snapshot["3m_return"] is None

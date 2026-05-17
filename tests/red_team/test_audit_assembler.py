@@ -104,3 +104,54 @@ def test_human_override_required_is_a_red_team_action_candidate():
     assert budget["risk_budget_allowed_pct"] == 0.5
     assert budget["max_initial_position_pct"] == 0.25
     assert budget["budget_scope"] == "human_override_only"
+
+
+def test_custom_risk_budget_policy_changes_budget():
+    budget = build_risk_budget(
+        final_verdict="trial_candidate",
+        red_team_verdict="monitor",
+        fatal_flaw=False,
+        consensus_risk={},
+        policy={
+            "red_team_verdicts": {
+                "monitor": {
+                    "risk_budget_allowed_pct": 1.25,
+                    "max_initial_position_pct": 0.4,
+                    "budget_scope": "custom_monitor_scope",
+                }
+            },
+            "must_not_buy_if": ["custom blocker"],
+            "position_requires": ["custom requirement"],
+        },
+    )
+
+    assert budget["risk_budget_allowed_pct"] == 1.25
+    assert budget["max_initial_position_pct"] == 0.4
+    assert budget["budget_scope"] == "custom_monitor_scope"
+    assert budget["must_not_buy_if"] == ["custom blocker"]
+    assert budget["position_requires"] == ["custom requirement"]
+
+
+def test_fatal_flaw_policy_scope_is_configurable_but_budget_is_always_zero(tmp_path):
+    policy_path = tmp_path / "risk_budget_policy.yaml"
+    policy_path.write_text(
+        """
+fatal_flaw:
+  risk_budget_allowed_pct: 9
+  max_initial_position_pct: 9
+  budget_scope: custom_fatal_scope
+""",
+        encoding="utf-8",
+    )
+
+    budget = build_risk_budget(
+        final_verdict="conviction_candidate",
+        red_team_verdict="no_major_objection",
+        fatal_flaw=True,
+        consensus_risk={},
+        policy_path=policy_path,
+    )
+
+    assert budget["risk_budget_allowed_pct"] == 0
+    assert budget["max_initial_position_pct"] == 0
+    assert budget["budget_scope"] == "custom_fatal_scope"

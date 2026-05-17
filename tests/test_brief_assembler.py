@@ -3,6 +3,7 @@ from __future__ import annotations
 from chairman.core.brief_assembler import (
     assemble_brief,
     build_individual_view,
+    build_opportunity_screener,
     classify_f_partner_logic_kill_routing,
     classify_f_partner_outsider_handling,
     summarize_w_partner_collaborative_validation,
@@ -292,6 +293,118 @@ def test_split_signal_becomes_human_override_when_opportunity_is_high():
     assert summary["chairman_verdict"]["final_verdict"] == "human_override_required"
     assert "expectation_gap" in summary["opportunity_screener"]["reason_type"]
     assert '"final_verdicts"' in render_json_metadata(brief)
+
+
+def test_opportunity_scoring_config_changes_score():
+    signal = make_signal()
+    signal.signal_summary = "市场可能低估了估值 reset，存在明确预期差。"
+    recs = [
+        make_f_partner(
+            "long",
+            thesis="预期差和估值 reset 同时存在",
+            valuation_score=92,
+            why_market_might_be_wrong=["市场可能低估了估值 reset 对赔率的影响。"],
+        ),
+        make_w_partner("watch", thesis="催化仍需验证"),
+        make_g_partner("watch", thesis="质量恢复需要继续跟踪"),
+    ]
+
+    default = build_opportunity_screener(
+        recs,
+        {"consensus_level": "mixed_long_watch"},
+        {},
+        signal,
+        [],
+    )
+    custom = build_opportunity_screener(
+        recs,
+        {"consensus_level": "mixed_long_watch"},
+        {},
+        signal,
+        [],
+        scoring_config={
+            "expectation_gap": 0,
+            "valuation": 1,
+            "catalyst": 0,
+            "investment_attractiveness": 0,
+            "positioning": 0,
+            "business_quality": 0,
+            "risk_penalty_weight": 0,
+        },
+    )
+
+    assert custom["opportunity_score"] == custom["valuation_score"]
+    assert custom["opportunity_score"] != default["opportunity_score"]
+
+
+def test_missing_scoring_config_falls_back_to_safe_defaults(tmp_path):
+    signal = make_signal()
+    result = build_opportunity_screener(
+        [make_f_partner("watch"), make_w_partner("watch"), make_g_partner("watch")],
+        {"consensus_level": "mixed_long_watch"},
+        {},
+        signal,
+        [],
+        scoring_config_path=tmp_path / "missing.yaml",
+    )
+
+    assert 0 <= result["opportunity_score"] <= 100
+    assert result["scoring_config"]["expectation_gap"] == 0.24
+
+
+def test_missing_why_market_might_be_wrong_caps_opportunity_score():
+    signal = make_signal()
+    signal.signal_type = "mispricing"
+    signal.signal_summary = ""
+    result = build_opportunity_screener(
+        [
+            make_f_partner(
+                "long",
+                confidence=95,
+                thesis="",
+                one_liner_thesis="",
+                f_partner_specific_framework={"dislocation_score": 98, "valuation_score": 96},
+            ),
+            make_w_partner("long", confidence=95, thesis="", one_liner_thesis=""),
+            make_g_partner("long", confidence=95, thesis="", one_liner_thesis=""),
+        ],
+        {"consensus_level": "full_consensus_long"},
+        {},
+        signal,
+        [],
+        scoring_config={"non_consensus_score_cap": 60},
+    )
+
+    assert result["raw_opportunity_score"] > 60
+    assert result["opportunity_score"] == 60
+    assert result["non_consensus_quality"]["score_cap_applied"] is True
+
+
+def test_why_market_might_be_wrong_is_rendered_in_markdown():
+    signal = make_signal()
+    signal.signal_summary = "市场可能低估了 AI 催化兑现速度。"
+    brief = assemble_brief(
+        research_signals=[signal],
+        recommendations=[
+            make_f_partner(
+                "long",
+                thesis="AI 催化和估值 reset 同时存在",
+                why_market_might_be_wrong=["市场可能低估了 AI 催化兑现速度。"],
+            ),
+            make_w_partner("watch"),
+            make_g_partner("watch"),
+        ],
+        brief_type="morning",
+        date="2026-05-13",
+        use_llm=False,
+    )
+
+    markdown = render_markdown(brief)
+
+    assert "市场可能错在哪里" in markdown
+    assert "市场可能低估了 AI 催化兑现速度" in markdown
+    assert "AI 催化和估值 reset 同时存在\n\n**市场可能错在哪里**" in markdown
+    assert "市场可能低估了 AI 催化兑现速度。\n\n- **上行路径**" in markdown
 
 
 def test_brief_operation_summary_uses_nepha_decision_language():

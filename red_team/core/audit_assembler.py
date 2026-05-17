@@ -15,6 +15,11 @@ from chairman.models import Recommendation, ResearchSignal
 from red_team import RED_TEAM_VERSION
 from red_team.core.consensus_risk import assess_consensus_risk
 from red_team.core.risk_completeness_evaluator import evaluate_risk_completeness
+from red_team.core.risk_policy import (
+    load_risk_budget_policy,
+    merge_risk_budget_policy,
+    resolve_budget_rule,
+)
 from red_team.core.rule_auditor import audit_rules, findings_by_recommendation
 from red_team.llm.methodology_challenger import generate_challenges
 from red_team.models import ChairmanAlignment, RedTeamAudit, RuleAuditFinding, SubstantiveObjection
@@ -423,62 +428,42 @@ def build_risk_budget(
     red_team_verdict: str,
     fatal_flaw: bool,
     consensus_risk: dict[str, Any],
+    policy: dict[str, Any] | None = None,
+    policy_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Turn Red Team findings into bounded action conditions instead of a bare veto."""
 
-    if final_verdict == "discard":
-        risk_budget_allowed = 0.0
-        max_initial_position = 0.0
-        budget_scope = "not_eligible_for_position"
-    elif final_verdict == "research_priority":
-        risk_budget_allowed = 0.0
-        max_initial_position = 0.0
-        budget_scope = "deep_research_only"
-    elif final_verdict == "watch":
-        risk_budget_allowed = 0.0
-        max_initial_position = 0.0
-        budget_scope = "watchlist_or_paper_tracking_only"
-    elif fatal_flaw:
-        risk_budget_allowed = 0.0
-        max_initial_position = 0.0
-        budget_scope = "blocked_by_fatal_flaw"
-    elif final_verdict == "human_override_required":
-        risk_budget_allowed = 0.5
-        max_initial_position = 0.25
-        budget_scope = "human_override_only"
-    elif red_team_verdict == "challenge":
-        risk_budget_allowed = 0.5
-        max_initial_position = 0.25
-        budget_scope = "paper_trade_or_human_approved_tracking_position"
-    elif red_team_verdict == "monitor":
-        risk_budget_allowed = 1.0
-        max_initial_position = 0.5
-        budget_scope = "paper_trade_or_human_approved_tracking_position"
-    else:
-        risk_budget_allowed = 1.5
-        max_initial_position = 0.75
-        budget_scope = "paper_trade_or_human_approved_tracking_position"
-
-    if final_verdict == "conviction_candidate" and red_team_verdict == "no_major_objection":
-        risk_budget_allowed = 2.0
-        max_initial_position = 1.0
+    resolved_policy = (
+        merge_risk_budget_policy(policy)
+        if policy is not None
+        else load_risk_budget_policy(policy_path)
+    )
+    rule = resolve_budget_rule(
+        final_verdict=final_verdict,
+        red_team_verdict=red_team_verdict,
+        fatal_flaw=fatal_flaw,
+        policy=resolved_policy,
+    )
+    risk_budget_allowed = float(rule.get("risk_budget_allowed_pct") or 0.0)
+    max_initial_position = float(rule.get("max_initial_position_pct") or 0.0)
+    budget_scope = str(rule.get("budget_scope") or "paper_trade_or_human_approved_tracking_position")
     if consensus_risk.get("risk_level") == "high" and not fatal_flaw:
-        risk_budget_allowed = min(risk_budget_allowed, 0.5)
-        max_initial_position = min(max_initial_position, 0.25)
+        cap = resolved_policy.get("high_consensus_risk_cap") or {}
+        risk_budget_allowed = min(
+            risk_budget_allowed,
+            float(cap.get("risk_budget_allowed_pct", 0.5)),
+        )
+        max_initial_position = min(
+            max_initial_position,
+            float(cap.get("max_initial_position_pct", 0.25)),
+        )
 
     return {
         "risk_budget_allowed_pct": risk_budget_allowed,
         "max_initial_position_pct": max_initial_position,
         "budget_scope": budget_scope,
-        "must_not_buy_if": [
-            "核心财务数据或关键催化无法确认",
-            "管理层指引、监管文件或财报电话会与 thesis 明显相反",
-        ],
-        "position_requires": [
-            "记录人工决策理由",
-            "设置复查日期",
-            "跟踪至少两个 kill indicators",
-        ],
+        "must_not_buy_if": resolved_policy.get("must_not_buy_if") or [],
+        "position_requires": resolved_policy.get("position_requires") or [],
     }
 
 

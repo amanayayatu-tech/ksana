@@ -101,7 +101,7 @@ Until the cold-start queue is filled or explicitly skipped, the downstream Tradi
 | Value Partner | Focuses on valuation, cash flow, odds, and margin of safety. |
 | Momentum Partner | Focuses on trend, positioning, expectation revisions, and relative strength. |
 | Quality Partner | Focuses on moat, execution quality, resilience, and governance. |
-| Opportunity Screener | Scores expectation gap, valuation reset, catalysts, risk pressure, and positioning before any final status. |
+| Opportunity Screener | Scores expectation gap, valuation reset, catalysts, risk pressure, positioning, and non-consensus quality before any final status. |
 | CIO Agent | Acts as a decision secretary, turning the committee view into opportunity states and human decision checklists. |
 | Risk Auditor | Challenges consensus narratives, evidence gaps, execution risk, fatal flaws, and risk-budget boundaries. |
 | Review Library | Tracks decisions, timelines, outcomes, and monthly learning reviews. |
@@ -111,7 +111,7 @@ Until the cold-start queue is filled or explicitly skipped, the downstream Tradi
 
 ResearchOS generates two reader-facing report types:
 
-- **Opportunity Memo**: a committee-ready report covering the anomaly, opportunity score, non-consensus thesis, upside/downside paths, agent disagreement, kill conditions, and human decision checklist.
+- **Opportunity Memo**: a committee-ready report covering the anomaly, opportunity score, non-consensus thesis, `why_market_might_be_wrong`, upside/downside paths, agent disagreement, kill conditions, and human decision checklist.
 - **Risk Audit**: an adversarial review focused on fatal flaws, risk budget, missing evidence, fragile assumptions, reverse scenarios, and follow-up checks.
 
 The CIO Agent no longer reduces every ticker to `act / wait / reject`. It emits one of six human-in-the-loop states:
@@ -123,6 +123,14 @@ discard / watch / research_priority / trial_candidate / conviction_candidate / h
 `trial_candidate` and `conviction_candidate` are not trading instructions. They mean the opportunity is ready for human review, paper tracking, or a human-approved tracking position with Red Team risk-budget limits.
 
 `discard`, `watch`, and `research_priority` are research or monitoring states only. The Risk Auditor assigns them zero real initial-position budget. `human_override_required` is used when the model sees a possible opportunity but the evidence is too conflicted for an automatic committee conclusion, so a human must decide whether to continue.
+
+## Engineering Configuration
+
+Opportunity Screener logic now lives under `chairman/opportunity/` instead of being embedded inside the brief assembler. The default scoring weights are loaded from `orchestrator/config/opportunity_scoring.yaml`; missing, partial, or invalid config falls back to safe defaults so the app can run without user setup.
+
+The Screener score is a heuristic for research triage and historical evaluation input, not an investment recommendation. If `why_market_might_be_wrong` is missing or too weak, the score is capped by config because a high score without a clear non-consensus thesis is not actionable.
+
+Risk-budget limits are loaded from `orchestrator/config/risk_budget_policy.yaml`. Fatal flaws always force zero budget, and non-action states remain research/watch states only. The Review Library stores an `opportunity_evaluation_snapshot` inside decision cases so later outcome review can compare scores, verdicts, and returns without changing past memos.
 
 Reports are rendered as polished HTML reading views. The layout prioritizes summary density first, then full evidence and appendices for auditability.
 

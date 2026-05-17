@@ -1,0 +1,11 @@
+expectation_gap: 0.24
+valuation: 0.18
+catalyst: 0.18
+investment_attractiveness: 0.22
+positioning: 0.10
+business_quality: 0.08
+risk_penalty_above: 55
+risk_penalty_weight: 0.18
+non_consensus_score_cap: 60
+min_why_market_wrong_items: 1
+min_why_market_wrong_text_length: 8

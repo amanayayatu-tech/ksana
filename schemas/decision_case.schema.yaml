@@ -57,6 +57,12 @@ fields:
   learning_context:
     type: object
     required: true
+  opportunity_evaluation_snapshot:
+    type: object
+    required: false
+    description: >
+      Evaluation-ready score snapshot captured at memo time. Future returns and
+      thesis outcomes are null placeholders until outcome review fills them.
   open_questions_at_decision:
     type: array[string]
     required: true

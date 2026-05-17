@@ -40,6 +40,17 @@
 - **Why now**：{{ rec_summary.opportunity_screener.why_now | advice_text }}
 - **市场共识视角**：{{ rec_summary.opportunity_screener.consensus_view | advice_text }}
 - **非共识 thesis**：{{ rec_summary.opportunity_screener.non_consensus_view | advice_text }}
+
+**市场可能错在哪里**：
+{% for item in rec_summary.opportunity_screener.why_market_might_be_wrong %}
+- {{ item | advice_text }}
+{% else %}
+- 暂无，需要先补足 why_market_might_be_wrong。
+{% endfor %}
+{% if rec_summary.opportunity_screener.non_consensus_quality and rec_summary.opportunity_screener.non_consensus_quality.score_cap_applied %}
+- **分数约束**：why_market_might_be_wrong 不足，Opportunity Score 已限制在 {{ rec_summary.opportunity_screener.non_consensus_quality.score_cap }} 分以内。
+{% endif %}
+
 - **上行路径**：{{ rec_summary.opportunity_screener.upside_path | advice_text }}
 - **下行路径**：{{ rec_summary.opportunity_screener.downside_path | advice_text }}
 

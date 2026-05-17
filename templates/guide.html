@@ -90,7 +90,12 @@
         <article class="explain-card">
           <span class="agent-tag">Opportunity Screener</span>
           <h3>先判断值不值得研究</h3>
-          <p>报告会先给出 Opportunity Score，并拆分好公司、好投资、预期差、估值、催化、风险压力和持仓/叙事位置。它不是买入评分，而是判断这只股票是否值得占用你的研究时间。</p>
+          <p>报告会先给出 Opportunity Score，并拆分好公司、好投资、预期差、估值、催化、风险压力和持仓/叙事位置。分数来自可配置权重，只是研究优先级和复盘输入，不是买入评分。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">Non-consensus Thesis</span>
+          <h3>必须说清市场可能错在哪里</h3>
+          <p>Opportunity Memo 会展示 <code>why_market_might_be_wrong</code>。如果这里缺失、过短或只是复述共识，系统会限制 Opportunity Score，避免把泛泛看多当成非共识机会。</p>
         </article>
         <article class="explain-card">
           <span class="agent-tag">机会状态</span>
@@ -105,7 +110,7 @@
         <article class="explain-card">
           <span class="agent-tag">Risk Budget</span>
           <h3>Risk Auditor 定义行动边界</h3>
-          <p>Risk Auditor 会写出 fatal flaw、主要风险、kill conditions 和风险预算。<code>discard</code>、<code>watch</code>、<code>research_priority</code> 不给真实初始仓位；只有进入候选或人工 override 时，才允许在风险预算内由人决定。</p>
+          <p>Risk Auditor 会写出 fatal flaw、主要风险、kill conditions 和风险预算。预算来自可配置 policy，但 fatal flaw 永远是 0；只有进入候选或人工 override 时，才允许在风险预算内由人决定。</p>
         </article>
       </div>
     </div>
@@ -221,7 +226,7 @@
         <div class="standard-item"><strong>证据账本</strong><span>知识库保存结论、反证、未关闭问题和有效期，而不是只保存聊天记录。</span></div>
         <div class="standard-item"><strong>投委会分工</strong><span>Value、Momentum、Quality、CIO、Risk Auditor 分别承担不同职责，避免单一叙事统治判断。</span></div>
         <div class="standard-item"><strong>安全约束</strong><span>冷启动、未回填、证据缺口都会自动降低置信度，并写入等待条件。</span></div>
-        <div class="standard-item"><strong>复盘学习</strong><span>每次决策进入时间线和 outcome snapshot，让系统下一次更懂这只股票。</span></div>
+        <div class="standard-item"><strong>复盘学习</strong><span>每次决策保存 score snapshot 和 outcome snapshot，让系统下一次更懂这只股票。</span></div>
         <div class="standard-item"><strong>人保留最终边界</strong><span>系统负责研究、质疑、归档和提醒；最终是否行动仍由投资人决定。</span></div>
       </div>
     </div>

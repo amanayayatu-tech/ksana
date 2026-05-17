@@ -88,6 +88,11 @@ def build_decision_case_from_summary(brief: ChairmanBrief, summary: dict[str, An
         "opportunity_screener": summary.get("opportunity_screener")
         or verdict.get("opportunity_screener")
         or {},
+        "opportunity_evaluation_snapshot": build_opportunity_evaluation_snapshot(
+            summary,
+            verdict,
+            as_of_date=as_of_date,
+        ),
         "human_decision_checklist": verdict.get("human_decision_checklist") or [],
         "decision_chain": verdict.get("decision_chain") or [],
         "history_context": verdict.get("history_context") or {},
@@ -112,6 +117,46 @@ def build_decision_case_from_summary(brief: ChairmanBrief, summary: dict[str, An
         "status": "pending",
         "evidence_url": "",
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+
+
+def build_opportunity_evaluation_snapshot(
+    summary: dict[str, Any],
+    verdict: dict[str, Any] | None = None,
+    *,
+    as_of_date: str | None = None,
+) -> dict[str, Any]:
+    """Create a stable decision-time score snapshot for later outcome calibration."""
+
+    verdict = verdict or summary.get("chairman_verdict") or {}
+    screener = summary.get("opportunity_screener") or verdict.get("opportunity_screener") or {}
+    memo_date = as_of_date or str(summary.get("memo_date") or summary.get("decision_date") or "")
+    return {
+        "snapshot_version": "opportunity_evaluation_snapshot_v1",
+        "ticker": summary.get("ticker") or screener.get("ticker") or "",
+        "decision_date": memo_date,
+        "memo_date": memo_date,
+        "price_at_memo": summary.get("price_at_memo"),
+        "price_at_decision": summary.get("price_at_decision"),
+        "opportunity_score": screener.get("opportunity_score"),
+        "raw_opportunity_score": screener.get("raw_opportunity_score"),
+        "business_quality_score": screener.get("business_quality_score"),
+        "investment_attractiveness_score": screener.get("investment_attractiveness_score"),
+        "expectation_gap_score": screener.get("expectation_gap_score"),
+        "valuation_score": screener.get("valuation_score"),
+        "catalyst_score": screener.get("catalyst_score"),
+        "risk_pressure_score": screener.get("risk_pressure_score", screener.get("risk_score")),
+        "positioning_score": screener.get("positioning_score"),
+        "final_verdict": verdict.get("final_verdict"),
+        "legacy_verdict": verdict.get("legacy_verdict"),
+        "human_decision": verdict.get("human_decision") or summary.get("human_decision"),
+        "1m_return": None,
+        "3m_return": None,
+        "6m_return": None,
+        "max_drawdown": None,
+        "thesis_hit": None,
+        "kill_condition_triggered": None,
+        "future_data_allowed": False,
     }
 
 
