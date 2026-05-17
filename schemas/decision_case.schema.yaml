@@ -34,7 +34,7 @@ fields:
     required: true
   chairman_final_verdict:
     type: enum
-    values: [act, wait, reject, research_more]
+    values: [discard, watch, research_priority, trial_candidate, conviction_candidate, human_override_required, act, wait, reject, research_more]
     required: true
   action_route:
     type: string

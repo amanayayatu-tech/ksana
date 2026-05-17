@@ -1,7 +1,7 @@
 # Worldpay77 Operations Manual 1.0
 
 > 本文件描述的是 Worldpay77 真正要建设的目标系统，不是当前代码已经全部实现的现状。
-> 当前代码已经有多 Agent 流水线、Web UI、Perplexity 手动回填、Chairman Brief、Red Team Audit；但目标不是一个"投资分析辅助工具"，而是一家本地运行、每天沉淀、可复盘、会进化的 AI Native 投资公司。
+> 当前代码已经有多 Agent 流水线、Web UI、Perplexity 手动回填、Opportunity Memo、Red Team Audit；但目标不是一个"投资分析辅助工具"，而是一家本地运行、每天沉淀、可复盘、会进化的 AI Native 投资公司。
 
 ## 1. 核心定位
 
@@ -137,7 +137,9 @@ Chairman 不能只做投票统计。
 
 目标态 Chairman 输出应包含：
 
-- `final_verdict`: `act / wait / reject / research_more`
+- `final_verdict`: `discard / watch / research_priority / trial_candidate / conviction_candidate / human_override_required`
+- `legacy_verdict`: 兼容旧流程的 `act / wait / reject / research_more`
+- `opportunity_screener`: 好公司/好投资拆分、预期差、估值、催化、风险压力、非共识 thesis 和 kill conditions
 - `action_route`: 可执行操作导航，例如观察、继续研究、试错仓、放弃、进入下次复盘。
 - `decision_chain`: 为什么更信任某个 Agent 的判断。
 - `dissent_summary`: 关键反对意见。
@@ -302,8 +304,8 @@ Nepha 最终拍板
 
 ```text
 1. 今日结论
-   - act / wait / reject / research_more
-   - 不是交易指令，而是 GP 决策导航
+   - discard / watch / research_priority / trial_candidate / conviction_candidate / human_override_required
+   - 不是交易指令，而是 Nepha 人工开枪前的机会状态和风险边界
 
 2. 重点标的
    - 股票

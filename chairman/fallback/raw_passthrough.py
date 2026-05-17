@@ -106,7 +106,7 @@ def render_fallback_markdown(
         [
             "---",
             "",
-            "> CIO Agent fallback v0.1。建议在修复后重新生成正式 IC Brief。",
+            "> CIO Agent fallback v0.1。建议在修复后重新生成正式 Opportunity Memo。",
             "",
         ]
     )

@@ -130,3 +130,32 @@ def test_editorial_digest_prefers_decision_lines_over_low_signal_fields():
     assert "三位 Agent 当前分布" in rendered
     assert "仍有 8 个未关闭问题，优先关注：见正文清单" in rendered
     assert "一致度: other" not in rendered
+
+
+def test_editorial_digest_prefers_opportunity_memo_status():
+    markdown = "\n".join(
+        [
+            "# Opportunity Memo — BRIEF-20260516-AM",
+            "",
+            "## 每条建议详情",
+            "- **Opportunity Score**：82/100",
+            "- **机会状态**：需人工拍板",
+            "- **action_route**：`human_override_required`",
+            "- 分歧建议：0 条",
+        ]
+    )
+
+    rendered = render_report_html(
+        markdown,
+        ReportPresentation(
+            title="BRIEF-20260516-AM",
+            report_label="Opportunity Memo",
+            eyebrow="RESEARCHOS REPORT VIEW",
+        ),
+    )
+
+    assert "Opportunity Score" in rendered
+    assert "82/100" in rendered
+    assert "机会状态" in rendered
+    assert "需人工拍板" in rendered
+    assert "核心判断" in rendered

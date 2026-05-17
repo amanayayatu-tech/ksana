@@ -65,14 +65,18 @@ class SubstantiveObjection(RedTeamModel):
 
     ticker: str
     red_team_verdict: Literal["block", "challenge", "monitor", "no_major_objection"]
+    fatal_flaw: bool = False
+    risk_budget: dict[str, Any] = Field(default_factory=dict)
     strongest_objection: str
     evidence_chain_risk: str
     missed_counter_evidence: list[str] = Field(default_factory=list)
     historical_failure_pattern: str | None = None
     similar_case_risks: list[str] = Field(default_factory=list)
     consensus_risk: dict[str, Any] = Field(default_factory=dict)
+    main_risks: list[str] = Field(default_factory=list)
     what_must_be_true_for_chairman_to_be_right: str
     what_would_invalidate_this_decision: list[str] = Field(default_factory=list)
+    kill_conditions: list[str] = Field(default_factory=list)
     chairman_second_review: dict[str, Any] = Field(default_factory=dict)
     referenced_knowledge_entries: list[str] = Field(default_factory=list)
 

@@ -29,9 +29,9 @@ def archive_brief(brief: ChairmanBrief, data_dir: str | Path) -> tuple[Path, Pat
         render_report_html(
             markdown,
             ReportPresentation(
-                title=f"投委会报告 — {brief.brief_id}",
-                report_label="IC Brief",
-                eyebrow="RESEARCHOS ALPHA COMMITTEE",
+                title=f"Opportunity Memo — {brief.brief_id}",
+                report_label="Opportunity Memo",
+                eyebrow="RESEARCHOS OPPORTUNITY COMMITTEE",
                 source_path=f"{brief.brief_id}.md",
             ),
         ),

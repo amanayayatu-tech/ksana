@@ -134,8 +134,16 @@ def test_guide_page_is_available():
     assert "样例指南" in response.text
     assert "新股票冷启动补课" in response.text
     assert "AI Native OPC 投资公司标准" in response.text
+    assert "Opportunity Memo 怎么读" in response.text
+    assert "Risk Auditor 定义行动边界" in response.text
     assert "NVDA 异动研究报告" in response.text
     assert "Value Partner" in response.text
+
+
+def test_brief_artifact_label_is_opportunity_memo():
+    path = Path("data/briefs/20260516/BRIEF-20260516-AM.md")
+
+    assert webui.artifact_label_from_path(path) == "Opportunity Memo"
 
 
 def test_index_shows_partner_dispatch_without_collapsed_details():
@@ -723,7 +731,30 @@ def test_report_reader_humanizes_internal_direction_labels(tmp_path, monkeypatch
     assert "第一阶段禁止输出 买入候选/反向风险" not in result["content"]
     assert "long-term growth" in result["content"]
     assert "short-term pressure" in result["content"]
-    assert "watch for cash flow" in result["content"]
+
+
+def test_report_reader_humanizes_opportunity_status_labels(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    brief_dir = data_dir / "briefs" / "20260515"
+    brief_dir.mkdir(parents=True)
+    brief_path = brief_dir / "BRIEF-20260515-AM.md"
+    brief_path.write_text(
+        "\n".join(
+            [
+                "- **机会状态**：`human_override_required`",
+                "- **旧版裁决映射**：`research_more`",
+                "- **系统状态**：`trial_candidate`",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(webui, "DATA_DIR", data_dir)
+
+    result = webui.read_markdown_result(brief_path, humanize_investment_terms=True)
+
+    assert "需人工拍板" in result["content"]
+    assert "补充研究" in result["content"]
+    assert "小仓/纸面跟踪候选" in result["content"]
 
 
 def test_artifact_view_rerenders_existing_html_from_markdown_source(tmp_path, monkeypatch):

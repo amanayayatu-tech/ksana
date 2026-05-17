@@ -27,6 +27,7 @@ DECISIONS_APPLIED = [
     "DEC-014",
     "TRIAL-001",
     "SCHEMA-REPAIR-001",
+    "DEC-019",
 ]
 
 
@@ -177,10 +178,32 @@ def build_substantive_objections(
             rule_ids=rule_ids,
             consensus_risk=consensus_risk,
         )
+        invalidation_points = build_invalidation_points(
+            final_verdict=final_verdict,
+            open_questions=open_questions,
+            historical_conflicts=historical_conflicts,
+            rule_ids=rule_ids,
+            consensus_risk=consensus_risk,
+        )
+        fatal_flaw = red_team_verdict == "block"
+        main_risks = build_main_risks(
+            has_perplexity=has_perplexity,
+            open_questions=open_questions,
+            historical_conflicts=historical_conflicts,
+            rule_ids=rule_ids,
+            consensus_risk=consensus_risk,
+        )
         objections.append(
             SubstantiveObjection(
                 ticker=ticker,
                 red_team_verdict=red_team_verdict,
+                fatal_flaw=fatal_flaw,
+                risk_budget=build_risk_budget(
+                    final_verdict=final_verdict,
+                    red_team_verdict=red_team_verdict,
+                    fatal_flaw=fatal_flaw,
+                    consensus_risk=consensus_risk,
+                ),
                 strongest_objection=build_strongest_objection(
                     ticker,
                     final_verdict=final_verdict,
@@ -206,14 +229,10 @@ def build_substantive_objections(
                 ),
                 similar_case_risks=build_similar_case_risks(similar_cases),
                 consensus_risk=consensus_risk,
+                main_risks=main_risks,
                 what_must_be_true_for_chairman_to_be_right=build_must_be_true(verdict, recs),
-                what_would_invalidate_this_decision=build_invalidation_points(
-                    final_verdict=final_verdict,
-                    open_questions=open_questions,
-                    historical_conflicts=historical_conflicts,
-                    rule_ids=rule_ids,
-                    consensus_risk=consensus_risk,
-                ),
+                what_would_invalidate_this_decision=invalidation_points,
+                kill_conditions=invalidation_points[:5],
                 chairman_second_review=build_second_review_recommendation(
                     final_verdict=final_verdict,
                     red_team_verdict=red_team_verdict,
@@ -260,11 +279,17 @@ def choose_red_team_verdict(
     consensus_risk: dict[str, Any] | None = None,
 ) -> str:
     consensus_risk = consensus_risk or {}
-    if final_verdict == "act" and rule_ids:
+    action_candidate = final_verdict in {
+        "act",
+        "trial_candidate",
+        "conviction_candidate",
+        "human_override_required",
+    }
+    if action_candidate and rule_ids:
         return "block"
-    if final_verdict == "act" and consensus_risk.get("risk_level") == "high":
+    if action_candidate and consensus_risk.get("risk_level") == "high":
         return "challenge"
-    if final_verdict == "act" and (open_questions or historical_conflicts or not has_perplexity):
+    if action_candidate and (open_questions or historical_conflicts or not has_perplexity):
         return "challenge"
     if consensus_risk.get("risk_level") == "high":
         return "monitor"
@@ -360,7 +385,7 @@ def build_invalidation_points(
         "后续公开信息显示本次异动只是指数、期权或短期流动性驱动，而非公司或行业基本面变化。",
         "Perplexity 报告中的核心催化剂无法被财报、监管文件、管理层电话会或主流媒体交叉验证。",
     ]
-    if final_verdict == "act":
+    if final_verdict in {"act", "trial_candidate", "conviction_candidate"}:
         points.append("Red Team 发现的未关闭问题在后续 7-30 天内被验证为真实风险。")
     if (consensus_risk or {}).get("risk_level") in {"medium", "high"}:
         points.extend((consensus_risk or {}).get("required_questions") or [])
@@ -368,6 +393,93 @@ def build_invalidation_points(
     points.extend(historical_conflicts[:3])
     points.extend(f"规则审计 {rule_id} 未关闭。" for rule_id in rule_ids[:3])
     return points[:8]
+
+
+def build_main_risks(
+    *,
+    has_perplexity: bool,
+    open_questions: list[str],
+    historical_conflicts: list[str],
+    rule_ids: list[str],
+    consensus_risk: dict[str, Any],
+) -> list[str]:
+    risks: list[str] = []
+    if not has_perplexity:
+        risks.append("证据链尚未消费 Perplexity 深度研究，容易把价量噪音当成 thesis。")
+    if open_questions:
+        risks.append(f"仍有 {len(open_questions)} 个未关闭问题，第一项是：{open_questions[0]}")
+    if historical_conflicts:
+        risks.append(f"知识库存在历史冲突/反例：{historical_conflicts[0]}")
+    if rule_ids:
+        risks.append(f"规则审计未关闭：{', '.join(rule_ids[:5])}")
+    if consensus_risk.get("risk_level") in {"medium", "high"}:
+        risks.append(f"共识风险 {consensus_risk.get('risk_level')}：{consensus_risk.get('reason')}")
+    return risks[:6] or ["未发现单一重大风险，但仍需跟踪 thesis 证伪条件。"]
+
+
+def build_risk_budget(
+    *,
+    final_verdict: str,
+    red_team_verdict: str,
+    fatal_flaw: bool,
+    consensus_risk: dict[str, Any],
+) -> dict[str, Any]:
+    """Turn Red Team findings into bounded action conditions instead of a bare veto."""
+
+    if final_verdict == "discard":
+        risk_budget_allowed = 0.0
+        max_initial_position = 0.0
+        budget_scope = "not_eligible_for_position"
+    elif final_verdict == "research_priority":
+        risk_budget_allowed = 0.0
+        max_initial_position = 0.0
+        budget_scope = "deep_research_only"
+    elif final_verdict == "watch":
+        risk_budget_allowed = 0.0
+        max_initial_position = 0.0
+        budget_scope = "watchlist_or_paper_tracking_only"
+    elif fatal_flaw:
+        risk_budget_allowed = 0.0
+        max_initial_position = 0.0
+        budget_scope = "blocked_by_fatal_flaw"
+    elif final_verdict == "human_override_required":
+        risk_budget_allowed = 0.5
+        max_initial_position = 0.25
+        budget_scope = "human_override_only"
+    elif red_team_verdict == "challenge":
+        risk_budget_allowed = 0.5
+        max_initial_position = 0.25
+        budget_scope = "paper_trade_or_human_approved_tracking_position"
+    elif red_team_verdict == "monitor":
+        risk_budget_allowed = 1.0
+        max_initial_position = 0.5
+        budget_scope = "paper_trade_or_human_approved_tracking_position"
+    else:
+        risk_budget_allowed = 1.5
+        max_initial_position = 0.75
+        budget_scope = "paper_trade_or_human_approved_tracking_position"
+
+    if final_verdict == "conviction_candidate" and red_team_verdict == "no_major_objection":
+        risk_budget_allowed = 2.0
+        max_initial_position = 1.0
+    if consensus_risk.get("risk_level") == "high" and not fatal_flaw:
+        risk_budget_allowed = min(risk_budget_allowed, 0.5)
+        max_initial_position = min(max_initial_position, 0.25)
+
+    return {
+        "risk_budget_allowed_pct": risk_budget_allowed,
+        "max_initial_position_pct": max_initial_position,
+        "budget_scope": budget_scope,
+        "must_not_buy_if": [
+            "核心财务数据或关键催化无法确认",
+            "管理层指引、监管文件或财报电话会与 thesis 明显相反",
+        ],
+        "position_requires": [
+            "记录人工决策理由",
+            "设置复查日期",
+            "跟踪至少两个 kill indicators",
+        ],
+    }
 
 
 def build_similar_case_risks(similar_cases: list[dict[str, Any]]) -> list[str]:
@@ -389,11 +501,11 @@ def build_second_review_recommendation(
     rule_ids: list[str],
 ) -> dict[str, Any]:
     if red_team_verdict == "block":
-        revised = "reject"
+        revised = "discard"
     elif red_team_verdict == "challenge":
-        revised = "research_more"
-    elif red_team_verdict == "monitor" and final_verdict == "act":
-        revised = "wait"
+        revised = "research_priority"
+    elif red_team_verdict == "monitor" and final_verdict in {"act", "trial_candidate", "conviction_candidate"}:
+        revised = "watch"
     else:
         revised = final_verdict
     return {

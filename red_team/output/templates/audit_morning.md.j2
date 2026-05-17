@@ -22,11 +22,42 @@
 {% for objection in substantive_objections %}
 ### {{ objection.ticker }} — {{ objection.red_team_verdict }}
 
+**Fatal flaw**：{{ '是' if objection.fatal_flaw else '否' }}
+
+{% if objection.risk_budget %}
+**风险预算边界**：
+
+- risk_budget_allowed_pct：{{ objection.risk_budget.risk_budget_allowed_pct }}%
+- max_initial_position_pct：{{ objection.risk_budget.max_initial_position_pct }}%
+- budget_scope：{{ objection.risk_budget.budget_scope }}
+
+{% if objection.risk_budget.must_not_buy_if %}
+**不得行动条件**：
+{% for item in objection.risk_budget.must_not_buy_if %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+{% if objection.risk_budget.position_requires %}
+**若进入纸面/跟踪仓必须满足**：
+{% for item in objection.risk_budget.position_requires %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
 **最强反对**：{{ objection.strongest_objection }}
 
 **证据链风险**：{{ objection.evidence_chain_risk }}
 
 **Chairman 要成立必须为真**：{{ objection.what_must_be_true_for_chairman_to_be_right }}
+
+{% if objection.main_risks %}
+**主要风险**：
+{% for item in objection.main_risks %}
+- {{ item }}
+{% endfor %}
+{% endif %}
 
 {% if objection.missed_counter_evidence %}
 **可能漏掉的反证**：
@@ -63,6 +94,13 @@
 {% for item in objection.what_would_invalidate_this_decision %}
 - {{ item }}
 {% endfor %}
+
+{% if objection.kill_conditions %}
+**Kill conditions**：
+{% for item in objection.kill_conditions %}
+- {{ item }}
+{% endfor %}
+{% endif %}
 
 {% if objection.chairman_second_review %}
 **建议 Chairman 二次裁决**：{{ objection.chairman_second_review.recommended_revised_verdict }}（required={{ objection.chairman_second_review.second_review_required }}）

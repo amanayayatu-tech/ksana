@@ -79,7 +79,7 @@ def assess_consensus_risk(
     score = 20
     if same_direction:
         score += 20
-    if final_verdict == "act":
+    if final_verdict in {"act", "trial_candidate", "conviction_candidate"}:
         score += 15
     if avg_overlap >= 0.35:
         score += 25

@@ -100,7 +100,7 @@ FULL_RUN_STEP_PLAN = [
     },
     {
         "step_name": "chairman",
-        "label": "CIO Agent 生成投委会报告",
+        "label": "CIO Agent 生成 Opportunity Memo",
         "estimate_seconds": 90,
         "stage": "cio",
     },
@@ -369,7 +369,7 @@ def render_artifact_markdown(path: Path, *, presentation_path: Path | None = Non
     presentation_path = presentation_path or path
     markdown = path.read_text(encoding="utf-8")
     report_label = artifact_label_from_path(presentation_path)
-    if report_label in {"IC Brief", "Risk Audit"}:
+    if report_label in {"Opportunity Memo", "Risk Audit"}:
         markdown = humanize_investment_report(markdown)
     return render_report_html(
         markdown,
@@ -1535,7 +1535,7 @@ def artifact_label_from_path(path: Path) -> str:
     if "red_team_audits" in parts:
         return "Risk Audit"
     if "briefs" in parts:
-        return "IC Brief"
+        return "Opportunity Memo"
     return "Report"
 
 
@@ -1584,6 +1584,11 @@ def humanize_investment_report(content: str) -> str:
         "wait": "等待观察",
         "reject": "否决",
         "research_more": "补充研究",
+        "discard": "丢弃",
+        "research_priority": "优先研究",
+        "trial_candidate": "小仓/纸面跟踪候选",
+        "conviction_candidate": "高信号候选",
+        "human_override_required": "需人工拍板",
     }
 
     def replace_bold(match: re.Match[str]) -> str:
@@ -1593,7 +1598,11 @@ def humanize_investment_report(content: str) -> str:
         return direction_labels.get(match.group(1), match.group(1))
 
     rendered = re.sub(r"\*\*(long|short|watch|avoid|abstain)\*\*", replace_bold, rendered)
-    rendered = re.sub(r"`(act|wait|reject|research_more)`", replace_inline_code, rendered)
+    rendered = re.sub(
+        r"`(act|wait|reject|research_more|discard|watch|research_priority|trial_candidate|conviction_candidate|human_override_required)`",
+        replace_inline_code,
+        rendered,
+    )
     rendered = re.sub(
         r"\b(f_partner|w_partner|g_partner):(long|short|watch|avoid|abstain)\b",
         lambda match: f"{match.group(1)}:{direction_labels[match.group(2)]}",
@@ -2900,7 +2909,7 @@ def build_company_flow(trial: dict[str, Any]) -> list[dict[str, Any]]:
         {"label": "Deep Research Inbox", "metric": f"{pending} 待补充", "state": "质量门"},
         {"label": "知识库", "metric": f"{filled} 已沉淀", "state": "复用记忆"},
         {"label": "策略 Agent", "metric": "Value / Momentum / Quality", "state": "并行分析"},
-        {"label": "CIO Agent", "metric": "投委会报告", "state": "裁决导航"},
+        {"label": "CIO Agent", "metric": "Opportunity Memo", "state": "机会导航"},
         {"label": "Risk Auditor", "metric": "风险审计", "state": "反证检查"},
     ]
 

@@ -87,6 +87,7 @@ def test_render_markdown_and_json_metadata():
 
     assert "投研委员会简报" in markdown
     assert "Chairman 不替你做决策" in markdown
+    assert "Opportunity Memo" in markdown
     assert "操作建议汇总" in markdown
     assert "建议动作" in markdown
     assert "仓位建议汇总" not in markdown
@@ -249,15 +250,47 @@ def test_brief_includes_chairman_final_verdict_navigation():
     summary = brief.per_recommendation_summary[0]
 
     assert summary["chairman_verdict"]["final_verdict"] in {
-        "act",
-        "wait",
-        "reject",
-        "research_more",
+        "discard",
+        "watch",
+        "research_priority",
+        "trial_candidate",
+        "conviction_candidate",
+        "human_override_required",
     }
+    assert summary["chairman_verdict"]["legacy_verdict"] in {"act", "wait", "reject", "research_more"}
+    assert summary["opportunity_screener"]["opportunity_score"] >= 0
+    assert summary["chairman_verdict"]["human_decision_checklist"]
     assert summary["chairman_verdict"]["decision_chain"]
     assert summary["chairman_verdict"]["red_team_rebuttal_policy"]["second_chairman_review_required"] is True
     assert "Chairman 裁决导航" in markdown
+    assert "Human Decision Checklist" in markdown
     assert "Red Team 后二次裁决规则" in markdown
+
+
+def test_split_signal_becomes_human_override_when_opportunity_is_high():
+    signal = make_signal()
+    signal.signal_type = "mispricing"
+    signal.signal_summary = "预期差和错定价明显，市场尚未定价核心催化。"
+    brief = assemble_brief(
+        research_signals=[signal],
+        recommendations=[
+            make_f_partner(
+                "long",
+                thesis="预期差和 valuation reset 同时存在",
+                catalysts=["回购和利润率修复"],
+            ),
+            make_w_partner("avoid", thesis="风险仍未验证"),
+            make_g_partner("long", thesis="质量恢复和叙事拐点成立"),
+        ],
+        brief_type="morning",
+        date="2026-05-13",
+        use_llm=False,
+    )
+
+    summary = brief.per_recommendation_summary[0]
+
+    assert summary["chairman_verdict"]["final_verdict"] == "human_override_required"
+    assert "expectation_gap" in summary["opportunity_screener"]["reason_type"]
     assert '"final_verdicts"' in render_json_metadata(brief)
 
 

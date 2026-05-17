@@ -122,6 +122,10 @@ def build_case_from_summary(brief: ChairmanBrief, summary: dict[str, Any]) -> di
         "learning_context": verdict.get("learning_context") or {},
         "decision_chain": verdict.get("decision_chain") or [],
         "operation_summary": summary.get("operation_summary") or {},
+        "opportunity_screener": summary.get("opportunity_screener")
+        or verdict.get("opportunity_screener")
+        or {},
+        "human_decision_checklist": verdict.get("human_decision_checklist") or [],
         "verification_windows_days": DEFAULT_WINDOWS,
         "objective": OBJECTIVES[direction],
         "status": "pending",
@@ -155,11 +159,11 @@ def merge_verification_case(existing: dict[str, Any] | None, generated: dict[str
 
 def map_chairman_verdict_to_direction(verdict: dict[str, Any]) -> str:
     final_verdict = str(verdict.get("final_verdict") or "wait")
-    if final_verdict == "act":
+    if final_verdict in {"act", "trial_candidate", "conviction_candidate"}:
         return normalize_decision_direction((verdict.get("lead_agent") or {}).get("direction"))
-    if final_verdict == "reject":
+    if final_verdict in {"reject", "discard"}:
         return "avoid"
-    if final_verdict in {"wait", "research_more"}:
+    if final_verdict in {"wait", "research_more", "watch", "research_priority", "human_override_required"}:
         return "watch"
     return "watch"
 

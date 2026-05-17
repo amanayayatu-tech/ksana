@@ -380,17 +380,38 @@
 
 ---
 
+## DEC-019：从投委会否决器改为机会筛选与人工开枪系统
+
+- **触发**：`worldpay77_agent_improvement_notes.md` 指出当前 Chairman + Red Team 流程过度偏向审计、否决和 `wait/research_more/reject`。
+- **决定**：Chairman 不再把最终输出压成 `act / wait / reject / research_more`，而是输出 human-in-the-loop 机会状态：
+  ```yaml
+  final_verdict:
+    - discard
+    - watch
+    - research_priority
+    - trial_candidate
+    - conviction_candidate
+    - human_override_required
+  ```
+- **Opportunity Screener**：在每只股票 summary 中新增 `opportunity_screener`，拆分 `business_quality_score` 与 `investment_attractiveness_score`，并记录预期差、估值、催化、风险压力、持仓/叙事位置、非共识 thesis、上下行路径和 kill conditions。
+- **Red Team 改造**：Red Team 不只输出阻断/挑战，还必须输出 `fatal_flaw`、`risk_budget`、`main_risks`、`kill_conditions`，把风险转成行动边界。
+- **学习层**：decision case 和 verification case 保留 `opportunity_screener` 与 `human_decision_checklist`，后续 outcome review 可回测 screener 分数和机会类型。
+- **影响范围**：Chairman brief、Red Team audit、decision learning、README、report template。
+- **决策时间**：2026-05-17
+
+---
+
 ## 决策应用追踪
 
-| Agent | DEC-001 → DEC-012 状态 | DEC-013 | DEC-014 | DEC-015 | DEC-016 | DEC-017 | DEC-018 |
-|---|---|---|---|---|---|---|---|
-| F partner v0.5.1 | ✅ frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a |
-| W partner v0.3.1 | ✅ frozen | n/a | n/a | 加 Open Q | **本轮小补丁** | n/a | n/a |
-| G partner v0.5.1 | ✅ frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a |
-| deployment_layer v0.1 | ✅ frozen | n/a | n/a | n/a | n/a | n/a | **本轮小补丁** |
-| K deep v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a |
-| Chairman （待设计）| DEC-001/004/007/008 实施主体 | 需处理 | 需处理 | n/a | 需处理 | 需处理 | n/a |
-| Red Team （待设计）| DEC-004/011 实施主体 | n/a | n/a | n/a | n/a | n/a | n/a |
+| Agent | DEC-001 → DEC-012 状态 | DEC-013 | DEC-014 | DEC-015 | DEC-016 | DEC-017 | DEC-018 | DEC-019 |
+|---|---|---|---|---|---|---|---|---|
+| F partner v0.5.1 | frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a | 提供输入 |
+| W partner v0.3.1 | frozen | n/a | n/a | 加 Open Q | 本轮小补丁 | n/a | n/a | 提供输入 |
+| G partner v0.5.1 | frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a | 提供输入 |
+| deployment_layer v0.1 | frozen | n/a | n/a | n/a | n/a | n/a | 本轮小补丁 | n/a |
+| K deep v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a | Screener 输入 |
+| Chairman | DEC-001/004/007/008 实施主体 | 需处理 | 需处理 | n/a | 需处理 | 需处理 | n/a | 已实施 |
+| Red Team | DEC-004/011 实施主体 | n/a | n/a | n/a | n/a | n/a | n/a | 已实施 |
 
 ## 跨 Agent 微补丁清单（v0.5.1 / v0.3.1 / v0.5.1）
 

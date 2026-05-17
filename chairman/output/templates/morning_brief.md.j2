@@ -29,6 +29,36 @@
 **一致度**：{{ rec_summary.direction_consensus.consensus_level | trans }}
 **K deep 信号 ID**：`{{ rec_summary.research_signal_id }}`
 
+{% if rec_summary.opportunity_screener %}
+#### Opportunity Memo
+
+- **Opportunity Score**：{{ rec_summary.opportunity_screener.opportunity_score }}/100
+- **机会类型**：{{ rec_summary.opportunity_screener.reason_type | join(', ') }}
+- **系统状态**：{{ rec_summary.chairman_verdict.final_verdict | trans if rec_summary.chairman_verdict else rec_summary.opportunity_screener.recommended_next_step | trans }}
+- **研究优先级**：{{ rec_summary.opportunity_screener.research_priority }}
+- **时间窗口**：{{ rec_summary.opportunity_screener.time_horizon }}
+- **Why now**：{{ rec_summary.opportunity_screener.why_now | advice_text }}
+- **市场共识视角**：{{ rec_summary.opportunity_screener.consensus_view | advice_text }}
+- **非共识 thesis**：{{ rec_summary.opportunity_screener.non_consensus_view | advice_text }}
+- **上行路径**：{{ rec_summary.opportunity_screener.upside_path | advice_text }}
+- **下行路径**：{{ rec_summary.opportunity_screener.downside_path | advice_text }}
+
+| 维度 | 分数 |
+|---|---:|
+| 好公司 / business_quality | {{ rec_summary.opportunity_screener.business_quality_score }} |
+| 好投资 / investment_attractiveness | {{ rec_summary.opportunity_screener.investment_attractiveness_score }} |
+| 预期差 / expectation_gap | {{ rec_summary.opportunity_screener.expectation_gap_score }} |
+| 估值 / valuation | {{ rec_summary.opportunity_screener.valuation_score }} |
+| 催化 / catalyst | {{ rec_summary.opportunity_screener.catalyst_score }} |
+| 风险压力 / risk_pressure | {{ rec_summary.opportunity_screener.risk_score }} |
+| 持仓/叙事位置 / positioning | {{ rec_summary.opportunity_screener.positioning_score }} |
+
+**Kill conditions**：
+{% for item in rec_summary.opportunity_screener.kill_conditions %}
+- {{ item | advice_text }}
+{% endfor %}
+{% endif %}
+
 #### 三方观点并列
 
 | Agent | 投资建议 | confidence | 权重 | 一句话 thesis |
@@ -83,7 +113,8 @@
 {% if rec_summary.chairman_verdict %}
 #### Chairman 裁决导航
 
-- **CIO 裁决**：{{ rec_summary.chairman_verdict.final_verdict | trans }}
+- **机会状态**：{{ rec_summary.chairman_verdict.final_verdict | trans }}
+- **旧版裁决映射**：{{ rec_summary.chairman_verdict.legacy_verdict | trans }}
 - **action_route**：`{{ rec_summary.chairman_verdict.action_route }}`
 - **裁决置信度**：{{ rec_summary.chairman_verdict.confidence }}
 - **暂时更信任**：{{ rec_summary.chairman_verdict.lead_agent.agent_id }} / {{ rec_summary.chairman_verdict.lead_agent.direction | advice_label }}（方法论权重 ×{{ rec_summary.chairman_verdict.lead_agent.chairman_weight_multiplier }}，历史表现权重 ×{{ rec_summary.chairman_verdict.lead_agent.performance_weight_multiplier }}）
@@ -94,7 +125,12 @@
 
 **关键反对摘要**：{{ rec_summary.chairman_verdict.dissent_summary | advice_text }}
 
-**Red Team 后二次裁决规则**：阻断 → 否决；挑战 → 补充研究；监控 → 等待/补充研究。
+**Human Decision Checklist**：
+{% for item in rec_summary.chairman_verdict.human_decision_checklist %}
+- {{ item | advice_text }}
+{% endfor %}
+
+**Red Team 后二次裁决规则**：阻断 → discard/人工 override；挑战 → research_priority；监控 → watch/research_priority。
 
 {% endif %}
 

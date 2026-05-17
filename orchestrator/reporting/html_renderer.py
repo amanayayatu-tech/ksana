@@ -122,7 +122,7 @@ def extract_title(markdown: str) -> str:
 
 def short_title(title: str) -> str:
     cleaned = productize_report_text(title)
-    cleaned = cleaned.replace("投研委员会简报", "IC Brief").replace("Risk Audit Audit", "Risk Audit")
+    cleaned = cleaned.replace("投研委员会简报", "Opportunity Memo").replace("Risk Audit Audit", "Risk Audit")
     return cleaned[:44] + ("..." if len(cleaned) > 44 else "")
 
 
@@ -137,11 +137,11 @@ def productize_report_text(text: str) -> str:
     replacements = [
         ("Nepha AI IC", "WorldPay IC"),
         ("AI Native 投资公司", "AI Native 投研工作流"),
-        ("投研委员会简报", "IC Brief"),
+        ("投研委员会简报", "Opportunity Memo"),
         ("私有投资公司", "投研工作台"),
         ("Red Team Audit", "Risk Audit"),
         ("Red Team", "Risk Auditor"),
-        ("Chairman Brief", "IC Brief"),
+        ("Chairman Brief", "Opportunity Memo"),
         ("Chairman CIO", "CIO Agent"),
         ("对应 Chairman brief", "对应 CIO Agent brief"),
         ("Chairman", "CIO Agent"),
@@ -270,6 +270,8 @@ def build_digest_cards(markdown: str, summary_items: list[tuple[str, str]]) -> l
     decision = find_first_matching_line(
         markdown,
         (
+            "机会状态",
+            "Opportunity Score",
             "CIO 裁决",
             "建议 CIO Agent 二次裁决",
             "最强反对",

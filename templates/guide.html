@@ -13,7 +13,7 @@
       <p class="guide-kicker">AI Native One-Person Investment Company</p>
       <h1 class="guide-title">把一个人的投资工作，做成一家公司级别的投研流程</h1>
       <p class="guide-subtitle">
-        ResearchOS 不是股票筛选器，也不是自动交易机器人。它是一套面向普通投资人的 AI native 投资公司操作系统：先把异动转成研究问题，再通过 Deep Research、三位 Partner Agent、CIO Agent、Risk Auditor 和复盘库，把一次判断沉淀成可追踪、可质疑、可复用的投资档案。
+        ResearchOS 不是自动交易机器人，也不是替你下买卖结论的黑箱。它是一套面向普通投资人的 AI native 投研操作系统：先把异动转成研究问题，再通过 Deep Research、Opportunity Screener、三位 Partner Agent、CIO Agent、Risk Auditor 和复盘库，把一次判断沉淀成可追踪、可质疑、可复用的投资档案。
       </p>
       <div class="guide-proof-strip" aria-label="ResearchOS 能力摘要">
         <div><strong>3-5</strong><span>新股票冷启动深研题</span></div>
@@ -23,11 +23,11 @@
     </div>
     <div class="guide-visual" aria-label="ResearchOS 产品化示意图">
       <div class="guide-orbit"></div>
-      <div class="guide-core">WorldPay IC<br>Alpha Committee</div>
+      <div class="guide-core">WorldPay IC<br>Opportunity Memo</div>
       <div class="guide-node node-research">Anomaly Scanner<small>把异动转成研究问题</small></div>
       <div class="guide-node node-perplexity">Deep Research Inbox<small>承接高质量外部研究</small></div>
       <div class="guide-node node-partners">Partner Agents<small>Value / Momentum / Quality</small></div>
-      <div class="guide-node node-red">Risk Auditor<small>反证、缺口和触发器</small></div>
+      <div class="guide-node node-red">Risk Auditor<small>fatal flaw 和风险预算</small></div>
     </div>
   </section>
 
@@ -55,8 +55,8 @@
         </article>
         <article class="explain-card">
           <span class="agent-tag">4. 公司化输出</span>
-          <h3>生成投委会报告</h3>
-          <p>三位 Partner 给出分歧，CIO Agent 汇总等待条件，Risk Auditor 找反证，最终形成可阅读报告和复盘记录。</p>
+          <h3>生成 Opportunity Memo</h3>
+          <p>Screener 先找非共识赔率，三位 Partner 给出分歧，CIO Agent 整理人工检查清单，Risk Auditor 定义风险预算。</p>
         </article>
       </div>
     </div>
@@ -73,9 +73,40 @@
         <div class="flow-step"><strong>2. 运行今日扫描</strong><span>识别公开异动，把价格变化转成非共识研究问题。</span></div>
         <div class="flow-step"><strong>3. 查看异常信号</strong><span>确认哪些信号值得进入深度研究，哪些只需归档观察。</span></div>
         <div class="flow-step"><strong>4. 填入深度研究</strong><span>把外部研究结论放入 Deep Research Inbox，沉淀成知识卡片。</span></div>
-        <div class="flow-step"><strong>5. 生成投委会报告</strong><span>CIO Agent 汇总三位 Partner 的分歧、等待条件和触发器。</span></div>
-        <div class="flow-step"><strong>6. 查看风险审计</strong><span>Risk Auditor 检查证据缺口、共识陷阱和反向情景。</span></div>
+        <div class="flow-step"><strong>5. 生成 Opportunity Memo</strong><span>Screener 评分机会，CIO Agent 汇总三位 Partner 的分歧、等待条件和人工检查清单。</span></div>
+        <div class="flow-step"><strong>6. 查看风险审计</strong><span>Risk Auditor 检查 fatal flaw、证据缺口、共识陷阱和风险预算。</span></div>
         <div class="flow-step"><strong>7. 归档复盘</strong><span>把本次判断变成下一次研究可复用的历史样本。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Opportunity Memo 怎么读</h2>
+      <span class="pill warn">人工开枪边界</span>
+    </div>
+    <div class="panel-body">
+      <div class="guide-explain-grid">
+        <article class="explain-card">
+          <span class="agent-tag">Opportunity Screener</span>
+          <h3>先判断值不值得研究</h3>
+          <p>报告会先给出 Opportunity Score，并拆分好公司、好投资、预期差、估值、催化、风险压力和持仓/叙事位置。它不是买入评分，而是判断这只股票是否值得占用你的研究时间。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">机会状态</span>
+          <h3>六档状态不是交易指令</h3>
+          <p><code>discard</code> 丢弃；<code>watch</code> 观察；<code>research_priority</code> 先深研；<code>trial_candidate</code> 可纸面跟踪；<code>conviction_candidate</code> 少数强信号；<code>human_override_required</code> 分歧大但可能是机会，必须人工拍板。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">Human Checklist</span>
+          <h3>CIO Agent 做决策秘书</h3>
+          <p>CIO Agent 不替你买卖，只整理非共识 thesis、上行路径、下行路径、关键反对意见和三条人工检查问题。你要先确认这些问题，再决定是否继续研究、纸面跟踪或放弃。</p>
+        </article>
+        <article class="explain-card">
+          <span class="agent-tag">Risk Budget</span>
+          <h3>Risk Auditor 定义行动边界</h3>
+          <p>Risk Auditor 会写出 fatal flaw、主要风险、kill conditions 和风险预算。<code>discard</code>、<code>watch</code>、<code>research_priority</code> 不给真实初始仓位；只有进入候选或人工 override 时，才允许在风险预算内由人决定。</p>
+        </article>
       </div>
     </div>
   </section>

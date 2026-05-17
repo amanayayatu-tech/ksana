@@ -12,7 +12,7 @@ Most AI research tools stop at a long narrative report. ResearchOS is designed a
 - Bootstrap brand-new tickers with 6-12 month historical research prompts before the committee forms a view.
 - Route those questions through a Deep Research Inbox before final reporting.
 - Compare Value, Momentum, and Quality perspectives instead of relying on one model narrative.
-- Produce a polished IC Brief and a separate Risk Audit.
+- Produce an Opportunity Memo and a separate Risk Audit.
 - Preserve decision cases, evidence gaps, and follow-up triggers for later review.
 - Show estimated LLM token usage and GPT-5.5-equivalent cost for each recorded run.
 
@@ -22,7 +22,7 @@ The main page is organized as a three-step workflow:
 
 1. Generate research tasks from the selected stock pool.
 2. Fill the Deep Research Inbox with external research findings.
-3. Rerun the committee chain to generate the final IC Brief and Risk Audit.
+3. Rerun the committee chain to generate the final Opportunity Memo and Risk Audit.
 
 The broader operating cycle is:
 
@@ -32,9 +32,10 @@ flowchart LR
     Scan --> ColdStart["Cold-start Historical Research"]
     ColdStart --> Inbox["Deep Research Inbox"]
     Inbox --> Agents["Value / Momentum / Quality Partners"]
-    Agents --> CIO["CIO Agent"]
+    Agents --> Screener["Opportunity Screener"]
+    Screener --> CIO["CIO Agent"]
     CIO --> Risk["Risk Auditor"]
-    Risk --> Reports["IC Brief + Risk Audit"]
+    Risk --> Reports["Opportunity Memo + Risk Audit"]
     Reports --> Review["Review Library"]
 ```
 
@@ -68,8 +69,9 @@ Until the cold-start queue is filled or explicitly skipped, the downstream Tradi
 | Value Partner | Focuses on valuation, cash flow, odds, and margin of safety. |
 | Momentum Partner | Focuses on trend, positioning, expectation revisions, and relative strength. |
 | Quality Partner | Focuses on moat, execution quality, resilience, and governance. |
-| CIO Agent | Synthesizes the committee view into an IC Brief. |
-| Risk Auditor | Challenges consensus narratives, evidence gaps, and execution risk. |
+| Opportunity Screener | Scores expectation gap, valuation reset, catalysts, risk pressure, and positioning before any final status. |
+| CIO Agent | Acts as a decision secretary, turning the committee view into opportunity states and human decision checklists. |
+| Risk Auditor | Challenges consensus narratives, evidence gaps, execution risk, fatal flaws, and risk-budget boundaries. |
 | Review Library | Tracks decisions, timelines, outcomes, and monthly learning reviews. |
 | LLM Usage Ledger | Estimates input tokens, output tokens, and GPT-5.5-equivalent cost per run. |
 
@@ -77,8 +79,16 @@ Until the cold-start queue is filled or explicitly skipped, the downstream Tradi
 
 ResearchOS generates two reader-facing report types:
 
-- **IC Brief**: a committee-ready report covering the anomaly, consensus explanation, non-consensus questions, agent disagreement, waiting conditions, and risk triggers.
-- **Risk Audit**: an adversarial review focused on missing evidence, fragile assumptions, reverse scenarios, and follow-up checks.
+- **Opportunity Memo**: a committee-ready report covering the anomaly, opportunity score, non-consensus thesis, upside/downside paths, agent disagreement, kill conditions, and human decision checklist.
+- **Risk Audit**: an adversarial review focused on fatal flaws, risk budget, missing evidence, fragile assumptions, reverse scenarios, and follow-up checks.
+
+The CIO Agent no longer reduces every ticker to `act / wait / reject`. It emits one of six human-in-the-loop states:
+
+```text
+discard / watch / research_priority / trial_candidate / conviction_candidate / human_override_required
+```
+
+`trial_candidate` and `conviction_candidate` are not trading instructions. They mean the opportunity is ready for human review, paper tracking, or a human-approved tracking position with Red Team risk-budget limits.
 
 Reports are rendered as polished HTML reading views. The layout prioritizes summary density first, then full evidence and appendices for auditability.
 

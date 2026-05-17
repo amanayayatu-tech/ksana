@@ -13,7 +13,7 @@
       <div>
         <h1 class="command-title mt">ResearchOS 投研任务流</h1>
         <p class="command-subtitle">
-          完整研报不是一次点击完成：先生成研究任务，再完成 Deep Research 回填，最后重跑 Partner Agents、CIO Agent 和 Risk Auditor，生成可阅读、可追踪、可复盘的投委会报告。
+          完整研报不是一次点击完成：先生成研究任务，再完成 Deep Research 回填，最后重跑 Partner Agents、CIO Agent 和 Risk Auditor，生成可阅读、可追踪、可复盘的 Opportunity Memo。
         </p>
       </div>
       <div class="hero-actions workflow-actions">
@@ -32,7 +32,7 @@
       <div class="workflow-step primary-flow"><span class="workflow-number">1</span><div><strong>生成研究任务</strong><span>扫描股票池，把异常信号转成 Deep Research 问题。</span></div></div>
       <div class="workflow-step primary-flow"><span class="workflow-number">2</span><div><strong>回填 Deep Research</strong><span>补齐外部研究结论，这是完整研报的质量门。</span></div></div>
       <div class="workflow-step primary-flow"><span class="workflow-number">3</span><div><strong>回填后重跑</strong><span>重跑 Partner、CIO 和 Risk Auditor 链路。</span></div></div>
-      <div class="workflow-step"><span class="workflow-number">4</span><div><strong>阅读完整报告</strong><span>打开 IC Brief 和 Risk Audit 的精排 HTML。</span></div></div>
+      <div class="workflow-step"><span class="workflow-number">4</span><div><strong>阅读完整报告</strong><span>打开 Opportunity Memo 和 Risk Audit 的精排 HTML。</span></div></div>
       <div class="workflow-step"><span class="workflow-number">5</span><div><strong>归档复盘</strong><span>把判断、触发器和反证沉淀到复盘库。</span></div></div>
     </div>
   </section>
@@ -183,7 +183,7 @@
       <div class="report-grid">
         <div class="report-column">
           <div class="split-title">
-            <strong>IC Brief</strong>
+            <strong>Opportunity Memo</strong>
             <span id="briefPath" class="pill">未读取</span>
           </div>
           <article id="briefView" class="markdown mt"></article>
@@ -623,14 +623,14 @@
     const date = document.getElementById("reportDate").value;
     const res = await fetch(`/api/report?date=${encodeURIComponent(date)}&brief_type=${reportType}`);
     const data = await res.json();
-    renderMarkdown("briefView", "briefPath", data.brief, "IC Brief 暂无内容");
+    renderMarkdown("briefView", "briefPath", data.brief, "Opportunity Memo 暂无内容");
     renderMarkdown("auditView", "auditPath", data.audit, "Risk Audit 暂无内容");
   }
 
   function renderMarkdown(viewId, pathId, item, emptyText) {
     const view = document.getElementById(viewId);
     const path = document.getElementById(pathId);
-    const label = viewId === "briefView" ? "IC Brief" : "Risk Audit";
+    const label = viewId === "briefView" ? "Opportunity Memo" : "Risk Audit";
     if (!item.exists) {
       path.textContent = "未找到";
       path.className = "pill warn";

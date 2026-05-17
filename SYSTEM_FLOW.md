@@ -35,11 +35,13 @@ flowchart TD
     Results --> TradingParallel
     TradingParallel --> Recs["data/recommendations/YYYYMMDD/\nf_partner / w_partner / g_partner/*.yaml"]
 
-    Recs --> Chairman["Chairman\n共识、分歧、升级队列、报告摘要"]
+    Recs --> Screener["Opportunity Screener\n预期差、估值、催化、风险压力"]
+    Signals --> Screener
+    Screener --> Chairman["Chairman\n机会状态、人工检查清单、报告摘要"]
     Signals --> Chairman
-    Chairman --> Brief["data/briefs/YYYYMMDD/\nBRIEF-YYYYMMDD-AM/PM.md + .json"]
+    Chairman --> Brief["data/briefs/YYYYMMDD/\nOpportunity Memo + .json"]
 
-    Brief --> RedTeam["Red Team\n规则审计 + 方法论挑刺"]
+    Brief --> RedTeam["Red Team\n规则审计 + fatal flaw + 风险预算"]
     Recs --> RedTeam
     Signals --> RedTeam
     RedTeam --> Audit["data/red_team_audits/YYYYMMDD/\nAUDIT-YYYYMMDD-AM/PM.md + .json"]
@@ -102,10 +104,11 @@ flowchart TD
     WPartner --> R2["recommendation YAML"]
     GPartner --> R3["recommendation YAML"]
 
-    R1 --> Brief["Chairman Brief"]
-    R2 --> Brief
-    R3 --> Brief
-    RS --> Brief
+    R1 --> Screener["Opportunity Screener"]
+    R2 --> Screener
+    R3 --> Screener
+    RS --> Screener
+    Screener --> Brief["Opportunity Memo"]
 
     Brief --> Audit["Red Team Audit"]
     R1 --> Audit
@@ -238,8 +241,8 @@ sequenceDiagram
     UI->>Agents: 重跑F partner、W partner、G partner
     Agents->>File: 读取 research_signal + PerplexityContext
     Agents->>File: 写新的 recommendation YAML
-    Agents->>Chairman: 交给 Chairman 汇总
-    Chairman->>File: 写 BRIEF-*.md + .json
+    Agents->>Chairman: 交给 Opportunity Screener + Chairman 汇总
+    Chairman->>File: 写 Opportunity Memo BRIEF-*.md + .json
     Chairman->>Red: 交给 Red Team 审计
     Red->>File: 写 AUDIT-*.md + .json
     Red->>History: 标记 completed / failed / cancelled
@@ -260,10 +263,10 @@ sequenceDiagram
 | Perplexity prompt | 触发的 K deep 信号 | `data/pull_requests/PR-*.yaml` |
 | 人工回填 | Perplexity 答案或跳过原因 | `data/perplexity_results/PR-*_filled.yaml` / `PR-*_skipped.yaml` |
 | 三位交易 Agent | K deep 信号 + 回填状态 + 方法论 + LLM | `data/recommendations/YYYYMMDD/{f_partner,w_partner,g_partner}/*.yaml` |
-| Chairman | recommendations + research_signals | `data/briefs/YYYYMMDD/BRIEF-*.md` + `.json` |
+| Opportunity Screener + Chairman | recommendations + research_signals | `data/briefs/YYYYMMDD/BRIEF-*.md` + `.json` |
 | Red Team | brief + recommendations + research_signals | `data/red_team_audits/YYYYMMDD/AUDIT-*.md` + `.json` |
 | 运行历史 | Orchestrator run log + step log | `data/orchestrator/runs.db`、`data/orchestrator/logs/*` |
 
 ## 9. 一句话版
 
-系统先用公开价量从股池里筛出异常信号，再把需要解释的原因交给 Nepha 手动 Perplexity 回填；三位交易 Agent 读取信号和回填内容，用各自方法论和 LLM 做保守判断；Chairman 汇总共识与分歧；Red Team 审计规则、证据和格式风险；所有结果都落在本地文件和运行历史里。
+系统先用公开价量从股池里筛出异常信号，再把需要解释的原因交给 Nepha 手动 Perplexity 回填；三位交易 Agent 读取信号和回填内容，用各自方法论和 LLM 做保守判断；Opportunity Screener 先判断非共识赔率；Chairman 汇总共识、分歧和人工检查清单；Red Team 审计规则、证据、fatal flaw 和风险预算；所有结果都落在本地文件和运行历史里。

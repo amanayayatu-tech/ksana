@@ -85,6 +85,10 @@ def build_decision_case_from_summary(brief: ChairmanBrief, summary: dict[str, An
         "lead_agent": verdict.get("lead_agent") or {},
         "partner_views": summary.get("individual_views") or [],
         "operation_summary": summary.get("operation_summary") or {},
+        "opportunity_screener": summary.get("opportunity_screener")
+        or verdict.get("opportunity_screener")
+        or {},
+        "human_decision_checklist": verdict.get("human_decision_checklist") or [],
         "decision_chain": verdict.get("decision_chain") or [],
         "history_context": verdict.get("history_context") or {},
         "learning_context": shape_learning_case_context(learning_context),

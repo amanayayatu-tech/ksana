@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import yaml
 
 from chairman.core.brief_assembler import assemble_brief
 from chairman.persistence.archive import archive_brief
@@ -59,3 +62,17 @@ def test_verification_objectives_define_non_price_only_outcomes():
     assert "open_questions_remain_material" in OBJECTIVES["watch"]["validated_if"]
     assert "stated_risk_materializes" in OBJECTIVES["avoid"]["validated_if"]
     assert "evidence_remains_insufficient_or_conflicting" in OBJECTIVES["abstain"]["validated_if"]
+
+
+def test_decision_verification_schema_accepts_opportunity_states():
+    schema = yaml.safe_load(Path("schemas/decision_verification.schema.yaml").read_text(encoding="utf-8"))
+    values = set(schema["fields"]["chairman_final_verdict"]["values"])
+
+    assert {
+        "discard",
+        "watch",
+        "research_priority",
+        "trial_candidate",
+        "conviction_candidate",
+        "human_override_required",
+    }.issubset(values)
