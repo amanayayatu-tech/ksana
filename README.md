@@ -48,6 +48,24 @@ Important pages:
 | Usage Guide | `http://127.0.0.1:7777/guide` | See the workflow guide, cold-start rules, and sample reports. |
 | LLM API Settings | `http://127.0.0.1:7777/env` | Check provider setup and LLM usage visibility. |
 
+## Repository Map
+
+| File / Directory | Role |
+| --- | --- |
+| `README.md` | Product overview, quick start, workflow, and user-facing boundaries. |
+| `SYSTEM_FLOW.md` | End-to-end data flow, LLM provider flow, and artifact paths. |
+| `ARCHITECTURE.md` | Module ownership, runtime entry points, configuration files, and safety boundaries. |
+| `pyproject.toml` | Python package metadata, CLI entry points, dependency groups, and test/lint settings. |
+| `webui.py` | Main local FastAPI/Jinja Web UI entry point. |
+| `AGENTS.md` | Repo-specific agent rules for Codex and other coding agents. |
+| `LOCAL_RUNBOOK.md` | Local install, startup, troubleshooting, and operations commands. |
+| `.env.example` | Safe local environment template. Do not commit a real `.env`. |
+| `deployment_layer.md` | Portfolio/risk hard-rule source material used by the methods. |
+| `system_decisions_log.md` | Design-decision history and compatibility rationale. |
+| `tests/`, `schemas/` | Behavior checks and data contracts. |
+
+This is a Python/uv project. There is no `package.json` because the Web UI is served by FastAPI/Jinja, not a Node frontend.
+
 ## Workflow
 
 The main page is organized as a three-step workflow:
@@ -172,6 +190,8 @@ Run quality checks:
 uv run ruff check
 uv run pytest -q
 ```
+
+For web-surface changes, also verify the relevant page on `http://127.0.0.1:7777`.
 
 ## Design Principles
 

@@ -19,9 +19,20 @@ related_files:
   - methodology_comparison_table.md
 changelog:
   - "v0.1: 首次抽取。整合三套交易 Agent 的重合部署规则；冲突点按工程主版本决策。"
+  - "2026-05-17 note: 当前 ResearchOS 产品层已改为 Opportunity Memo + Human-in-the-loop。本文仍作为方法论部署硬约束来源，不代表系统会自动下单。"
 ---
 
 # 1+3 Agent 系统部署层（统一硬约束）
+
+## 当前产品层说明（2026-05-17）
+
+当前 `worldpay77` / ResearchOS 已经从简单 `act / wait / reject` 转向 Opportunity Memo + Human-in-the-loop 工作流：
+
+- Opportunity Screener 使用 `orchestrator/config/opportunity_scoring.yaml` 进行可配置评分。
+- Red Team risk budget 使用 `orchestrator/config/risk_budget_policy.yaml` 进行可配置边界输出。
+- `trial_candidate` / `conviction_candidate` 只表示人工复核、纸面跟踪或人工批准的 tracking-position 候选，不是买入指令。
+- `fatal_flaw` 在工程实现中永远把可用风险预算压到 0。
+- 本文的仓位、现金、流动性和风控规则仍是方法论硬约束来源；实际系统不自动交易、不自动下单。
 
 ## 为什么有这份文档
 

@@ -1,7 +1,7 @@
 [project]
-name = "agent-trading-system"
+name = "worldpay77-researchos"
 version = "0.1.0"
-description = "Methodology-driven local agent trading system scaffold."
+description = "WorldPay IC / ResearchOS local human-in-the-loop equity research workspace."
 requires-python = ">=3.11"
 dependencies = [
     "apscheduler",

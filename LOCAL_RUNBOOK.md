@@ -1,10 +1,10 @@
-# Agent Trading System 本地运行说明书
+# WorldPay IC / ResearchOS 本地运行说明书
 
 这份说明书按“完全不懂代码也能照着跑”的标准写。最新版已经带本地 Web UI：你可以像使用普通网页一样点按钮运行系统，也可以继续使用命令行。
 
 ## 0. 这个项目到底是什么
 
-这是一个本地运行的多 Agent 投资决策系统。它的核心仍然是本地命令行流水线，最新版额外提供了一个本地网页控制台，地址是 `http://127.0.0.1:7777`。
+这是一个本地运行的 ResearchOS 投研工作台。它的核心仍然是本地命令行流水线，最新版额外提供了一个本地网页控制台，地址是 `http://127.0.0.1:7777`。
 
 它的工作方式是：
 
@@ -32,13 +32,19 @@ LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --da
 
 ## 1. 先确认你在哪里
 
-这个项目在你电脑上的路径是：
+当前这台 Mac 上正在使用的真实代码目录是：
 
 ```text
-/Users/peachy/agent-trading-system
+/Users/peachy/Library/Mobile Documents/com~apple~CloudDocs/worldpay77/worldpay77-app
 ```
 
-打开终端后，先进入项目目录：
+打开终端后，先进入项目目录。路径中有空格，所以建议直接复制下面这一行：
+
+```bash
+cd "/Users/peachy/Library/Mobile Documents/com~apple~CloudDocs/worldpay77/worldpay77-app"
+```
+
+如果你是从 GitHub 重新 clone 的，也可以使用自己的 clone 目录，例如：
 
 ```bash
 cd ~/agent-trading-system
@@ -57,6 +63,18 @@ cd ~
 git clone https://github.com/amanayayatu-tech/worldpay77.git agent-trading-system
 cd ~/agent-trading-system
 ```
+
+无论目录叫什么，后续命令都要在包含 `pyproject.toml`、`webui.py`、`README.md` 的仓库根目录里运行。
+
+## 1.1 GitHub 文件怎么读
+
+| 文件 | 什么时候先看 |
+| --- | --- |
+| `README.md` | 先理解项目是什么、怎么启动、页面分别做什么。 |
+| `SYSTEM_FLOW.md` | 想知道一次运行数据怎么流动、LLM 在哪里参与。 |
+| `ARCHITECTURE.md` | 想知道模块边界、主入口、配置和安全边界。 |
+| `.env.example` | 第一次配置 LLM provider、数据目录和 Web UI 端口。 |
+| `AGENTS.md` | 让 Codex 或其他 coding agent 改仓库前先读。 |
 
 ## 2. 第一次运行前，只做一次安装
 

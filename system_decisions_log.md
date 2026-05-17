@@ -401,17 +401,31 @@
 
 ---
 
+## DEC-020：GitHub 项目入口文档补齐与架构地图标准化
+
+- **触发**：GitHub 仓库入口文档已经有 README / SYSTEM_FLOW / LOCAL_RUNBOOK，但缺少 `ARCHITECTURE.md`，`.env.example` 太薄，`pyproject.toml` 描述仍停留在 scaffold 阶段，导致新读者无法快速判断主入口、模块边界和配置位置。
+- **决定**：
+  - 新增 `ARCHITECTURE.md`，作为模块责任、运行入口、配置文件和安全边界的架构地图。
+  - README 增加 Repository Map，明确 `pyproject.toml` 是技术栈入口，项目没有 `package.json` 是因为 Web UI 使用 FastAPI/Jinja 而非 Node 前端。
+  - `.env.example` 扩展为完整本地配置模板，覆盖 `LLM_PROVIDER`、Codex CLI provider、数据目录、日志、Web UI 端口和 scoring/risk policy 配置文件。
+  - `AGENTS.md` 补充当前模块地图与产品边界，防止后续 coding agent 把 human-in-the-loop 工作流误改成自动交易或自动联网。
+  - `deployment_layer.md` 增加当前产品层说明，保留其作为方法论硬约束来源的定位。
+- **影响范围**：README、ARCHITECTURE、AGENTS、LOCAL_RUNBOOK、`.env.example`、`pyproject.toml`、deployment layer。
+- **决策时间**：2026-05-17
+
+---
+
 ## 决策应用追踪
 
-| Agent | DEC-001 → DEC-012 状态 | DEC-013 | DEC-014 | DEC-015 | DEC-016 | DEC-017 | DEC-018 | DEC-019 |
-|---|---|---|---|---|---|---|---|---|
-| F partner v0.5.1 | frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a | 提供输入 |
-| W partner v0.3.1 | frozen | n/a | n/a | 加 Open Q | 本轮小补丁 | n/a | n/a | 提供输入 |
-| G partner v0.5.1 | frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a | 提供输入 |
-| deployment_layer v0.1 | frozen | n/a | n/a | n/a | n/a | n/a | 本轮小补丁 | n/a |
-| K deep v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a | Screener 输入 |
-| Chairman | DEC-001/004/007/008 实施主体 | 需处理 | 需处理 | n/a | 需处理 | 需处理 | n/a | 已实施 |
-| Red Team | DEC-004/011 实施主体 | n/a | n/a | n/a | n/a | n/a | n/a | 已实施 |
+| Agent | DEC-001 → DEC-012 状态 | DEC-013 | DEC-014 | DEC-015 | DEC-016 | DEC-017 | DEC-018 | DEC-019 | DEC-020 |
+|---|---|---|---|---|---|---|---|---|---|
+| F partner v0.5.1 | frozen | Agent 运行时逻辑 | Agent 运行时逻辑 | n/a | n/a | n/a | n/a | 提供输入 | 文档引用 |
+| W partner v0.3.1 | frozen | n/a | n/a | 加 Open Q | 本轮小补丁 | n/a | n/a | 提供输入 | 文档引用 |
+| G partner v0.5.1 | frozen | n/a | n/a | n/a | n/a | Agent 运行时逻辑 | n/a | 提供输入 | 文档引用 |
+| deployment_layer v0.1 | frozen | n/a | n/a | n/a | n/a | n/a | 本轮小补丁 | n/a | 已补说明 |
+| K deep v0.3 | 字段源头 | n/a | n/a | n/a | n/a | n/a | n/a | Screener 输入 | 文档引用 |
+| Chairman | DEC-001/004/007/008 实施主体 | 需处理 | 需处理 | n/a | 需处理 | 需处理 | n/a | 已实施 | 文档引用 |
+| Red Team | DEC-004/011 实施主体 | n/a | n/a | n/a | n/a | n/a | n/a | 已实施 | 文档引用 |
 
 ## 跨 Agent 微补丁清单（v0.5.1 / v0.3.1 / v0.5.1）
 
