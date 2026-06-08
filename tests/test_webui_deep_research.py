@@ -110,6 +110,9 @@ def test_deep_research_cold_start_prompts_are_grouped_and_skippable(tmp_path, mo
     assert prompt["status"] == "pending_cold_start"
     assert prompt["cold_start"] is True
     assert prompt["research_dimension_label"] == "商业模式"
+    assert prompt["ui_status"] == "pending_cold_start"
+    assert prompt["ui_severity"] == "warning"
+    assert prompt["next_action"] == "补齐 6-12 个月历史研究或明确跳过"
     assert "cold_start: true" in prompt["prompt_markdown"]
 
     skip_response = client.post(
@@ -162,10 +165,36 @@ def test_index_shows_partner_dispatch_without_collapsed_details():
     assert "第三步：回填后重跑完整研报" in response.text
     assert "workflowPromptList" in response.text
     assert "workflowRerun" in response.text
+    assert "ResearchOS.isPendingPromptStatus" in response.text
+    assert "ResearchOS.promptStatusRank" in response.text
     assert "第一屏只处理一件事" not in response.text
     assert "合伙人单步调度" in response.text
-    assert '<section class="panel advanced-panel">' in response.text
-    assert '<details class="panel advanced-panel">' not in response.text
+    assert '<details class="panel advanced-panel">' in response.text
+    assert "高级调试区用于单步运行 Agent" in response.text
+    assert '<section class="panel advanced-panel">' not in response.text
+
+
+def test_sse_payload_includes_shared_contract_fields():
+    rendered = webui.sse("done", {"status": "completed", "return_code": 0})
+    data_line = next(line for line in rendered.splitlines() if line.startswith("data: "))
+    payload = json.loads(data_line.removeprefix("data: "))
+
+    assert payload["event"] == "done"
+    assert payload["status"] == "completed"
+    assert payload["return_code"] == 0
+    assert payload["severity"] == "success"
+    assert payload["message"] == "completed"
+    assert payload["ts"]
+
+
+def test_stock_pool_page_exposes_dirty_state_and_duplicate_validation():
+    response = TestClient(webui.app).get("/stock-pool")
+
+    assert response.status_code == 200
+    assert "未保存改动" in response.text
+    assert "validateStockPoolData" in response.text
+    assert "重复 ticker" in response.text
+    assert "keepEmpty" in response.text
 
 
 def test_learning_pages_are_available():

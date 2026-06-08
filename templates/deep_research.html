@@ -6,8 +6,8 @@
   <section class="command-banner">
     <div>
       <div class="row">
-        <span id="promptStatus" class="pill">待加载</span>
-        <span id="detailStatus" class="pill">未选择</span>
+        <span id="promptStatus" class="pill" aria-live="polite">待加载</span>
+        <span id="detailStatus" class="pill" aria-live="polite">未选择</span>
       </div>
       <h1 class="command-title mt">Deep Research Inbox</h1>
       <p class="command-subtitle">先看历史，再问新问题；深度研究回填后自动沉淀为知识库记忆。</p>
@@ -135,7 +135,7 @@
   <section class="panel">
     <div class="panel-head">
       <h2 class="panel-title">回填后重跑 Alpha Committee</h2>
-      <span id="rerunStatus" class="pill">待命</span>
+      <span id="rerunStatus" class="pill" aria-live="polite">待命</span>
     </div>
     <div class="panel-body">
       <p id="rerunHint" class="ops-note">Partner Agents → CIO Agent → Risk Auditor。</p>
@@ -173,7 +173,7 @@
         </div>
         <div id="rerunProgressSteps" class="step-list"></div>
       </div>
-      <pre id="rerunLog" class="terminal mt"></pre>
+      <pre id="rerunLog" class="terminal mt" aria-live="polite"></pre>
     </div>
   </section>
 </div>
@@ -200,18 +200,15 @@
   }
 
   function statusKind(status) {
-    if (status === "filled") return "ok";
-    if (status === "skipped" || status === "skip_cold_start") return "warn";
-    if (status === "pending_cold_start") return "warn";
-    return "";
+    return ResearchOS.promptStatusKind(status);
   }
 
   function isPendingStatus(status) {
-    return status === "pending" || status === "pending_cold_start";
+    return ResearchOS.isPendingPromptStatus(status);
   }
 
   function isSkippedStatus(status) {
-    return status === "skipped" || status === "skip_cold_start";
+    return ResearchOS.isSkippedPromptStatus(status);
   }
 
   async function loadPrompts() {
@@ -222,6 +219,14 @@
     if (date) params.set("date", date);
     const res = await fetch(`/api/deep-research/prompts?${params.toString()}`);
     const data = await res.json();
+    if (!res.ok || !data.ok) {
+      prompts = [];
+      renderPromptRows();
+      updateQueueMetric();
+      setPill(promptStatus, data.detail || "读取失败", "error");
+      clearDetail();
+      return;
+    }
     prompts = data.prompts || [];
     renderPromptRows();
     updateQueueMetric();
@@ -326,38 +331,46 @@
 
   async function saveAnswer() {
     if (!selectedPromptId) return;
-    const answer = document.getElementById("answerText").value;
-    const res = await fetch("/api/deep-research/fill", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_id: selectedPromptId, answer_text: answer }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      setPill(detailStatus, data.detail || "保存失败", "error");
+    const answer = document.getElementById("answerText").value.trim();
+    if (!answer) {
+      setPill(detailStatus, "先粘贴 Deep Research 结果", "warn");
       return;
     }
-    const savedEntry = data.knowledge_entry;
-    await loadPrompts();
-    selectPrompt(data.prompt.prompt_id);
-    renderSavedKnowledge(savedEntry);
+    await ResearchOS.withBusy(document.getElementById("saveAnswer"), "保存中", async () => {
+      const res = await fetch("/api/deep-research/fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_id: selectedPromptId, answer_text: answer }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPill(detailStatus, data.detail || "保存失败", "error");
+        return;
+      }
+      const savedEntry = data.knowledge_entry;
+      await loadPrompts();
+      selectPrompt(data.prompt.prompt_id);
+      renderSavedKnowledge(savedEntry);
+    });
   }
 
   async function skipPrompt() {
     if (!selectedPromptId) return;
     const reason = document.getElementById("answerText").value;
-    const res = await fetch("/api/deep-research/skip", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_id: selectedPromptId, reason }),
+    await ResearchOS.withBusy(document.getElementById("skipPrompt"), "标记中", async () => {
+      const res = await fetch("/api/deep-research/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_id: selectedPromptId, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPill(detailStatus, data.detail || "标记失败", "error");
+        return;
+      }
+      await loadPrompts();
+      selectPrompt(data.prompt.prompt_id);
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      setPill(detailStatus, data.detail || "标记失败", "error");
-      return;
-    }
-    await loadPrompts();
-    selectPrompt(data.prompt.prompt_id);
   }
 
   function updateQueueMetric() {
@@ -420,6 +433,7 @@
     if (!runId) return;
     if (rerunProgressRunId === runId && rerunProgressTimer) return;
     clearRerunProgressPolling();
+    document.getElementById("rerunAfterFill").disabled = true;
     rerunProgressRunId = runId;
     rerunProgress.classList.remove("hidden");
     loadRerunProgress(runId);
@@ -436,6 +450,7 @@
     renderRerunProgress(progress);
     if (["completed", "failed", "partial_success", "cancelled"].includes(progress.status)) {
       clearRerunProgressPolling();
+      ResearchOS.setButtonBusy(document.getElementById("rerunAfterFill"), false);
       const ok = progress.status === "completed";
       document.getElementById("rerunMetric").textContent = ok ? "完成" : "失败";
       setPill(rerunStatus, ok ? "已完成" : progress.status, ok ? "ok" : "error");
@@ -501,15 +516,16 @@
     resetRerunProgress();
     document.getElementById("rerunMetric").textContent = "运行中";
     setPill(rerunStatus, "运行中", "warn");
+    ResearchOS.setButtonBusy(document.getElementById("rerunAfterFill"), true, "重跑中");
     const source = new EventSource(url);
     source.addEventListener("start", (event) => {
-      const data = JSON.parse(event.data);
-      appendLog(`[${data.index}/${data.total}] ${data.step}`);
+      const data = ResearchOS.parseSse(event);
+      if (data.index && data.total && data.step) appendLog(`[${data.index}/${data.total}] ${data.step}`);
       appendLog("已启动当前步骤。");
     });
-    source.addEventListener("log", (event) => appendLog(JSON.parse(event.data).line));
+    source.addEventListener("log", (event) => appendLog(ResearchOS.parseSse(event).line));
     source.addEventListener("status", (event) => {
-      const data = JSON.parse(event.data);
+      const data = ResearchOS.parseSse(event);
       setPill(rerunStatus, data.message || data.status, "warn");
       if (data.run_id) {
         document.getElementById("rerunHint").innerHTML = `已创建运行档案 <code>${escapeHtml(data.run_id)}</code>。`;
@@ -517,13 +533,14 @@
       }
     });
     source.addEventListener("error", (event) => {
-      if (event.data) appendLog(JSON.parse(event.data).message || "运行失败");
+      if (event.data) appendLog(ResearchOS.parseSse(event).message || "运行失败");
       document.getElementById("rerunMetric").textContent = "失败";
       setPill(rerunStatus, "失败", "error");
+      ResearchOS.setButtonBusy(document.getElementById("rerunAfterFill"), false);
       source.close();
     });
     source.addEventListener("done", (event) => {
-      const data = JSON.parse(event.data);
+      const data = ResearchOS.parseSse(event);
       if (data.status === "running") {
         document.getElementById("rerunMetric").textContent = "跟踪中";
         setPill(rerunStatus, "步骤跟踪中", "warn");
@@ -532,6 +549,8 @@
           appendLog("页面将继续跟踪 Partner Agents、CIO Agent 和 Risk Auditor 的实时步骤。");
           document.getElementById("rerunHint").innerHTML = `步骤跟踪中：<code>${escapeHtml(data.run_id)}</code>`;
           startRerunProgressPolling(data.run_id);
+        } else {
+          ResearchOS.setButtonBusy(document.getElementById("rerunAfterFill"), false);
         }
         source.close();
         return;
@@ -544,6 +563,7 @@
         appendLog(`${label}，运行档案：${data.run_id}`);
         document.getElementById("rerunHint").innerHTML = `${label}：<code>${escapeHtml(data.run_id)}</code>`;
       }
+      ResearchOS.setButtonBusy(document.getElementById("rerunAfterFill"), false);
       source.close();
     });
   }

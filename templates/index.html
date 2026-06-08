@@ -8,7 +8,7 @@
       <div class="row">
         <span class="pill ok">{{ trial_status.mode }}</span>
         <span class="pill">Alpha Committee</span>
-        <span id="runStatus" class="pill">待命</span>
+        <span id="runStatus" class="pill" aria-live="polite">待命</span>
       </div>
       <div>
         <h1 class="command-title mt">ResearchOS 投研任务流</h1>
@@ -56,7 +56,7 @@
         </div>
         <div id="runProgressSteps" class="step-list"></div>
       </div>
-      <pre id="logBox" class="terminal"></pre>
+      <pre id="logBox" class="terminal" aria-live="polite"></pre>
     </div>
   </section>
 
@@ -64,7 +64,7 @@
     <div class="panel-head">
       <h2 class="panel-title">第二步：Deep Research 回填</h2>
       <div class="row">
-        <span id="workflowQueuePill" class="pill">待加载</span>
+        <span id="workflowQueuePill" class="pill" aria-live="polite">待加载</span>
         <button id="refreshWorkflowPrompts">刷新队列</button>
         <a class="pill" href="/deep-research">打开完整 Inbox</a>
       </div>
@@ -92,7 +92,7 @@
         <div class="workflow-fill-card">
           <div class="split-title">
             <strong id="workflowPromptTitle">选择一个研究任务</strong>
-            <span id="workflowPromptStatus" class="pill">未选择</span>
+            <span id="workflowPromptStatus" class="pill" aria-live="polite">未选择</span>
           </div>
           <label>
             Deep Research Prompt
@@ -199,12 +199,13 @@
     </div>
   </section>
 
-  <section class="panel advanced-panel">
-    <div class="panel-head">
+  <details class="panel advanced-panel">
+    <summary class="panel-head">
       <h2 class="panel-title">合伙人单步调度</h2>
-      <span id="agentStatus" class="pill">待命</span>
-    </div>
+      <span id="agentStatus" class="pill" aria-live="polite">待命</span>
+    </summary>
     <div class="panel-body">
+      <p class="ops-note">高级调试区用于单步运行 Agent 和清理所选日期产物。日常工作优先使用上方三步任务流。</p>
       <div class="agent-control-grid">
         <label>
           角色
@@ -239,7 +240,7 @@
         <button id="cleanupToday" class="danger">清除所选日期</button>
       </div>
     </div>
-  </section>
+  </details>
 </div>
 {% endblock %}
 
@@ -259,15 +260,28 @@
   let workflowPrompts = [];
   let selectedWorkflowPromptId = "";
 
+  function setActiveRunControls(disabled) {
+    ["runResearchScan", "rerunFromHero", "workflowRerun", "runAgent"].forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = disabled;
+    });
+  }
+
   function setPill(node, text, kind = "") {
     node.className = `pill ${kind}`.trim();
     node.textContent = text;
   }
 
   function statusKind(status) {
-    if (status === "filled") return "ok";
-    if (status === "skipped") return "warn";
-    return "";
+    return ResearchOS.promptStatusKind(status);
+  }
+
+  function isPendingStatus(status) {
+    return ResearchOS.isPendingPromptStatus(status);
+  }
+
+  function isSkippedStatus(status) {
+    return ResearchOS.isSkippedPromptStatus(status);
   }
 
   function currentWorkflowDate() {
@@ -279,33 +293,37 @@
     logBox.scrollTop = logBox.scrollHeight;
   }
 
-  function stream(url, statusNode, afterDone) {
+  function stream(url, statusNode, afterDone, options = {}) {
     logBox.textContent = "";
     clearProgressPolling();
     resetRunProgress();
     setPill(statusNode, "运行中", "warn");
+    setActiveRunControls(true);
+    ResearchOS.setButtonBusy(options.button, true, options.busyLabel || "运行中");
     const source = new EventSource(url);
     source.addEventListener("start", (event) => {
-      const data = JSON.parse(event.data);
+      const data = ResearchOS.parseSse(event);
       appendLog(data.command ? "已启动 ResearchOS 任务流。" : "已启动。");
     });
     source.addEventListener("log", (event) => {
-      appendLog(JSON.parse(event.data).line);
+      appendLog(ResearchOS.parseSse(event).line);
     });
     source.addEventListener("status", (event) => {
-      const data = JSON.parse(event.data);
+      const data = ResearchOS.parseSse(event);
       setPill(statusNode, data.message || data.status, "warn");
     });
     source.addEventListener("error", (event) => {
       if (event.data) {
-        const data = JSON.parse(event.data);
+        const data = ResearchOS.parseSse(event);
         appendLog(data.message || "运行失败");
       }
       setPill(statusNode, "失败", "error");
+      setActiveRunControls(false);
+      ResearchOS.setButtonBusy(options.button, false);
       source.close();
     });
     source.addEventListener("done", (event) => {
-      const data = JSON.parse(event.data);
+      const data = ResearchOS.parseSse(event);
       if (data.status === "running") {
         setPill(statusNode, "步骤跟踪中", "warn");
         if (data.run_id) {
@@ -314,13 +332,17 @@
           startProgressPolling(data.run_id, afterDone);
         } else {
           appendLog("已转入后台运行；稍后刷新运行档案。");
+          setActiveRunControls(false);
         }
+        ResearchOS.setButtonBusy(options.button, false);
         source.close();
         loadOpsDashboard();
         return;
       }
       const ok = data.return_code === 0 && data.status !== "failed";
       setPill(statusNode, data.status, ok ? "ok" : "error");
+      setActiveRunControls(false);
+      ResearchOS.setButtonBusy(options.button, false);
       source.close();
       loadOpsDashboard();
       if (afterDone) afterDone(data);
@@ -363,6 +385,7 @@
     renderRunProgress(progress);
     if (["completed", "failed", "partial_success", "cancelled"].includes(progress.status)) {
       clearProgressPolling();
+      setActiveRunControls(false);
       setPill(
         runStatus,
         progress.status === "completed" ? "已完成" : progress.status,
@@ -417,11 +440,16 @@
       date,
       no_llm: "false",
     });
-    stream(`/api/research-scan-stream?${params.toString()}`, runStatus, () => {
-      loadWorkflowPrompts(false);
-      loadOpsDashboard();
-      document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    stream(
+      `/api/research-scan-stream?${params.toString()}`,
+      runStatus,
+      () => {
+        loadWorkflowPrompts(false);
+        loadOpsDashboard();
+        document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
+      },
+      { button: document.getElementById("runResearchScan"), busyLabel: "生成中" }
+    );
   });
 
   document.getElementById("runDate").addEventListener("change", () => {
@@ -465,7 +493,7 @@
     const stillSelected = keepSelection && workflowPrompts.some((item) => item.prompt_id === selectedWorkflowPromptId);
     const nextPrompt = stillSelected
       ? selectedWorkflowPromptId
-      : ((workflowPrompts.find((item) => item.status === "pending") || workflowPrompts[0] || {}).prompt_id || "");
+      : ((workflowPrompts.find((item) => isPendingStatus(item.status)) || workflowPrompts[0] || {}).prompt_id || "");
     if (nextPrompt) {
       selectWorkflowPrompt(nextPrompt);
     } else {
@@ -474,9 +502,9 @@
   }
 
   function updateWorkflowGateSummary() {
-    const pending = workflowPrompts.filter((item) => item.status === "pending").length;
+    const pending = workflowPrompts.filter((item) => isPendingStatus(item.status)).length;
     const filled = workflowPrompts.filter((item) => item.status === "filled").length;
-    const skipped = workflowPrompts.filter((item) => item.status === "skipped").length;
+    const skipped = workflowPrompts.filter((item) => isSkippedStatus(item.status)).length;
     document.getElementById("workflowPendingCount").textContent = pending;
     document.getElementById("workflowFilledCount").textContent = filled;
     document.getElementById("workflowReadyState").textContent = workflowPrompts.length && pending === 0 ? "是" : "否";
@@ -495,8 +523,7 @@
       return;
     }
     const ordered = [...workflowPrompts].sort((a, b) => {
-      const rank = { pending: 0, filled: 1, skipped: 2 };
-      return (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+      return ResearchOS.promptStatusRank(a.status) - ResearchOS.promptStatusRank(b.status);
     });
     workflowPromptList.innerHTML = ordered.map((item) => `
       <button class="workflow-prompt-card ${escapeHtml(item.status)} ${item.prompt_id === selectedWorkflowPromptId ? "active" : ""}" data-workflow-prompt="${escapeHtml(item.prompt_id)}">
@@ -544,19 +571,21 @@
       setPill(workflowPromptStatus, "先粘贴 Deep Research 结果", "warn");
       return;
     }
-    const res = await fetch("/api/deep-research/fill", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_id: selectedWorkflowPromptId, answer_text: answer }),
+    await ResearchOS.withBusy(document.getElementById("workflowSaveAnswer"), "保存中", async () => {
+      const res = await fetch("/api/deep-research/fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_id: selectedWorkflowPromptId, answer_text: answer }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPill(workflowPromptStatus, data.detail || "保存失败", "error");
+        return;
+      }
+      setPill(workflowPromptStatus, "已保存入库", "ok");
+      await loadWorkflowPrompts(false);
+      loadOpsDashboard();
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      setPill(workflowPromptStatus, data.detail || "保存失败", "error");
-      return;
-    }
-    setPill(workflowPromptStatus, "已保存入库", "ok");
-    await loadWorkflowPrompts(false);
-    loadOpsDashboard();
   }
 
   async function skipWorkflowPrompt() {
@@ -564,26 +593,28 @@
       setPill(workflowPromptStatus, "先选择任务", "warn");
       return;
     }
-    const res = await fetch("/api/deep-research/skip", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt_id: selectedWorkflowPromptId,
-        reason: workflowAnswerText.value.trim() || "用户在首页工作流中标记跳过。",
-      }),
+    await ResearchOS.withBusy(document.getElementById("workflowSkipPrompt"), "标记中", async () => {
+      const res = await fetch("/api/deep-research/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt_id: selectedWorkflowPromptId,
+          reason: workflowAnswerText.value.trim() || "用户在首页工作流中标记跳过。",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPill(workflowPromptStatus, data.detail || "标记失败", "error");
+        return;
+      }
+      setPill(workflowPromptStatus, "已标记跳过", "warn");
+      await loadWorkflowPrompts(false);
+      loadOpsDashboard();
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      setPill(workflowPromptStatus, data.detail || "标记失败", "error");
-      return;
-    }
-    setPill(workflowPromptStatus, "已标记跳过", "warn");
-    await loadWorkflowPrompts(false);
-    loadOpsDashboard();
   }
 
   function startWorkflowRerun() {
-    const pending = workflowPrompts.filter((item) => item.status === "pending").length;
+    const pending = workflowPrompts.filter((item) => isPendingStatus(item.status)).length;
     if (!workflowPrompts.length) {
       setPill(document.getElementById("workflowQueuePill"), "先生成研究任务", "warn");
       document.getElementById("researchGate").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -599,11 +630,16 @@
     setReportType("morning");
     appendLog("Deep Research 已处理完成，开始重跑 Partner Agents → CIO Agent → Risk Auditor。");
     const params = new URLSearchParams({ date, brief_type: "morning", no_llm: "false" });
-    stream(`/api/deep-research/rerun-stream?${params.toString()}`, runStatus, () => {
-      loadReport();
-      loadOpsDashboard();
-      loadWorkflowPrompts();
-    });
+    stream(
+      `/api/deep-research/rerun-stream?${params.toString()}`,
+      runStatus,
+      () => {
+        loadReport();
+        loadOpsDashboard();
+        loadWorkflowPrompts();
+      },
+      { button: document.getElementById("workflowRerun"), busyLabel: "重跑中" }
+    );
   }
 
   function setReportType(type) {
@@ -666,23 +702,30 @@
     const type = document.getElementById("agentBriefType").value;
     const noLlm = document.getElementById("agentNoLlm").value;
     const url = `/api/agent-stream?agent=${agent}&brief_type=${type}&date=${encodeURIComponent(date)}&no_llm=${noLlm}`;
-    stream(url, agentStatus, () => {
-      if (agent === "chairman" || agent === "red-team") {
-        document.getElementById("reportDate").value = date;
-        setReportType(type);
-        loadReport();
-      }
-    });
+    stream(
+      url,
+      agentStatus,
+      () => {
+        if (agent === "chairman" || agent === "red-team") {
+          document.getElementById("reportDate").value = date;
+          setReportType(type);
+          loadReport();
+        }
+      },
+      { button: document.getElementById("runAgent"), busyLabel: "运行中" }
+    );
   });
 
   document.getElementById("cleanupToday").addEventListener("click", async () => {
     const date = document.getElementById("agentDate").value;
     if (!confirm(`确认清除 ${date} 的运行结果？股池和知识库不会删除。`)) return;
-    const res = await fetch(`/api/cleanup?date=${encodeURIComponent(date)}`, { method: "POST" });
-    const data = await res.json();
-    appendLog(data.message);
-    if (data.removed.length) appendLog(`已删除：${data.removed.join(", ")}`);
-    loadOpsDashboard();
+    await ResearchOS.withBusy(document.getElementById("cleanupToday"), "清理中", async () => {
+      const res = await fetch(`/api/cleanup?date=${encodeURIComponent(date)}`, { method: "POST" });
+      const data = await res.json();
+      appendLog(data.message || "清理完成");
+      if (data.removed?.length) appendLog(`已删除：${data.removed.join(", ")}`);
+      loadOpsDashboard();
+    });
   });
 
   async function loadOpsDashboard() {

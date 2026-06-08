@@ -170,6 +170,21 @@ The web workspace is organized around user-facing product areas:
 - **Usage & Sample Guide**: workflow instructions, cold-start explanation, report examples, and partner-agent explanations.
 - **LLM API Settings**: provider and model configuration.
 
+## Web UI Operations
+
+The local Web UI is a FastAPI/Jinja workspace, with the Python backend remaining the owner of orchestration, file IO, SQLite run history, SSE streams, and report rendering.
+
+Current UX safeguards:
+
+- Deep Research states are normalized across the homepage and Inbox: `pending`, `pending_cold_start`, `filled`, `skipped`, and `skip_cold_start`.
+- Cold-start prompts count as pending work until filled or explicitly skipped, so the homepage cannot incorrectly mark the run as ready.
+- Streaming endpoints keep their existing payload fields and also expose a shared SSE contract: `event`, `severity`, `message`, and `ts`.
+- Mutating UI actions show loading/disabled states while saving, skipping, rerunning, checking providers, logging into Codex, cleaning outputs, or saving stock pools.
+- Stock Pool editing tracks unsaved changes and blocks same-category duplicate tickers before writing `master_pool.yaml`.
+- Advanced single-agent dispatch and date cleanup are intentionally collapsed below the primary three-step workflow.
+
+The redesign audit and implementation roadmap live in `UI_REDESIGN_PLAN.md`.
+
 ## LLM Cost Visibility
 
 The Report Center includes an `LLM Token Cost` tab for each run. It shows:

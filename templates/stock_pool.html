@@ -7,7 +7,7 @@
     <h1 class="panel-title">股票池</h1>
     <div class="row">
       <span id="stockPath" class="pill">master_pool.yaml</span>
-      <span id="stockStatus" class="pill">待加载</span>
+      <span id="stockStatus" class="pill" aria-live="polite">待加载</span>
       <button id="savePool" class="primary">保存股池</button>
     </div>
   </div>
@@ -24,6 +24,7 @@
         </label>
       </div>
     </div>
+    <p class="ops-note">保存前会检查同一分区内重复 ticker。修改后状态会显示未保存，避免误以为已写入 master_pool.yaml。</p>
     <div id="poolSections" class="grid mt"></div>
   </div>
 </section>
@@ -39,6 +40,7 @@
   };
   const categories = Object.keys(categoryLabels);
   let pool = {};
+  let dirty = false;
 
   function setStatus(text, kind = "") {
     const node = document.getElementById("stockStatus");
@@ -59,7 +61,8 @@
     document.getElementById("poolVersion").value = pool.version || 1;
     document.getElementById("poolUpdated").value = pool.last_updated_by_nepha || "";
     renderPool();
-    setStatus("已加载", "ok");
+    dirty = false;
+    updateStockStatus();
   }
 
   function renderPool() {
@@ -68,20 +71,25 @@
     root.querySelectorAll("[data-add]").forEach((button) => {
       button.addEventListener("click", () => {
         const category = button.dataset.add;
-        pool[category] = collectCategory(category);
+        pool[category] = collectCategory(category, { keepEmpty: true });
         const item = category === "watchlist"
           ? { ticker: "", name: "", reason_to_watch: "" }
           : { ticker: "", name: "", tags: [] };
         pool[category].push(item);
         renderPool();
+        markDirty();
       });
     });
     root.querySelectorAll("[data-delete]").forEach((button) => {
       button.addEventListener("click", () => {
         const [category, index] = button.dataset.delete.split(":");
-        pool[category] = collectCategory(category).filter((_, idx) => idx !== Number(index));
+        pool[category] = collectCategory(category, { keepEmpty: true }).filter((_, idx) => idx !== Number(index));
         renderPool();
+        markDirty();
       });
+    });
+    root.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("input", markDirty);
     });
   }
 
@@ -98,7 +106,10 @@
     return `
       <section class="stock-section">
         <div class="stock-section-head">
-          <h2 class="panel-title">${categoryLabels[category]}</h2>
+          <div class="row">
+            <h2 class="panel-title">${categoryLabels[category]}</h2>
+            <span class="stock-section-count">${items.length} 只</span>
+          </div>
           <button data-add="${category}">新增</button>
         </div>
         <div class="data-shell">
@@ -123,7 +134,7 @@
     return escapeHtml((item.tags || []).join(", "));
   }
 
-  function collectCategory(category) {
+  function collectCategory(category, options = {}) {
     return Array.from(document.querySelectorAll(`tr[data-row="${category}"]`)).map((row) => {
       const item = {};
       row.querySelectorAll("[data-field]").forEach((input) => {
@@ -133,7 +144,7 @@
         item.tags = (item.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
       }
       return item;
-    }).filter((item) => item.ticker || item.name);
+    }).filter((item) => options.keepEmpty || item.ticker || item.name);
   }
 
   function collectPool() {
@@ -145,21 +156,69 @@
     return { stock_pool: next };
   }
 
-  async function savePool() {
-    setStatus("保存中", "warn");
-    const res = await fetch("/api/stock-pool", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collectPool()),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      setStatus(data.detail || "保存失败", "error");
+  function markDirty() {
+    dirty = true;
+    updateStockStatus();
+  }
+
+  function updateStockStatus() {
+    const validation = validateStockPoolData(collectPool().stock_pool);
+    if (validation.errors.length) {
+      setStatus(validation.errors[0], "error");
       return;
     }
-    pool = data.stock_pool;
-    renderPool();
-    setStatus("已保存", "ok");
+    if (validation.warnings.length) {
+      setStatus(validation.warnings[0], "warn");
+      return;
+    }
+    setStatus(dirty ? "未保存改动" : "已加载", dirty ? "warn" : "ok");
+  }
+
+  function validateStockPoolData(stockPool) {
+    const errors = [];
+    const warnings = [];
+    categories.forEach((category) => {
+      const seen = new Set();
+      const duplicates = new Set();
+      (stockPool[category] || []).forEach((item) => {
+        const ticker = String(item.ticker || "").trim().toUpperCase();
+        if (!ticker) return;
+        if (seen.has(ticker)) duplicates.add(ticker);
+        seen.add(ticker);
+      });
+      if (duplicates.size) {
+        errors.push(`${categoryLabels[category]} 有重复 ticker：${Array.from(duplicates).join(", ")}`);
+      }
+    });
+    const total = categories.reduce((count, category) => count + (stockPool[category] || []).length, 0);
+    if (!total) warnings.push("股池为空，保存前请确认扫描范围");
+    return { errors, warnings };
+  }
+
+  async function savePool() {
+    const payload = collectPool();
+    const validation = validateStockPoolData(payload.stock_pool);
+    if (validation.errors.length) {
+      setStatus(validation.errors[0], "error");
+      return;
+    }
+    setStatus("保存中", "warn");
+    await ResearchOS.withBusy(document.getElementById("savePool"), "保存中", async () => {
+      const res = await fetch("/api/stock-pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStatus(data.detail || "保存失败", "error");
+        return;
+      }
+      pool = data.stock_pool;
+      renderPool();
+      dirty = false;
+      setStatus("已保存", "ok");
+    });
   }
 
   function escapeHtml(value) {

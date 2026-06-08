@@ -23,6 +23,7 @@
       --accent: #25d6b5;
       --accent-2: #d1b56a;
       --amber: #c99b3f;
+      --warn: var(--amber);
       --danger: #f06f61;
       --ok: #36d399;
       --ink: #05070a;
@@ -895,6 +896,12 @@
       border-left-color: var(--accent);
     }
 
+    .workflow-prompt-card.pending_cold_start {
+      border-left-color: var(--amber);
+      background: rgba(42, 34, 15, 0.34);
+    }
+
+    .workflow-prompt-card.skip_cold_start,
     .workflow-prompt-card.skipped {
       border-left-color: var(--warn);
       opacity: 0.82;
@@ -1391,6 +1398,12 @@
       overflow-wrap: normal;
     }
 
+    .data-shell th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
     .data-shell code {
       white-space: nowrap;
     }
@@ -1500,7 +1513,13 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       margin-bottom: 12px;
+    }
+
+    .stock-section-count {
+      color: var(--muted);
+      font: 700 12px/1.2 var(--mono);
     }
 
     .row {
@@ -1640,6 +1659,12 @@
 
     button:active { transform: translateY(0); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
+    button:disabled:hover {
+      border-color: var(--line);
+      background: var(--panel-2);
+      transform: none;
+    }
+    button.busy { cursor: wait; }
 
     .link-button {
       min-width: 190px;
@@ -1683,6 +1708,11 @@
       border-color: rgba(255, 111, 135, 0.56);
       background: rgba(64, 18, 30, 0.94);
       color: #ffdce2;
+    }
+
+    button.danger:disabled:hover {
+      border-color: rgba(255, 111, 135, 0.56);
+      background: rgba(64, 18, 30, 0.94);
     }
 
     .pill {
@@ -1836,6 +1866,25 @@
     .spacer { flex: 1; }
     .mt { margin-top: 18px; }
     .hidden { display: none !important; }
+
+    details.advanced-panel > summary.panel-head {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    details.advanced-panel > summary.panel-head::-webkit-details-marker {
+      display: none;
+    }
+
+    details.advanced-panel > summary.panel-head::after {
+      content: "展开";
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    details.advanced-panel[open] > summary.panel-head::after {
+      content: "收起";
+    }
 
     .modal-backdrop {
       position: fixed;
@@ -2101,6 +2150,59 @@
       </main>
     </div>
   </div>
+  <script>
+    window.ResearchOS = {
+      parseSse(event) {
+        try {
+          return JSON.parse(event?.data || "{}");
+        } catch (_error) {
+          return { event: event?.type || "message", severity: "error", message: "SSE 数据格式错误" };
+        }
+      },
+      promptStatusKind(status) {
+        if (status === "filled") return "ok";
+        if (["pending_cold_start", "skipped", "skip_cold_start"].includes(status)) return "warn";
+        if (status === "failed") return "error";
+        return "";
+      },
+      isPendingPromptStatus(status) {
+        return ["pending", "pending_cold_start"].includes(status);
+      },
+      isSkippedPromptStatus(status) {
+        return ["skipped", "skip_cold_start"].includes(status);
+      },
+      promptStatusRank(status) {
+        return {
+          pending_cold_start: 0,
+          pending: 1,
+          filled: 2,
+          skip_cold_start: 3,
+          skipped: 4,
+        }[status] ?? 9;
+      },
+      setButtonBusy(button, busy, busyText = "处理中") {
+        if (!button) return;
+        if (busy) {
+          if (!button.dataset.idleText) button.dataset.idleText = button.textContent;
+          button.textContent = busyText;
+          button.disabled = true;
+          button.classList.add("busy");
+          return;
+        }
+        button.textContent = button.dataset.idleText || button.textContent;
+        button.disabled = false;
+        button.classList.remove("busy");
+      },
+      async withBusy(button, busyText, action) {
+        this.setButtonBusy(button, true, busyText);
+        try {
+          return await action();
+        } finally {
+          this.setButtonBusy(button, false);
+        }
+      },
+    };
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

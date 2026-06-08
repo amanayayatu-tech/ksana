@@ -60,6 +60,7 @@ DEEP_RESEARCH_STATUSES = {"all", "pending", "pending_cold_start", "filled", "ski
 LLM_PROVIDERS = {"local", "openai", "codex_cli"}
 CODEX_LOGIN_TIMEOUT_SECONDS = 300
 RUNNING_RUN_STALE_SECONDS = 300
+SSE_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_success", "busy"}
 RERUN_STEP_NAMES = {
     "Value Partner Agent": "trading_f_partner",
     "Momentum Partner Agent": "trading_w_partner",
@@ -1344,7 +1345,38 @@ async def stop_process(process: Any) -> None:
 
 
 def sse(event: str, payload: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    normalized = normalize_sse_payload(event, payload)
+    return f"event: {event}\ndata: {json.dumps(normalized, ensure_ascii=False)}\n\n"
+
+
+def normalize_sse_payload(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    status = str(normalized.get("status") or "")
+    normalized.setdefault("event", event)
+    normalized.setdefault("severity", infer_sse_severity(event, status))
+    normalized.setdefault("message", infer_sse_message(event, normalized))
+    normalized.setdefault("ts", datetime.now().isoformat(timespec="seconds"))
+    return normalized
+
+
+def infer_sse_severity(event: str, status: str) -> str:
+    if event == "error" or status == "failed":
+        return "error"
+    if status in {"busy", "cancelled", "partial_success"}:
+        return "warning"
+    if event == "done" and status == "completed":
+        return "success"
+    if event in {"start", "status", "log"} or status == "running":
+        return "info"
+    return "info"
+
+
+def infer_sse_message(event: str, payload: dict[str, Any]) -> str:
+    for key in ("message", "line", "step", "command", "status"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return event
 
 
 def build_deep_research_rerun_commands(
@@ -1804,55 +1836,93 @@ def deep_research_status(
         data = read_yaml_file(filled_path)
         mismatch = deep_research_result_mismatch(data, prompt_id, prompt_text, related_signal_id)
         if mismatch:
-            return {
-                "status": "pending",
-                "status_label": "待回填",
-                "result_path": "",
-                "answer_text": "",
-                "updated_at": "",
-                "skip_reason": "",
-                "ignored_result_path": relative_path(filled_path),
-                "ignored_result_reason": mismatch,
-            }
-        return {
-            "status": "filled",
-            "status_label": "已回填",
-            "result_path": relative_path(filled_path),
-            "answer_text": extract_answer_text(data),
-            "updated_at": str(data.get("filled_at") or data.get("created_at") or ""),
-            "skip_reason": "",
-        }
+            return deep_research_status_payload(
+                "pending",
+                "待回填",
+                result_path="",
+                answer_text="",
+                updated_at="",
+                skip_reason="",
+                ignored_result_path=relative_path(filled_path),
+                ignored_result_reason=mismatch,
+            )
+        return deep_research_status_payload(
+            "filled",
+            "已回填",
+            result_path=relative_path(filled_path),
+            answer_text=extract_answer_text(data),
+            updated_at=str(data.get("filled_at") or data.get("created_at") or ""),
+            skip_reason="",
+        )
     if skipped_path.exists():
         data = read_yaml_file(skipped_path)
         mismatch = deep_research_result_mismatch(data, prompt_id, prompt_text, related_signal_id)
         if mismatch:
-            return {
-                "status": "pending",
-                "status_label": "待回填",
-                "result_path": "",
-                "answer_text": "",
-                "updated_at": "",
-                "skip_reason": "",
-                "ignored_result_path": relative_path(skipped_path),
-                "ignored_result_reason": mismatch,
-            }
-        return {
-            "status": str(data.get("status") or "skipped"),
-            "status_label": "已跳过冷启动" if str(data.get("status") or "") == "skip_cold_start" else "已跳过",
-            "result_path": relative_path(skipped_path),
-            "answer_text": "",
-            "updated_at": str(data.get("skipped_at") or data.get("created_at") or ""),
-            "skip_reason": str(data.get("reason") or data.get("skip_reason") or ""),
-        }
+            return deep_research_status_payload(
+                "pending",
+                "待回填",
+                result_path="",
+                answer_text="",
+                updated_at="",
+                skip_reason="",
+                ignored_result_path=relative_path(skipped_path),
+                ignored_result_reason=mismatch,
+            )
+        status = str(data.get("status") or "skipped")
+        return deep_research_status_payload(
+            status,
+            "已跳过冷启动" if status == "skip_cold_start" else "已跳过",
+            result_path=relative_path(skipped_path),
+            answer_text="",
+            updated_at=str(data.get("skipped_at") or data.get("created_at") or ""),
+            skip_reason=str(data.get("reason") or data.get("skip_reason") or ""),
+        )
     pending_status = "pending_cold_start" if cold_start or prompt_status == "pending_cold_start" else "pending"
-    return {
-        "status": pending_status,
-        "status_label": "冷启动待补课" if pending_status == "pending_cold_start" else "待回填",
-        "result_path": "",
-        "answer_text": "",
-        "updated_at": "",
-        "skip_reason": "",
+    return deep_research_status_payload(
+        pending_status,
+        "冷启动待补课" if pending_status == "pending_cold_start" else "待回填",
+        result_path="",
+        answer_text="",
+        updated_at="",
+        skip_reason="",
+    )
+
+
+def deep_research_status_payload(
+    status: str,
+    status_label: str,
+    **extra: Any,
+) -> dict[str, Any]:
+    payload = {
+        "status": status,
+        "status_label": status_label,
+        "ui_status": status,
+        "ui_label": status_label,
+        "ui_severity": deep_research_status_severity(status),
+        "next_action": deep_research_next_action(status),
     }
+    payload.update(extra)
+    return payload
+
+
+def deep_research_status_severity(status: str) -> str:
+    if status == "filled":
+        return "success"
+    if status in {"pending_cold_start", "skipped", "skip_cold_start"}:
+        return "warning"
+    if status == "pending":
+        return "info"
+    return "info"
+
+
+def deep_research_next_action(status: str) -> str:
+    if status == "filled":
+        return "可重跑投委会链路"
+    if status in {"skipped", "skip_cold_start"}:
+        return "可复核跳过原因或重跑"
+    if status == "pending_cold_start":
+        return "补齐 6-12 个月历史研究或明确跳过"
+    return "粘贴 Deep Research 结果"
 
 
 def deep_research_result_mismatch(
