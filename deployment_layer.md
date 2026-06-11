@@ -26,7 +26,7 @@ changelog:
 
 ## 当前产品层说明（2026-05-17）
 
-当前 `worldpay77` / ResearchOS 已经从简单 `act / wait / reject` 转向 Opportunity Memo + Human-in-the-loop 工作流：
+当前 `ksana` / ResearchOS 已经从简单 `act / wait / reject` 转向 Opportunity Memo + Human-in-the-loop 工作流：
 
 - Opportunity Screener 使用 `orchestrator/config/opportunity_scoring.yaml` 进行可配置评分。
 - Red Team risk budget 使用 `orchestrator/config/risk_budget_policy.yaml` 进行可配置边界输出。

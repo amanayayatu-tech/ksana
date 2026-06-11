@@ -1,7 +1,7 @@
 [project]
-name = "worldpay77-researchos"
+name = "ksana-researchos"
 version = "0.1.0"
-description = "WorldPay IC / ResearchOS local human-in-the-loop equity research workspace."
+description = "ksana IC / ResearchOS local human-in-the-loop equity research workspace."
 requires-python = ">=3.11"
 dependencies = [
     "apscheduler",

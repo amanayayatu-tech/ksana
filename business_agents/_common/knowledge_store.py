@@ -1308,7 +1308,7 @@ def safe_filename(value: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Manage worldpay77 knowledge store")
+    parser = argparse.ArgumentParser(description="Manage ksana knowledge store")
     subparsers = parser.add_subparsers(dest="command", required=True)
     rebuild = subparsers.add_parser("rebuild", help="Rebuild from local Perplexity filled files")
     rebuild.add_argument("--data-dir", default="data")

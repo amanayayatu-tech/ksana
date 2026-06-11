@@ -217,7 +217,7 @@ def build_codex_provider_prompt(
 ) -> str:
     """Compose a strict provider prompt for non-interactive Codex CLI."""
 
-    return f"""You are the Codex CLI acting as an LLM provider for worldpay77.
+    return f"""You are the Codex CLI acting as an LLM provider for ksana.
 
 Hard constraints:
 - Do not modify files, run migrations, edit data, or call external services.

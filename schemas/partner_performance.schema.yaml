@@ -1,4 +1,4 @@
-schema_id: worldpay77.partner_performance_snapshot.v1
+schema_id: ksana.partner_performance_snapshot.v1
 description: >
   Recommendation-level partner performance record. This is visible to Chairman for weighting
   and review, but is not injected into the three trading agents to avoid polluting their

@@ -1,4 +1,4 @@
-# UI_REDESIGN_PLAN.md - WorldPay IC / ResearchOS UI Redesign Plan
+# UI_REDESIGN_PLAN.md - ksana IC / ResearchOS UI Redesign Plan
 
 ## Executive Summary
 

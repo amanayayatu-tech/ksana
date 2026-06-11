@@ -784,7 +784,7 @@ def build_perplexity_prompt(
         non_consensus_screener or question_set.get("non_consensus_screener") or {}
     )
     return (
-        f"请作为 Worldpay77 的首席研究员，研究 {display_name} 最近 7-10 个交易日公开价量异动背后的真实原因。\n\n"
+        f"请作为 ksana 的首席研究员，研究 {display_name} 最近 7-10 个交易日公开价量异动背后的真实原因。\n\n"
         "研究边界：只判断是否存在新闻、财报、监管、行业、竞争、资金面、指数或预期差层面的可验证原因；不要给交易建议，不要输出买卖操作。\n\n"
         f"触发规则：\n{trigger_lines}\n\n"
         f"最新收盘：{features.get('latest_close')}；"

@@ -135,7 +135,7 @@ def productize_report_text(text: str) -> str:
     """Replace internal role names and runtime paths in presentation HTML."""
 
     replacements = [
-        ("Nepha AI IC", "WorldPay IC"),
+        ("Nepha AI IC", "ksana IC"),
         ("AI Native 投资公司", "AI Native 投研工作流"),
         ("投研委员会简报", "Opportunity Memo"),
         ("私有投资公司", "投研工作台"),

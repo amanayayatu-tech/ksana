@@ -1,4 +1,4 @@
-schema_id: worldpay77.red_team.consensus_risk.v1
+schema_id: ksana.red_team.consensus_risk.v1
 description: >
   Red Team detector for LLM consensus collapse. It checks whether partner arguments
   overfit Perplexity/mainstream narratives without identifying a non-consensus edge.

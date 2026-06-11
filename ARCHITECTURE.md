@@ -1,4 +1,4 @@
-# WorldPay IC / ResearchOS Architecture
+# ksana IC / ResearchOS Architecture
 
 This repository is a Python/uv project for a local human-in-the-loop equity research workflow. It is not a Node app, so there is no `package.json` by design. Runtime dependencies and entry points live in `pyproject.toml`.
 

@@ -1,4 +1,4 @@
-schema_id: worldpay77.knowledge_entry.v2
+schema_id: ksana.knowledge_entry.v2
 description: >
   Minimum durable memory unit extracted from one manually filled Perplexity Deep Research report.
   This schema is the contract between Web UI fill, SQLite storage, Markdown cards,

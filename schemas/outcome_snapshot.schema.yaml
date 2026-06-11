@@ -1,4 +1,4 @@
-schema_id: worldpay77.learning.outcome_snapshot.v1
+schema_id: ksana.learning.outcome_snapshot.v1
 description: >
   Price-only outcome observation for a decision case at a fixed window. This is not a
   final verification label and must not overwrite manual thesis validation.

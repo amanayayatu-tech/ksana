@@ -1,4 +1,4 @@
-schema_id: worldpay77.decision_verification_case.v1
+schema_id: ksana.decision_verification_case.v1
 description: >
   Pending verification case generated from a Chairman brief. The case verifies whether
   the investment reasoning was validated, partially validated, invalidated, or inconclusive.

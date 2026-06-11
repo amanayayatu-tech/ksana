@@ -2,7 +2,7 @@
 
 ## Project Context
 
-This repository is `worldpay77`, a local multi-agent investment decision system.
+This repository is `ksana`, a local multi-agent investment decision system.
 It has a deterministic Python pipeline around `research-agent`, three partner
 agents, `chairman`, `red-team`, `orchestrator`, and the local FastAPI/Jinja Web
 UI in `webui.py`.

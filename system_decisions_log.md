@@ -382,7 +382,7 @@
 
 ## DEC-019：从投委会否决器改为机会筛选与人工开枪系统
 
-- **触发**：`worldpay77_agent_improvement_notes.md` 指出当前 Chairman + Red Team 流程过度偏向审计、否决和 `wait/research_more/reject`。
+- **触发**：`ksana_agent_improvement_notes.md` 指出当前 Chairman + Red Team 流程过度偏向审计、否决和 `wait/research_more/reject`。
 - **决定**：Chairman 不再把最终输出压成 `act / wait / reject / research_more`，而是输出 human-in-the-loop 机会状态：
   ```yaml
   final_verdict:

@@ -1,11 +1,11 @@
-# Worldpay77 Operations Manual 1.0
+# ksana Operations Manual 1.0
 
-> 本文件描述的是 Worldpay77 真正要建设的目标系统，不是当前代码已经全部实现的现状。
+> 本文件描述的是 ksana 真正要建设的目标系统，不是当前代码已经全部实现的现状。
 > 当前代码已经有多 Agent 流水线、Web UI、Perplexity 手动回填、Opportunity Memo、Red Team Audit；但目标不是一个"投资分析辅助工具"，而是一家本地运行、每天沉淀、可复盘、会进化的 AI Native 投资公司。
 
 ## 1. 核心定位
 
-Worldpay77 是 Nepha 的 AI Native 投资公司。
+ksana 是 Nepha 的 AI Native 投资公司。
 
 它不是让 AI 写几份股票分析报告，也不是把多个 Agent 串成一条命令行流水线。它的目标是把一家投资公司的核心组织能力本地化、结构化、可追踪化：
 
@@ -18,7 +18,7 @@ Worldpay77 是 Nepha 的 AI Native 投资公司。
 
 一句话：
 
-**K deep 的选题能力 + Perplexity 的深度研究 + 三位投资合伙人的方法论 + Chairman 的裁决能力 + Red Team 的反对能力 + 每天复用的知识库 = Worldpay77。**
+**K deep 的选题能力 + Perplexity 的深度研究 + 三位投资合伙人的方法论 + Chairman 的裁决能力 + Red Team 的反对能力 + 每天复用的知识库 = ksana。**
 
 ## 2. 当前代码的真实状态
 
@@ -483,7 +483,7 @@ Perplexity 回填后，第二天同一股票或同行业触发时，系统能自
 
 ## 11. 目标态一句话
 
-Worldpay77 要成为一个由 Nepha 拥有的 AI Native 投资公司：它用 K deep 体系发现真正值得研究的问题，用 Perplexity 做世界级研究，用三位投资合伙人进行独立判断，用 Chairman 做有逻辑链的裁决，用 Red Team 做不妥协的反对，并把每天的研究、判断、反对和验证结果沉淀成长期记忆。
+ksana 要成为一个由 Nepha 拥有的 AI Native 投资公司：它用 K deep 体系发现真正值得研究的问题，用 Perplexity 做世界级研究，用三位投资合伙人进行独立判断，用 Chairman 做有逻辑链的裁决，用 Red Team 做不妥协的反对，并把每天的研究、判断、反对和验证结果沉淀成长期记忆。
 
 系统真正完成的标志不是"能跑出一份报告"，而是：
 

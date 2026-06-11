@@ -1,6 +1,6 @@
-# WorldPay IC / ResearchOS
+# ksana IC / ResearchOS
 
-WorldPay IC is a local ResearchOS workspace for one-person or small-team equity research. It turns market anomalies into research tasks, turns deep research into reusable knowledge, and turns committee reports into auditable review records.
+ksana IC is a local ResearchOS workspace for one-person or small-team equity research. It turns market anomalies into research tasks, turns deep research into reusable knowledge, and turns committee reports into auditable review records.
 
 The system does not place trades, manage portfolios, or reduce decisions to simple buy/sell calls. Its output focuses on observation, waiting conditions, missing evidence, risk triggers, and reviewable decision logic.
 

@@ -1,4 +1,4 @@
-schema_id: worldpay77.learning.decision_case.v1
+schema_id: ksana.learning.decision_case.v1
 description: >
   Time-safe learning case generated from each archived Chairman brief. It records what
   the system knew at decision time and explicitly forbids future data in prompt context.

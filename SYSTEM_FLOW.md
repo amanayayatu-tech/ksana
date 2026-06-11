@@ -1,4 +1,4 @@
-# worldpay77 系统运行流程图
+# ksana 系统运行流程图
 
 本文按当前代码描述系统如何运行、信息如何流转，以及 LLM 在哪里参与。当前阶段是试运行版：不自动交易，不自动调用 Perplexity，不输出 `long`，交易 Agent 只能输出 `watch / avoid / abstain`。
 

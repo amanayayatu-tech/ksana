@@ -1,4 +1,4 @@
-# WorldPay IC / ResearchOS 本地运行说明书
+# ksana IC / ResearchOS 本地运行说明书
 
 这份说明书按“完全不懂代码也能照着跑”的标准写。最新版已经带本地 Web UI：你可以像使用普通网页一样点按钮运行系统，也可以继续使用命令行。
 
@@ -32,16 +32,17 @@ LLM_PROVIDER=local uv run orchestrator run --type full --brief-type morning --da
 
 ## 1. 先确认你在哪里
 
-当前这台 Mac 上正在使用的真实代码目录是：
-
-```text
-/Users/peachy/Library/Mobile Documents/com~apple~CloudDocs/worldpay77/worldpay77-app
-```
-
-打开终端后，先进入项目目录。路径中有空格，所以建议直接复制下面这一行：
+当前这台 Mac 上正在使用的真实代码目录，是包含 `pyproject.toml`、`webui.py`、`README.md` 的仓库根目录。
+如果你是从 GitHub 重新 clone 的，建议使用一个不带旧品牌名的目录，例如：
 
 ```bash
-cd "/Users/peachy/Library/Mobile Documents/com~apple~CloudDocs/worldpay77/worldpay77-app"
+cd ~/agent-trading-system
+```
+
+如果你已经有本地目录，打开终端后先进入自己的项目目录；路径中有空格时建议给路径加引号：
+
+```bash
+cd "/path/to/agent-trading-system"
 ```
 
 如果你是从 GitHub 重新 clone 的，也可以使用自己的 clone 目录，例如：
@@ -60,7 +61,7 @@ cd ~/agent-trading-system
 
 ```bash
 cd ~
-git clone https://github.com/amanayayatu-tech/worldpay77.git agent-trading-system
+git clone https://github.com/amanayayatu-tech/ksana.git agent-trading-system
 cd ~/agent-trading-system
 ```
 

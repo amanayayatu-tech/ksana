@@ -2101,7 +2101,7 @@ def has_active_rerun_process() -> bool:
         ("trading-g_partner", "run", "--data-dir"),
         ("chairman", "generate-brief"),
         ("red-team", "audit"),
-        ("Codex CLI acting as an LLM provider for worldpay77",),
+        ("Codex CLI acting as an LLM provider for ksana",),
     )
     try:
         result = subprocess.run(
