@@ -12,8 +12,9 @@ import shutil
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from dotenv import load_dotenv
 
@@ -146,19 +147,21 @@ class CodexCliClient(LLMClient):
                 command.extend(["--model", self.model])
             command.append(prompt)
 
-            try:
-                completed = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                    check=False,
-                    cwd=self.project_root,
-                )
-            except FileNotFoundError as exc:
-                raise LLMError("codex CLI is not installed or not on PATH") from exc
-            except subprocess.TimeoutExpired as exc:
-                raise LLMTimeout(str(exc)) from exc
+            with codex_provider_subprocess_env() as provider_env:
+                try:
+                    completed = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_seconds,
+                        check=False,
+                        cwd=self.project_root,
+                        env=provider_env,
+                    )
+                except FileNotFoundError as exc:
+                    raise LLMError("codex CLI is not installed or not on PATH") from exc
+                except subprocess.TimeoutExpired as exc:
+                    raise LLMTimeout(str(exc)) from exc
 
             stdout = completed.stdout or ""
             stderr = completed.stderr or ""
@@ -226,6 +229,41 @@ def codex_provider_clean_enabled() -> bool:
     """Return whether Codex provider calls should ignore user config."""
 
     return os.getenv("CODEX_PROVIDER_CLEAN", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+@contextmanager
+def codex_provider_subprocess_env() -> Iterator[dict[str, str]]:
+    """Return an env for Codex provider calls, isolating user skills in clean mode."""
+
+    env = os.environ.copy()
+    if not codex_provider_clean_enabled():
+        yield env
+        return
+
+    source_home = Path(os.getenv("CODEX_HOME", Path.home() / ".codex")).expanduser()
+    with tempfile.TemporaryDirectory(prefix="codex-clean-home-") as clean_home_raw:
+        clean_home = Path(clean_home_raw)
+        _copy_codex_auth_surface(source_home, clean_home)
+        (clean_home / "skills").mkdir(exist_ok=True)
+        env["CODEX_HOME"] = str(clean_home)
+        yield env
+
+
+def _copy_codex_auth_surface(source_home: Path, clean_home: Path) -> None:
+    """Copy only the Codex files needed for auth/model lookup, never user skills."""
+
+    for filename in (
+        "auth.json",
+        "installation_id",
+        "models_cache.json",
+        ".codex-global-state.json",
+    ):
+        source = source_home / filename
+        if source.is_file():
+            shutil.copy2(source, clean_home / filename)
+
+    # Kept intentionally minimal; --ignore-user-config remains the main config guard.
+    (clean_home / "config.toml").write_text("", encoding="utf-8")
 
 
 def build_codex_provider_prompt(

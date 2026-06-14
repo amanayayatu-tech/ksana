@@ -134,15 +134,25 @@ def test_codex_cli_client_respects_provider_sandbox_env(monkeypatch, tmp_path):
 
 
 def test_codex_cli_client_clean_env_ignores_user_config(monkeypatch, tmp_path):
+    source_home = tmp_path / "source-codex"
+    source_home.mkdir()
+    (source_home / "auth.json").write_text('{"token":"test"}', encoding="utf-8")
+    (source_home / "skills").mkdir()
+    (source_home / "skills" / "bad").mkdir()
     calls = []
 
     def fake_run(command, **kwargs):
-        calls.append(command)
+        calls.append((command, kwargs))
+        clean_home = kwargs["env"]["CODEX_HOME"]
+        assert clean_home != str(source_home)
+        assert (narrative_generator.Path(clean_home) / "auth.json").exists()
+        assert not list((narrative_generator.Path(clean_home) / "skills").iterdir())
         output_path = command[command.index("--output-last-message") + 1]
         with open(output_path, "w", encoding="utf-8") as handle:
             handle.write("OK")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
+    monkeypatch.setenv("CODEX_HOME", str(source_home))
     monkeypatch.setenv("CODEX_PROVIDER_CLEAN", "1")
     monkeypatch.setenv("CODEX_PROVIDER_SANDBOX", "read-only")
     monkeypatch.setattr(narrative_generator.shutil, "which", lambda _: "/usr/local/bin/codex")
@@ -157,9 +167,10 @@ def test_codex_cli_client_clean_env_ignores_user_config(monkeypatch, tmp_path):
         temperature=0.2,
     )
 
-    command = calls[0]
+    command, kwargs = calls[0]
     assert command[command.index("exec") + 1] == "--ignore-user-config"
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert kwargs["env"]["CODEX_HOME"] != str(source_home)
 
 
 def test_codex_cli_client_rejects_unsafe_provider_sandbox(monkeypatch, tmp_path):
