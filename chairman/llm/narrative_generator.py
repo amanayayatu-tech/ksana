@@ -136,10 +136,12 @@ class CodexCliClient(LLMClient):
                 "--cd",
                 str(self.project_root),
                 "--sandbox",
-                "workspace-write",
+                codex_provider_sandbox(),
                 "--output-last-message",
                 output_file.name,
             ]
+            if codex_provider_clean_enabled():
+                command.insert(command.index("-c"), "--ignore-user-config")
             if self.model:
                 command.extend(["--model", self.model])
             command.append(prompt)
@@ -206,6 +208,24 @@ def codex_provider_reasoning_effort() -> str:
     """Keep provider-style Codex calls responsive unless explicitly overridden."""
 
     return os.getenv("CODEX_PROVIDER_REASONING_EFFORT", "low").strip() or "low"
+
+
+def codex_provider_sandbox() -> str:
+    """Return the Codex provider sandbox without changing the legacy default."""
+
+    sandbox = os.getenv("CODEX_PROVIDER_SANDBOX", "workspace-write").strip() or "workspace-write"
+    allowed = {"read-only", "workspace-write"}
+    if sandbox not in allowed:
+        raise LLMError(
+            "CODEX_PROVIDER_SANDBOX must be one of: " + ", ".join(sorted(allowed))
+        )
+    return sandbox
+
+
+def codex_provider_clean_enabled() -> bool:
+    """Return whether Codex provider calls should ignore user config."""
+
+    return os.getenv("CODEX_PROVIDER_CLEAN", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def build_codex_provider_prompt(
