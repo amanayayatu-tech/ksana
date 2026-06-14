@@ -59,6 +59,8 @@ def test_codex_cli_client_respects_project_root_env(monkeypatch, tmp_path):
 
 
 def test_codex_cli_client_invokes_codex_exec(monkeypatch, tmp_path):
+    monkeypatch.delenv("CODEX_PROVIDER_SANDBOX", raising=False)
+    monkeypatch.delenv("CODEX_PROVIDER_CLEAN", raising=False)
     calls = []
 
     def fake_run(command, **kwargs):
@@ -82,12 +84,97 @@ def test_codex_cli_client_invokes_codex_exec(monkeypatch, tmp_path):
 
     command, kwargs = calls[0]
     assert output == '{"ok": true}'
-    assert command[:4] == ["codex", "--ask-for-approval", "never", "exec"]
+    assert command[:10] == [
+        "codex",
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "-c",
+        'model_reasoning_effort="low"',
+        "--cd",
+        str(tmp_path),
+        "--sandbox",
+        "workspace-write",
+    ]
+    assert "--ignore-user-config" not in command
     assert command[command.index("--cd") + 1] == str(tmp_path)
     assert command[command.index("--sandbox") + 1] == "workspace-write"
     assert command[command.index("--model") + 1] == "gpt-5.5"
     assert kwargs["timeout"] == 12
     assert kwargs["cwd"] == tmp_path
+
+
+def test_codex_cli_client_respects_provider_sandbox_env(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        output_path = command[command.index("--output-last-message") + 1]
+        with open(output_path, "w", encoding="utf-8") as handle:
+            handle.write("OK")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setenv("CODEX_PROVIDER_SANDBOX", "read-only")
+    monkeypatch.delenv("CODEX_PROVIDER_CLEAN", raising=False)
+    monkeypatch.setattr(narrative_generator.shutil, "which", lambda _: "/usr/local/bin/codex")
+    monkeypatch.setattr(narrative_generator.subprocess, "run", fake_run)
+    client = narrative_generator.CodexCliClient(model="", project_root=tmp_path)
+
+    output = client.complete(
+        system_prompt="Return text.",
+        user_prompt="Say ok.",
+        max_tokens=100,
+        timeout_seconds=12,
+        temperature=0.2,
+    )
+
+    assert output == "OK"
+    assert calls[0][calls[0].index("--sandbox") + 1] == "read-only"
+    assert "--ignore-user-config" not in calls[0]
+
+
+def test_codex_cli_client_clean_env_ignores_user_config(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        output_path = command[command.index("--output-last-message") + 1]
+        with open(output_path, "w", encoding="utf-8") as handle:
+            handle.write("OK")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setenv("CODEX_PROVIDER_CLEAN", "1")
+    monkeypatch.setenv("CODEX_PROVIDER_SANDBOX", "read-only")
+    monkeypatch.setattr(narrative_generator.shutil, "which", lambda _: "/usr/local/bin/codex")
+    monkeypatch.setattr(narrative_generator.subprocess, "run", fake_run)
+    client = narrative_generator.CodexCliClient(model="", project_root=tmp_path)
+
+    client.complete(
+        system_prompt="Return text.",
+        user_prompt="Say ok.",
+        max_tokens=100,
+        timeout_seconds=12,
+        temperature=0.2,
+    )
+
+    command = calls[0]
+    assert command[command.index("exec") + 1] == "--ignore-user-config"
+    assert command[command.index("--sandbox") + 1] == "read-only"
+
+
+def test_codex_cli_client_rejects_unsafe_provider_sandbox(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_PROVIDER_SANDBOX", "danger-full-access")
+    monkeypatch.setattr(narrative_generator.shutil, "which", lambda _: "/usr/local/bin/codex")
+    client = narrative_generator.CodexCliClient(model="", project_root=tmp_path)
+
+    with pytest.raises(LLMError, match="CODEX_PROVIDER_SANDBOX"):
+        client.complete(
+            system_prompt="",
+            user_prompt="",
+            max_tokens=10,
+            timeout_seconds=1,
+            temperature=0,
+        )
 
 
 def test_codex_cli_client_reports_missing_binary(monkeypatch, tmp_path):
